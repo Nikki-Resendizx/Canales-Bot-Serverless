@@ -144,7 +144,7 @@ export default async function (query) {
   }
   if (section === 'back') {
     await answer(query);
-    await renderPanel('⚙️ PANEL DE ADMINISTRACIÓN\nChannelPosts_RoBot\nSelecciona un módulo.');
+    await renderPanel((await navText('panel_title')) + '\nChannelPosts_RoBot\n' + (await navText('panel_description')));
     return;
   }
   if (section === 'toggle') {
@@ -175,7 +175,7 @@ export default async function (query) {
 
   await answer(query);
   if (section === 'navigation') {
-    await renderPanel('🧭 TEXTOS DE NAVEGACIÓN\\n\\nUsa /navtexts para consultar las claves. Edita con /navtext CLAVE nuevo texto. Para restaurar: /navtext CLAVE default.\\n\\nClaves: panel_title, panel_description, channels, welcome, captcha, blacklist, routes, templates, publications, buttons, formats, reactions, stars, admins, stats, settings, close, navigation, back.', [[{ text: await navText('back'), callback_data: 'admin:back' }]]);
+    await renderPanel('🧭 TEXTOS DE NAVEGACIÓN\n\nUsa /navtexts para consultar las claves. Edita con /navtext CLAVE nuevo texto. Para restaurar: /navtext CLAVE default.\n\nClaves: panel_title, panel_description, channels, welcome, captcha, blacklist, routes, templates, publications, buttons, formats, reactions, stars, admins, stats, settings, close, navigation, back.', [[{ text: await navText('back'), callback_data: 'admin:back' }]]);
     return;
   }
   if (section === 'channels') {
