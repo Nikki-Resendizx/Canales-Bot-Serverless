@@ -2,6 +2,8 @@ import { api, db } from 'sdk';
 import { eq } from 'sdk/db';
 import { channelSettings, reactionReports } from '../schema.js';
 
+const escapeHtml = (value) => String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
+
 function describeReaction(reaction) {
   if (!Array.isArray(reaction) || reaction.length === 0) return 'sin reacción';
 
@@ -77,18 +79,20 @@ export default async function (update) {
   const username = user.username ? `@${user.username}` : 'sin username';
   const postLink = getPostLink(chat, messageId);
 
+  const publicationLink = postLink.startsWith('https://t.me/') ? '<a href="' + escapeHtml(postLink) + '">Abrir publicación</a>' : 'enlace no disponible';
   await api.sendMessage({
     chat_id: reportChatId,
     text: [
-      '🔔 REACCIÓN ACTUALIZADA',
-      `Canal: ${chat.title ?? chat.username ?? chatId}`,
-      `Publicación: ${postLink}`,
-      `Usuario: ${displayName}`,
-      `Username: ${username}`,
+      '<b>🔔 REACCIÓN ACTUALIZADA</b>',
+      `Canal: ${escapeHtml(chat.title ?? chat.username ?? chatId)}`,
+      `Publicación: ${publicationLink}`,
+      `Usuario: <a href="tg://user?id=${user.id}">${escapeHtml(displayName)}</a>`,
+      `Username: ${escapeHtml(username)}`,
       `ID: ${user.id}`,
-      `Antes: ${oldReaction}`,
-      `Ahora: ${newReaction}`,
+      `Antes: ${escapeHtml(oldReaction)}`,
+      `Ahora: ${escapeHtml(newReaction)}`,
     ].join('\n'),
+    parse_mode: 'HTML',
     link_preview_options: { is_disabled: true },
   });
 }
