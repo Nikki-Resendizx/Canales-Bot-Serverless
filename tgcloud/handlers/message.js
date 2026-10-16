@@ -150,6 +150,21 @@ export default async function (message) {
     }
   }
 
+  if (message.chat_shared) {
+    if (!isPrivate || !(await isAdmin(userId))) {
+      await say(chatId, '⛔ Solo un administrador autorizado puede conectar canales desde el panel.');
+      return;
+    }
+    const sharedChatId = Number(message.chat_shared.chat_id);
+    await say(chatId,
+      Number.isSafeInteger(sharedChatId)
+        ? '📨 Selección recibida para el canal ' + sharedChatId + '. Telegram confirmará la incorporación del bot como administrador y lo registrará automáticamente. Si no aparece en la lista, comprueba que aceptaste agregarlo como administrador.'
+        : '⚠️ Telegram no devolvió un ID de canal válido.',
+      { reply_markup: { remove_keyboard: true } }
+    );
+    return;
+  }
+
   if (message.successful_payment) {
     const payment = message.successful_payment;
     const publicationKey = String(payment.invoice_payload ?? '');
