@@ -38,6 +38,7 @@ export const captchaSessions = table('captcha_sessions', {
   sessionKey: text('session_key').primaryKey(),
   userId: integer('user_id').notNull(),
   channelId: integer('channel_id').notNull(),
+  expectedAnswer: text('expected_answer').notNull(),
   expiresAt: integer('expires_at').notNull(),
   createdAt: integer('created_at').notNull(),
 });
