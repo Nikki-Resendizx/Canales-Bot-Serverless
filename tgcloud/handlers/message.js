@@ -2,11 +2,11 @@ import { api, db } from 'sdk';
 import { eq } from 'sdk/db';
 import { admins } from '../schema.js';
 
-// IMPORTANTE: sustituye 0 por tu ID numérico de Telegram antes de activar el bot.
-const OWNER_ID = 0;
+// ID numérico del propietario del bot.
+const OWNER_ID = 8624574996;
 
 async function isAdmin(userId) {
-  if (Number(userId) === OWNER_ID && OWNER_ID !== 0) return true;
+  if (Number(userId) === OWNER_ID) return true;
   const row = await db.select().from(admins).where(eq(admins.userId, Number(userId))).get();
   return Boolean(row);
 }
