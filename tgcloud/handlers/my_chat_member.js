@@ -41,10 +41,10 @@ export default async function (update) {
     return;
   }
 
-  if (member.status === 'left' || member.status === 'kicked') {
+  if (member.status !== 'administrator') {
     try {
       await db.update(channels).set({ active: 0 }).where(eq(channels.chatId, Number(chat.id))).run();
-      console.log('Canal desactivado porque el bot dejó de ser miembro/administrador:', chat.id);
+      console.log('Canal desactivado porque el bot no conserva permisos de administrador:', chat.id, member.status);
     } catch (error) {
       console.log('No se pudo desactivar el canal:', String(error));
     }
