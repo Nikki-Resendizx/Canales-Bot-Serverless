@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "engines": { "node": ">=18" },
-  "scripts": { "check": "node --check tgcloud/handlers/message.js" },
+  "scripts": {
+    "check": "node --check tgcloud/schema.js && node --check tgcloud/handlers/message.js && node --check tgcloud/handlers/callback_query.js && node --check tgcloud/handlers/channel_post.js && node --check tgcloud/handlers/chat_member.js",
+    "validate": "npm run check"
+  },
   "devDependencies": { "@tgcloud/cli": "^0.2.0" }
 }
