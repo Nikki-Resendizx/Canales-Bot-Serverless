@@ -152,16 +152,36 @@ export default async function (message) {
 
   if (message.chat_shared) {
     if (!isPrivate || !(await isAdmin(userId))) {
-      await say(chatId, '⛔ Solo un administrador autorizado puede conectar canales desde el panel.');
+      await say(chatId, '⛔ Solo un administrador autorizado puede conectar canales desde el panel.', { reply_markup: { remove_keyboard: true } });
       return;
     }
     const sharedChatId = Number(message.chat_shared.chat_id);
-    await say(chatId,
-      Number.isSafeInteger(sharedChatId)
-        ? '📨 Selección recibida para el canal ' + sharedChatId + '. Telegram confirmará la incorporación del bot como administrador y lo registrará automáticamente. Si no aparece en la lista, comprueba que aceptaste agregarlo como administrador.'
-        : '⚠️ Telegram no devolvió un ID de canal válido.',
-      { reply_markup: { remove_keyboard: true } }
-    );
+    if (!Number.isSafeInteger(sharedChatId)) {
+      await say(chatId, '⚠️ Telegram no devolvió un ID de canal válido.', { reply_markup: { remove_keyboard: true } });
+      return;
+    }
+    try {
+      const botInfo = await api.getMe();
+      const membership = await api.getChatMember({ chat_id: sharedChatId, user_id: botInfo.id });
+      if (membership?.status !== 'administrator') {
+        await say(chatId, '⚠️ Seleccionaste el canal, pero Telegram aún no confirma que el bot sea administrador. Añádelo como administrador y vuelve a abrir 📢 CANALES.', { reply_markup: { remove_keyboard: true } });
+        return;
+      }
+      let title = String(sharedChatId);
+      try {
+        const selectedChat = await api.getChat({ chat_id: sharedChatId });
+        title = String(selectedChat?.title || selectedChat?.username || sharedChatId);
+      } catch (error) {
+        console.log('No se pudo consultar el título del canal seleccionado', String(error));
+      }
+      await db.insert(channels).values({ chatId: sharedChatId, title, addedBy: userId, active: 1, createdAt: now() })
+        .onConflictDoUpdate({ target: channels.chatId, set: { title, active: 1 } }).run();
+      await ensureSettings(sharedChatId);
+      await say(chatId, '✅ Canal conectado y registrado automáticamente: ' + title + ' (' + sharedChatId + ').', { reply_markup: { remove_keyboard: true } });
+    } catch (error) {
+      console.log('No se pudo verificar el canal seleccionado', String(error));
+      await say(chatId, '⚠️ No pude verificar que el bot sea administrador de ese canal. Comprueba sus permisos y vuelve a intentarlo.', { reply_markup: { remove_keyboard: true } });
+    }
     return;
   }
 
@@ -527,7 +547,7 @@ export default async function (message) {
       const channel = await db.select().from(channels).where(eq(channels.chatId, id)).get();
       if (!channel || !channel.active || !(await canManageChannel(userId, id))) return void await say(chatId, '⛔ Ese canal no está activo o no está asignado a tu administración.');
       const publicationKey = `p_${now().toString(36)}_${Math.abs(id).toString(36)}`;
-      const botInfo = await api.getMe({});
+      const botInfo = await api.getMe();
       const botUsername = String(botInfo?.username ?? '').replace(/^@/, '');
       if (!botUsername) return void await say(chatId, '⚠️ Telegram no devolvió el username del bot; no se creó la publicación de pago.');
       const teaser = await api.sendMessage({
