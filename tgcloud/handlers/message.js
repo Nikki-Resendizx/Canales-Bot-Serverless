@@ -2,19 +2,18 @@ import { api, db } from 'sdk';
 import { eq } from 'sdk/db';
 import {
   admins, channels, channelSettings, globalBans, channelRoutes,
-  templates, publications, purchases,
+  templates, publications, purchases, reactionReports,
 } from '../schema.js';
 
 const OWNER_ID = 8624574996;
 const now = () => Date.now();
-const parseId = (value) => /^-?\d+$/.test(String(value ?? '')) ? Number(value) : NaN;
-const escapeHtml = (value) => String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
+const parseId = value => /^-?\d+$/.test(String(value ?? '')) ? Number(value) : NaN;
+const escapeHtml = value => String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
 
 async function isAdmin(userId) {
   if (Number(userId) === OWNER_ID) return true;
   return Boolean(await db.select().from(admins).where(eq(admins.userId, Number(userId))).get());
 }
-async function ownerOnly(userId) { return Number(userId) === OWNER_ID; }
 async function say(chatId, text, extra = {}) {
   return api.sendMessage({ chat_id: chatId, text, ...extra });
 }
@@ -23,27 +22,49 @@ async function ensureSettings(channelId) {
   if (!row) {
     await db.insert(channelSettings).values({
       channelId, welcomeEnabled: 0, welcomeText: '👋 ¡Bienvenido, {mencion}!',
-      captchaEnabled: 0, captchaQuestion: '', captchaAnswer: '',
-      updatedAt: now(),
+      captchaEnabled: 0, captchaQuestion: '', captchaAnswer: '', updatedAt: now(),
     }).run();
     row = await db.select().from(channelSettings).where(eq(channelSettings.channelId, channelId)).get();
   }
   return row;
 }
-async function renderText(template, user) {
-  const name = [user.first_name, user.last_name].filter(Boolean).join(' ') || 'usuario';
-  return String(template || '')
-    .replaceAll('{mencion}', '<a href="tg://user?id=' + Number(user.id) + '">' + escapeHtml(name) + '</a>')
-    .replaceAll('{nombre}', escapeHtml(name))
-    .replaceAll('{username}', user.username ? '@' + escapeHtml(user.username) : '')
-    .replaceAll('{userid}', String(user.id));
-}
 const MAIN_MENU = [
   [{ text: '📣 Canales', callback_data: 'admin:channels' }, { text: '👋 Bienvenida', callback_data: 'admin:welcome' }, { text: '🧩 CAPTCHA', callback_data: 'admin:captcha' }],
-  [{ text: '🚫 Blacklist', callback_data: 'admin:blacklist' }, { text: '🔀 Rutas', callback_data: 'admin:routes' }, { text: '📊 Estadísticas', callback_data: 'admin:stats' }],
-  [{ text: '📝 Plantillas', callback_data: 'admin:templates' }, { text: '💳 Stars', callback_data: 'admin:stars' }, { text: '👮 Admins', callback_data: 'admin:admins' }],
-  [{ text: '❌ Cerrar', callback_data: 'admin:close' }],
+  [{ text: '🚫 Blacklist', callback_data: 'admin:blacklist' }, { text: '🔀 Rutas', callback_data: 'admin:routes' }, { text: '📝 Plantillas', callback_data: 'admin:templates' }],
+  [{ text: '📤 Publicaciones', callback_data: 'admin:publications' }, { text: '🔘 Botones', callback_data: 'admin:buttons' }, { text: '🎨 Formatos', callback_data: 'admin:formats' }],
+  [{ text: '🔔 Reacciones', callback_data: 'admin:reactions' }, { text: '💳 Stars', callback_data: 'admin:stars' }, { text: '👮 Admins', callback_data: 'admin:admins' }],
+  [{ text: '📊 Estadísticas', callback_data: 'admin:stats' }, { text: '⚙️ Configuración', callback_data: 'admin:settings' }, { text: '❌ Cerrar', callback_data: 'admin:close' }],
 ];
+
+const HELP = [
+  '📚 COMANDOS DE CHANNELPOSTS_ROBOT',
+  '/admin — panel privado de administración',
+  '/channels — listar canales',
+  '/addchannel ID [título] — registrar canal',
+  '/delchannel ID — quitar canal',
+  '/welcome ID on|off — bienvenida por canal',
+  '/welcometext ID texto — editar bienvenida',
+  '/captcha ID on|off — CAPTCHA por canal',
+  '/setreport ID_CANAL ID_REPORTE — destino de avisos de reacción',
+  '/blacklist_add ID [@usuario] [motivo] — añadir blacklist',
+  '/blacklist_remove ID — retirar de blacklist',
+  '/blacklist — consultar blacklist',
+  '/route_add ORIGEN DESTINO — crear ruta',
+  '/route_remove ORIGEN DESTINO — borrar ruta',
+  '/routes — listar rutas',
+  '/template_set ID_CANAL TIPO FORMATO texto — crear/editar plantilla',
+  '/template_list ID_CANAL — listar plantillas',
+  '/template_buttons ID_CANAL TIPO JSON — configurar botones inline',
+  '/template_delete ID_CANAL TIPO — borrar plantilla',
+  '/publish ID_CANAL texto — publicar texto',
+  'Responde a un mensaje con /publish ID_CANAL para copiarlo al canal.',
+  '/stats — estadísticas',
+  '/addadmin ID y /deladmin ID — solo propietario',
+  '',
+  'Formatos: HTML, Markdown, MarkdownV2, OFF.',
+  'Variables de bienvenida: {mencion}, {nombre}, {username}, {userid}.',
+  'El bot debe tener permisos de administrador en cada canal/grupo.',
+].join('\n');
 
 export default async function (message) {
   if (!message?.chat?.id || !message?.from) return;
@@ -53,37 +74,26 @@ export default async function (message) {
   const isPrivate = chatId === userId;
 
   if (text === '/start' || text.startsWith('/start ')) {
-    await say(chatId, '👋 ¡Bienvenido a ChannelPosts_RoBot!\n\nAdministra canales, bienvenida, CAPTCHA, blacklist, rutas y plantillas. Usa /help para ver comandos.');
+    await say(chatId, '👋 ¡Bienvenido a ChannelPosts_RoBot!\n\nGestiona canales, publicaciones, plantillas, botones, bienvenida, CAPTCHA, blacklist, rutas y reportes de reacciones. Usa /help para ver los comandos.', {
+      reply_markup: { inline_keyboard: [[{ text: '⚙️ PANEL DE ADMINISTRACIÓN', callback_data: 'admin:open' }], [{ text: '📚 Ayuda', callback_data: 'admin:help' }]] },
+    });
     return;
   }
   if (text === '/help') {
-    await say(chatId,
-      '📚 COMANDOS DE CANALES-BOT\n' +
-      '/admin — panel\n/channels — canales conectados\n' +
-      '/addchannel ID [título] — registrar canal\n/delchannel ID — quitar canal\n' +
-      '/welcome ID on|off — activar/desactivar bienvenida\n/welcometext ID texto — editar bienvenida\n' +
-      '/captcha ID on|off — activar/desactivar CAPTCHA\n' +
-      '/setreport ID_CANAL ID_REPORTE — canal de reportes de reacciones\n' +
-      '/blacklist_add ID [@usuario] [motivo] — blacklist global\n/blacklist_remove ID — quitar de blacklist\n/blacklist — consultar blacklist\n' +
-      '/route_add ORIGEN DESTINO — enrutar publicaciones\n/route_remove ORIGEN DESTINO — quitar ruta\n/routes — ver rutas\n' +
-      '/template_set ID_CANAL TIPO FORMATO texto — guardar plantilla\n/template_list ID_CANAL — listar plantillas\n' +
-      '/publish ID_CANAL texto — publicar texto\n/stats — estadísticas\n' +
-      '/addadmin ID y /deladmin ID — solo propietario\n\n' +
-      'Formatos de plantilla: HTML, Markdown, MarkdownV2 u OFF. Variables de bienvenida: {mencion}, {nombre}, {username}, {userid}.'
-    );
+    await say(chatId, HELP);
     return;
   }
-
   if (text === '/admin') {
     if (!isPrivate || !(await isAdmin(userId))) {
-      await say(chatId, '⛔ El panel solo está disponible para administradores en chat privado.');
+      await say(chatId, '⛔ El panel solo está disponible para administradores autorizados en chat privado.');
       return;
     }
-    await say(chatId, '⚙️ PANEL DE ADMINISTRACIÓN\nChannelPosts_RoBot\n\nSelecciona un módulo. Los botones muestran las acciones y comandos disponibles.', {
+    await say(chatId, '⚙️ PANEL DE ADMINISTRACIÓN\nChannelPosts_RoBot\n\nSelecciona un módulo. Los módulos de pago solo se habilitarán cuando el flujo real esté validado.', {
       reply_markup: { inline_keyboard: MAIN_MENU },
     });
     return;
   }
+
   if (!text.startsWith('/')) return;
   if (!(await isAdmin(userId))) {
     if (isPrivate) await say(chatId, '⛔ No tienes autorización para usar comandos administrativos.');
@@ -105,24 +115,27 @@ export default async function (message) {
     }
     if (command === '/addchannel') {
       const id = parseId(args[0]);
-      if (!Number.isSafeInteger(id)) return void await say(chatId, 'Uso: /addchannel ID [título]');
+      if (!Number.isSafeInteger(id) || id === 0) return void await say(chatId, 'Uso: /addchannel ID [título]');
       const title = args.slice(1).join(' ') || String(id);
       await db.insert(channels).values({ chatId: id, title, addedBy: userId, active: 1, createdAt: now() })
         .onConflictDoUpdate({ target: channels.chatId, set: { title, active: 1 } }).run();
       await ensureSettings(id);
-      await say(chatId, `✅ Canal registrado: ${title} (${id}). Asegúrate de que el bot tenga permisos de administrador.`);
+      await say(chatId, `✅ Canal registrado: ${title} (${id}). Añade el bot como administrador y concede los permisos requeridos.`);
       return;
     }
     if (command === '/delchannel') {
       const id = parseId(args[0]);
       if (!Number.isSafeInteger(id)) return void await say(chatId, 'Uso: /delchannel ID');
       await db.delete(channels).where(eq(channels.chatId, id)).run();
-      await say(chatId, `✅ Canal ${id} eliminado del registro. Revisa y elimina manualmente sus rutas si corresponde.`);
+      await db.delete(channelSettings).where(eq(channelSettings.channelId, id)).run();
+      await db.delete(channelRoutes).where(eq(channelRoutes.sourceChatId, id)).run();
+      await db.delete(channelRoutes).where(eq(channelRoutes.destinationChatId, id)).run();
+      await say(chatId, `✅ Canal ${id} eliminado junto con su configuración y rutas asociadas.`);
       return;
     }
     if (command === '/welcome') {
       const id = parseId(args[0]); const mode = String(args[1] || '').toLowerCase();
-      if (!Number.isSafeInteger(id) || !['on','off'].includes(mode)) return void await say(chatId, 'Uso: /welcome ID on|off');
+      if (!Number.isSafeInteger(id) || !['on', 'off'].includes(mode)) return void await say(chatId, 'Uso: /welcome ID on|off');
       await ensureSettings(id);
       await db.update(channelSettings).set({ welcomeEnabled: mode === 'on' ? 1 : 0, updatedAt: now() }).where(eq(channelSettings.channelId, id)).run();
       await say(chatId, `✅ Bienvenida ${mode === 'on' ? 'activada' : 'desactivada'} para ${id}.`);
@@ -138,10 +151,10 @@ export default async function (message) {
     }
     if (command === '/captcha') {
       const id = parseId(args[0]); const mode = String(args[1] || '').toLowerCase();
-      if (!Number.isSafeInteger(id) || !['on','off'].includes(mode)) return void await say(chatId, 'Uso: /captcha ID on|off');
+      if (!Number.isSafeInteger(id) || !['on', 'off'].includes(mode)) return void await say(chatId, 'Uso: /captcha ID on|off');
       await ensureSettings(id);
       await db.update(channelSettings).set({ captchaEnabled: mode === 'on' ? 1 : 0, updatedAt: now() }).where(eq(channelSettings.channelId, id)).run();
-      await say(chatId, `✅ CAPTCHA ${mode === 'on' ? 'activado' : 'desactivado'} para ${id}.`);
+      await say(chatId, `✅ CAPTCHA ${mode === 'on' ? 'activado' : 'desactivado'} para ${id}. El fallo o vencimiento aplica baneo permanente.`);
       return;
     }
     if (command === '/setreport') {
@@ -154,7 +167,7 @@ export default async function (message) {
     }
     if (command === '/blacklist_add') {
       const id = parseId(args[0]);
-      if (!Number.isSafeInteger(id)) return void await say(chatId, 'Uso: /blacklist_add ID [@usuario] [motivo]');
+      if (!Number.isSafeInteger(id) || id === 0) return void await say(chatId, 'Uso: /blacklist_add ID [@usuario] [motivo]');
       const username = args[1]?.startsWith('@') ? args[1].slice(1) : '';
       const reason = args.slice(username ? 2 : 1).join(' ') || 'Sin motivo especificado';
       await db.insert(globalBans).values({ userId: id, username, reason, bannedBy: userId, createdAt: now() })
@@ -171,12 +184,12 @@ export default async function (message) {
     }
     if (command === '/blacklist') {
       const rows = await db.select().from(globalBans).all();
-      await say(chatId, rows.length ? '🚫 BLACKLIST GLOBAL\n' + rows.map(b => `• ${b.userId} ${b.username ? '@'+b.username : ''} — ${b.reason}`).join('\n') : 'La blacklist está vacía.');
+      await say(chatId, rows.length ? '🚫 BLACKLIST GLOBAL\n' + rows.map(b => `• ${b.userId} ${b.username ? '@' + b.username : ''} — ${b.reason}`).join('\n') : 'La blacklist está vacía.');
       return;
     }
     if (command === '/route_add') {
       const source = parseId(args[0]); const destination = parseId(args[1]);
-      if (!Number.isSafeInteger(source) || !Number.isSafeInteger(destination) || source === destination) return void await say(chatId, 'Uso: /route_add ORIGEN DESTINO (deben ser distintos IDs numéricos).');
+      if (!Number.isSafeInteger(source) || !Number.isSafeInteger(destination) || source === destination) return void await say(chatId, 'Uso: /route_add ORIGEN DESTINO (IDs distintos).');
       const sourceRow = await db.select().from(channels).where(eq(channels.chatId, source)).get();
       const destinationRow = await db.select().from(channels).where(eq(channels.chatId, destination)).get();
       if (!sourceRow || !destinationRow) return void await say(chatId, 'Registra primero ambos canales con /addchannel ID título.');
@@ -201,34 +214,35 @@ export default async function (message) {
     if (command === '/template_set') {
       const id = parseId(args[0]); const kind = args[1]; const format = String(args[2] || 'HTML').toUpperCase();
       const body = argText.split(/\s+/).slice(3).join(' ');
-      if (!Number.isSafeInteger(id) || !kind || !body || !['HTML','MARKDOWN','MARKDOWNV2','OFF'].includes(format)) return void await say(chatId, 'Uso: /template_set ID_CANAL TIPO HTML|Markdown|MarkdownV2|OFF texto');
+      if (!Number.isSafeInteger(id) || !kind || !body || !['HTML', 'MARKDOWN', 'MARKDOWNV2', 'OFF'].includes(format)) return void await say(chatId, 'Uso: /template_set ID_CANAL TIPO HTML|Markdown|MarkdownV2|OFF texto');
       const templateKey = `${id}:${kind}`;
       await db.insert(templates).values({ templateKey, channelId: id, kind, body, format, buttonsJson: '[]', updatedBy: userId, updatedAt: now() })
         .onConflictDoUpdate({ target: templates.templateKey, set: { body, format, updatedBy: userId, updatedAt: now() } }).run();
-      await say(chatId, `✅ Plantilla “${kind}” guardada para ${id} (${format}).`);
+      await say(chatId, `✅ Plantilla “${kind}” guardada para ${id} (${format}). Usa {texto} para insertar el texto al publicar.`);
       return;
     }
     if (command === '/template_list') {
       const id = parseId(args[0]);
       if (!Number.isSafeInteger(id)) return void await say(chatId, 'Uso: /template_list ID_CANAL');
       const rows = await db.select().from(templates).where(eq(templates.channelId, id)).all();
-      await say(chatId, rows.length ? '📝 PLANTILLAS\n' + rows.map(t => `• ${t.kind} (${t.format}): ${t.body.slice(0,120)}`).join('\n') : 'No hay plantillas para ese canal.');
+      await say(chatId, rows.length ? '📝 PLANTILLAS\n' + rows.map(t => `• ${t.kind} (${t.format}): ${t.body.slice(0, 120)}`).join('\n') : 'No hay plantillas para ese canal.');
       return;
     }
     if (command === '/template_buttons') {
       const id = parseId(args[0]); const kind = args[1];
-      const firstSpace = argText.indexOf(' '); const secondSpace = argText.indexOf(' ', firstSpace + 1);\n      const rawJson = secondSpace >= 0 ? argText.slice(secondSpace + 1).trim() : '';
+      const secondSpace = argText.indexOf(' ', argText.indexOf(' ') + 1);
+      const rawJson = secondSpace >= 0 ? argText.slice(secondSpace + 1).trim() : '';
       if (!Number.isSafeInteger(id) || !kind || !rawJson) return void await say(chatId, 'Uso: /template_buttons ID_CANAL TIPO JSON_INLINE_KEYBOARD');
       let keyboard;
-      try { keyboard = JSON.parse(rawJson); } catch { return void await say(chatId, 'JSON no válido. Ejemplo: [[{"text":"Visitar","url":"https://t.me/"}]]'); }
+      try { keyboard = JSON.parse(rawJson); } catch { return void await say(chatId, 'JSON no válido. Ejemplo: [[{"text":"Abrir","url":"https://t.me/","style":"primary"}]]'); }
       if (!Array.isArray(keyboard) || keyboard.length > 8 || keyboard.some(row => !Array.isArray(row) || row.length > 8 || row.some(btn => !btn || typeof btn.text !== 'string' || !(typeof btn.url === 'string' || typeof btn.callback_data === 'string')))) {
-        return void await say(chatId, 'El JSON debe ser una matriz de filas de botones con text y url o callback_data.');
+        return void await say(chatId, 'Cada botón debe tener text y una url o callback_data; máximo 8 filas y 8 botones por fila.');
       }
       const templateKey = `${id}:${kind}`;
       const existing = await db.select().from(templates).where(eq(templates.templateKey, templateKey)).get();
-      if (!existing) return void await say(chatId, 'Primero crea la plantilla con /template_set ID_CANAL TIPO HTML|Markdown|MarkdownV2|OFF texto.');
+      if (!existing) return void await say(chatId, 'Primero crea la plantilla con /template_set ID_CANAL TIPO FORMATO texto.');
       await db.update(templates).set({ buttonsJson: JSON.stringify(keyboard), updatedBy: userId, updatedAt: now() }).where(eq(templates.templateKey, templateKey)).run();
-      await say(chatId, '✅ Botones guardados en la plantilla.');
+      await say(chatId, '✅ Botones guardados. Campos extra admitidos por Telegram, como icon_custom_emoji_id o style, se conservarán si la API los admite.');
       return;
     }
     if (command === '/template_delete') {
@@ -248,42 +262,38 @@ export default async function (message) {
       try {
         const keyboard = JSON.parse(template?.buttonsJson || '[]');
         if (Array.isArray(keyboard) && keyboard.length) replyMarkup = { reply_markup: { inline_keyboard: keyboard } };
-      } catch { /* plantilla antigua o JSON dañado: publicar sin botones */ }
-      let sent;
-      let payload;
-      let format = String(template?.format || 'HTML').toUpperCase();
+      } catch { /* publicar sin botones si el JSON está dañado */ }
+      let sent; let payload; const format = String(template?.format || 'HTML').toUpperCase();
       if (!body && message.reply_to_message?.message_id) {
-        sent = await api.copyMessage({
-          chat_id: id, from_chat_id: chatId,
-          message_id: message.reply_to_message.message_id,
-          ...replyMarkup,
-        });
-        payload = JSON.stringify({ copiedMessageId: message.reply_to_message.message_id, type: 'media_or_forwarded_message' });
+        sent = await api.copyMessage({ chat_id: id, from_chat_id: chatId, message_id: message.reply_to_message.message_id, ...replyMarkup });
+        payload = { copiedMessageId: message.reply_to_message.message_id, type: 'copied_message' };
       } else {
         if (!body) return void await say(chatId, 'Escribe texto o responde a una foto/vídeo/documento con /publish ID_CANAL.');
-        payload = template?.body ? template.body.replaceAll('{texto}', body) : body;
+        const rendered = template?.body ? template.body.replaceAll('{texto}', body) : body;
         const extra = format === 'OFF' ? {} : { parse_mode: format === 'MARKDOWN' ? 'Markdown' : format === 'MARKDOWNV2' ? 'MarkdownV2' : 'HTML' };
-        sent = await api.sendMessage({ chat_id: id, text: payload, ...extra, ...replyMarkup });
+        sent = await api.sendMessage({ chat_id: id, text: rendered, ...extra, ...replyMarkup });
+        payload = { text: rendered, format };
       }
       const messageId = sent.message_id ?? sent.message_ids?.[0] ?? now();
       const publicationKey = `${id}:${messageId}`;
-      await db.insert(publications).values({ publicationKey, channelId: id, sourceMessageId: messageId, status: 'published', starsPrice: 0, payloadJson: JSON.stringify({ payload, format }), createdBy: userId, createdAt: now(), updatedAt: now() }).run();
+      await db.insert(publications).values({ publicationKey, channelId: id, sourceMessageId: messageId, status: 'published', starsPrice: 0, payloadJson: JSON.stringify(payload), createdBy: userId, createdAt: now(), updatedAt: now() }).run();
       await say(chatId, `✅ Publicación enviada a ${row.title || id}.`);
       return;
     }
     if (command === '/stats') {
-      const [channelRows, routeRows, templateRows, banRows, pubRows, purchaseRows] = await Promise.all([
+      const [channelRows, routeRows, templateRows, banRows, pubRows, purchaseRows, reactionRows] = await Promise.all([
         db.select().from(channels).all(), db.select().from(channelRoutes).all(),
         db.select().from(templates).all(), db.select().from(globalBans).all(),
         db.select().from(publications).all(), db.select().from(purchases).all(),
+        db.select().from(reactionReports).all(),
       ]);
-      await say(chatId, `📊 ESTADÍSTICAS\nCanales: ${channelRows.length}\nRutas: ${routeRows.length}\nPlantillas: ${templateRows.length}\nBlacklist: ${banRows.length}\nPublicaciones registradas: ${pubRows.length}\nCompras registradas: ${purchaseRows.length}`);
+      await say(chatId, `📊 ESTADÍSTICAS\nCanales: ${channelRows.length}\nRutas: ${routeRows.length}\nPlantillas: ${templateRows.length}\nBlacklist: ${banRows.length}\nPublicaciones: ${pubRows.length}\nCompras registradas: ${purchaseRows.length}\nReacciones identificadas: ${reactionRows.length}`);
       return;
     }
     if (command === '/addadmin' || command === '/deladmin') {
-      if (!(await ownerOnly(userId))) return void await say(chatId, '⛔ Solo el propietario puede gestionar administradores.');
+      if (userId !== OWNER_ID) return void await say(chatId, '⛔ Solo el propietario puede gestionar administradores.');
       const target = parseId(args[0]);
-      if (!Number.isSafeInteger(target)) return void await say(chatId, `Uso: ${command} ID_USUARIO`);
+      if (!Number.isSafeInteger(target) || target <= 0) return void await say(chatId, `Uso: ${command} ID_USUARIO`);
       if (target === OWNER_ID) return void await say(chatId, 'El propietario ya tiene acceso permanente.');
       if (command === '/addadmin') {
         await db.insert(admins).values({ userId: target, role: 'admin', createdAt: now() }).onConflictDoNothing().run();
@@ -297,6 +307,6 @@ export default async function (message) {
     await say(chatId, 'Comando no reconocido. Usa /help.');
   } catch (error) {
     console.log('Error en comando administrativo', command, String(error));
-    await say(chatId, '⚠️ No se pudo completar la acción. Revisa que el ID sea correcto, que el esquema esté migrado y que el bot tenga permisos.');
+    await say(chatId, '⚠️ No se pudo completar la acción. Revisa el ID, el esquema migrado y los permisos del bot.');
   }
 }
