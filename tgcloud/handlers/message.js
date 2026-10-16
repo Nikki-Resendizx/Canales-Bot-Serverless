@@ -59,8 +59,14 @@ const NAV_DEFAULTS = {
   back: '🔙 VOLVER',
 };
 async function navText(key) {
-  const row = await db.select().from(botTexts).where(eq(botTexts.textKey, key)).get();
-  return row?.body || NAV_DEFAULTS[key] || key;
+  // El menú principal debe poder abrirse incluso si la migración de bot_texts aún no terminó.
+  try {
+    const row = await db.select().from(botTexts).where(eq(botTexts.textKey, key)).get();
+    return row?.body || NAV_DEFAULTS[key] || key;
+  } catch (error) {
+    console.log('No se pudieron leer los textos de navegación; se usarán valores predeterminados', String(error));
+    return NAV_DEFAULTS[key] || key;
+  }
 }
 async function buildMainMenu() {
   const keys = [
