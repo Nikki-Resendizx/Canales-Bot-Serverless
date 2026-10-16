@@ -237,6 +237,20 @@ export default async function (message) {
         await say(chatId, '⛔ Esta publicación de pago no está disponible.');
         return;
       }
+      const priorPurchase = await db.select().from(purchases)
+        .where(eq(purchases.purchaseKey, publicationKey + ':' + userId)).get();
+      if (priorPurchase?.status === 'paid') {
+        let content = {};
+        try { content = JSON.parse(publication.payloadJson || '{}'); } catch { content = {}; }
+        if (content.type === 'copy' && Number.isSafeInteger(Number(content.sourceChatId)) && Number.isSafeInteger(Number(content.sourceMessageId))) {
+          await api.copyMessage({ chat_id: userId, from_chat_id: Number(content.sourceChatId), message_id: Number(content.sourceMessageId) });
+        } else if (content.type === 'text' && typeof content.text === 'string') {
+          await say(chatId, '💎 CONTENIDO DESBLOQUEADO\\n\\n' + content.text);
+        } else {
+          await say(chatId, '✅ Esta publicación ya fue comprada. Contacta al administrador si no recibiste el contenido.');
+        }
+        return;
+      }
       await api.sendInvoice({
         chat_id: chatId,
         title: 'Acceso a publicación',
