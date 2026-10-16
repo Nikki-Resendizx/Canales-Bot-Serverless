@@ -9,7 +9,7 @@ const OWNER_ID = 8624574996;
 const NAV_DEFAULTS = {
   panel_title: '⚙️ PANEL DE ADMINISTRACIÓN',
   panel_description: 'Selecciona una sección:',
-  channels: '📢 CANALES', welcome: '👋 BIENVENIDA', captcha: '🧩 CAPTCHA', hashtags: '️⃣ HASHTAGS',
+  channels: '📢 CANALES', welcome: '👋 BIENVENIDA', captcha: '🧩 CAPTCHA', hashtags: '#️⃣ HASHTAGS',
   blacklist: '🚫 BANEO GLOBAL', routes: '🔀 DISTRIBUCIÓN', templates: '📝 PLANTILLAS',
   publications: '📝 CREAR PUBLICACIÓN', buttons: '🔘 BOTONES', formats: '🎨 FORMATOS',
   reactions: '🔔 REACCIONES', stars: '⭐ PREMIUM / ESTRELLAS', admins: '👥 ADMINISTRADORES',
@@ -304,7 +304,7 @@ export default async function (query) {
 
   if (section === 'templates' || section === 'hashtags') {
     const rows = await managedChannels(userId);
-    const title = section === 'templates' ? '📝 PLANTILLAS POR CANAL' : '️⃣ HASHTAGS POR CANAL';
+    const title = section === 'templates' ? '📝 PLANTILLAS POR CANAL' : '#️⃣ HASHTAGS POR CANAL';
     const keyboard = rows.map(row => [{
       text: String(row.title || row.chatId).slice(0, 36),
       callback_data: 'admin:' + (section === 'templates' ? 'templatechannel:' : 'hashtagchannel:') + row.chatId,
@@ -324,7 +324,7 @@ export default async function (query) {
     await answer(query);
     if (section === 'hashtagchannel') {
       const settings = await db.select().from(channelSettings).where(eq(channelSettings.channelId, channelId)).get();
-      await renderPanel('️⃣ HASHTAGS DEL CANAL\\n\\nCanal: ' + String(channel.title || channelId) + '\\nID: ' + channelId + '\\n\\nActuales: ' + (settings?.hashtags || '(sin hashtags)') + '\\n\\nPara editar: /hashtags ' + channelId + ' #Etiqueta1 #Etiqueta2\\nPara borrar: /hashtags ' + channelId + ' off', [
+      await renderPanel('#️⃣ HASHTAGS DEL CANAL\\n\\nCanal: ' + String(channel.title || channelId) + '\\nID: ' + channelId + '\\n\\nActuales: ' + (settings?.hashtags || '(sin hashtags)') + '\\n\\nPara editar: /hashtags ' + channelId + ' #Etiqueta1 #Etiqueta2\\nPara borrar: /hashtags ' + channelId + ' off', [
         [{ text: '✏️ Editar hashtags', callback_data: 'admin:hashtagedit:' + channelId }],
         [{ text: '🔙 Volver a canales', callback_data: 'admin:hashtags' }],
       ]);
