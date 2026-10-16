@@ -187,8 +187,9 @@ export default async function (query) {
   if (section === 'channels') {
     const rows = await managedChannels(userId);
     const text = rows.length ? '📣 CANALES REGISTRADOS\n' + rows.map(c => `• ${c.title || 'Sin título'} — ${c.chatId} — ${c.active ? 'activo' : 'inactivo'}`).join('\n') : 'No hay canales registrados.';
-    await renderPanel(text + '\n\nQuitar: /delchannel ID', [
-      [{ text: '➕ Añadir por ID', callback_data: 'admin:channeladd' }, { text: '🔎 Detectar canal', callback_data: 'admin:detectchannel' }],
+    await renderPanel(text + '\n\nElige “➕ Agregar Canal” para seleccionar el canal desde Telegram. También se conservan las opciones manuales y de detección por reenvío.\nQuitar: /delchannel ID', [
+      [{ text: '➕ Agregar Canal', callback_data: 'admin:channeladd' }],
+      [{ text: '➕ Añadir por ID', callback_data: 'admin:channeladdmanual' }, { text: '🔎 Detectar canal', callback_data: 'admin:detectchannel' }],
       [{ text: await navText('back'), callback_data: 'admin:back' }],
     ]);
     return;
@@ -226,7 +227,42 @@ export default async function (query) {
     return;
   }
   if (section === 'channeladd') {
-    await renderPanel('➕ AÑADIR CANAL\nEnvía en este chat: /addchannel ID Título. El bot debe ser administrador del canal.', [[{ text: await navText('back'), callback_data: 'admin:channels' }]]);
+    await answer(query);
+    await renderPanel('➕ AGREGAR CANAL\n\nPulsa el botón del mensaje siguiente y elige el canal. Telegram te pedirá agregar el bot como administrador y seleccionar los permisos solicitados. Cuando Telegram confirme que el bot es administrador, el canal se registrará automáticamente.\n\nSi el selector no está disponible en tu cliente, usa “Añadir por ID”.', [[{ text: await navText('back'), callback_data: 'admin:channels' }]]);
+    await api.sendMessage({
+      chat_id: chatId,
+      text: 'Selecciona el canal que quieres conectar:',
+      reply_markup: {
+        keyboard: [[{
+          text: '➕ Elegir canal y agregar bot',
+          request_chat: {
+            request_id: 71001,
+            chat_is_channel: true,
+            user_administrator_rights: {
+              can_manage_chat: true,
+              can_post_messages: true,
+              can_edit_messages: true,
+              can_delete_messages: true,
+              can_invite_users: true
+            },
+            bot_administrator_rights: {
+              can_manage_chat: true,
+              can_post_messages: true,
+              can_edit_messages: true,
+              can_delete_messages: true,
+              can_invite_users: true
+            }
+          }
+        }]],
+        resize_keyboard: true,
+        one_time_keyboard: true,
+        input_field_placeholder: 'Elige un canal para conectar'
+      }
+    });
+    return;
+  }
+  if (section === 'channeladdmanual') {
+    await renderPanel('➕ AÑADIR CANAL POR ID\nEnvía en este chat: /addchannel ID Título. El bot debe ser administrador del canal.', [[{ text: await navText('back'), callback_data: 'admin:channels' }]]);
     return;
   }
   if (section === 'detectchannel') {
