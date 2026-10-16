@@ -234,6 +234,43 @@ export default async function (query) {
     await renderPanel('📣 ADMINISTRACIÓN DE CANALES\\n\\nCanal eliminado de la configuración. Las publicaciones ya enviadas no se borran.', channelManagementButtons(await managedChannels(userId)));
     return;
   }
+  if (section === 'channeltest') {
+    const channelId = Number(parts[2]);
+    if (!Number.isSafeInteger(channelId) || !(await canManageChannel(userId, channelId))) {
+      await answer(query, 'No tienes permiso para administrar ese canal.', true); return;
+    }
+    await answer(query, 'Comprobando acceso y permisos…');
+    try {
+      const bot = await api.getMe();
+      const [channel, membership] = await Promise.all([
+        api.getChat({ chat_id: channelId }),
+        api.getChatMember({ chat_id: channelId, user_id: bot.id }),
+      ]);
+      const isAdmin = membership?.status === 'administrator' || membership?.status === 'creator';
+      const canPost = membership?.status === 'creator' || Boolean(membership?.can_post_messages);
+      const canEdit = membership?.status === 'creator' || Boolean(membership?.can_edit_messages);
+      const canDelete = membership?.status === 'creator' || Boolean(membership?.can_delete_messages);
+      const report = [
+        '🧪 RESULTADO DE PRUEBA',
+        'Canal: ' + String(channel?.title || channel?.username || channelId),
+        'ID: ' + channelId,
+        'Bot administrador: ' + (isAdmin ? 'Sí' : 'No'),
+        'Publicar mensajes: ' + (canPost ? 'Sí' : 'No'),
+        'Editar mensajes: ' + (canEdit ? 'Sí' : 'No'),
+        'Eliminar mensajes: ' + (canDelete ? 'Sí' : 'No'),
+        '',
+        isAdmin && canPost ? '✅ El canal está listo para las funciones de publicación que tienen permiso.' : '⚠️ Añade el bot como administrador y concede los permisos necesarios.',
+        'Esta prueba no publica ni elimina mensajes.',
+      ].join('\\n');
+      await renderPanel(report, [[{ text: '🔙 Volver a configuración', callback_data: 'admin:channelsettings:' + channelId }]]);
+    } catch (error) {
+      console.log('Falló la prueba de permisos del canal', channelId, String(error));
+      await renderPanel('⚠️ No pude consultar el canal. Comprueba que el ID sea correcto y que el bot siga dentro del canal como administrador. Esta prueba no publicó ningún mensaje.', [
+        [{ text: '🔙 Volver a configuración', callback_data: 'admin:channelsettings:' + channelId }],
+      ]);
+    }
+    return;
+  }
   if (section === 'channelsettings') {
     const channelId = Number(parts[2]);
     if (!Number.isSafeInteger(channelId) || !(await canManageChannel(userId, channelId))) {
@@ -248,6 +285,7 @@ export default async function (query) {
       [{ text: '🧩 CAPTCHA ' + (setting?.captchaEnabled ? '🟢' : '⚪'), callback_data: 'admin:toggle:captcha:' + channelId }],
       [{ text: '✍️ Corrección ' + (setting?.textCorrectionEnabled ? '🟢' : '⚪'), callback_data: 'admin:toggle:correction:' + channelId }],
       [{ text: '✏️ Editar bienvenida', callback_data: 'admin:welcomeedit:' + channelId }],
+      [{ text: '🧪 Probar permisos del canal', callback_data: 'admin:channeltest:' + channelId }],
       [{ text: '🔙 Volver a canales', callback_data: 'admin:channels' }],
     ]);
     return;
