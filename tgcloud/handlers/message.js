@@ -292,10 +292,12 @@ export default async function (message) {
       if (!Number.isSafeInteger(id) || id <= 0) return void await say(chatId, 'Uso: /blacklist_add ID|@username [motivo]. Para usar @username, el usuario debe haber interactuado con el bot o aparecer en un evento que el bot haya recibido.');
       await db.insert(globalBans).values({ userId: id, username, reason, bannedBy: userId, createdAt: now() })
         .onConflictDoUpdate({ target: globalBans.userId, set: { username, reason, bannedBy: userId, createdAt: now() } }).run();
-      const rows = await db.select().from(channels).all();
+      const rows = await managedChannels(userId);
       let bannedCount = 0;
       for (const channel of rows) {
         try {
+          const actor = await api.getChatMember({ chat_id: channel.chatId, user_id: userId });
+          if (!['creator', 'administrator'].includes(actor.status)) continue;
           await api.banChatMember({ chat_id: channel.chatId, user_id: id, revoke_messages: true });
           bannedCount += 1;
         } catch (error) {
@@ -314,10 +316,12 @@ export default async function (message) {
       }
       if (!Number.isSafeInteger(id) || id <= 0) return void await say(chatId, 'Uso: /blacklist_remove ID|@username');
       await db.delete(globalBans).where(eq(globalBans.userId, id)).run();
-      const rows = await db.select().from(channels).all();
+      const rows = await managedChannels(userId);
       let unbannedCount = 0;
       for (const channel of rows) {
         try {
+          const actor = await api.getChatMember({ chat_id: channel.chatId, user_id: userId });
+          if (!['creator', 'administrator'].includes(actor.status)) continue;
           await api.unbanChatMember({ chat_id: channel.chatId, user_id: id, only_if_banned: true });
           unbannedCount += 1;
         } catch (error) {
