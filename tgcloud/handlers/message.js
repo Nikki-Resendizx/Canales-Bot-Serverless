@@ -2,7 +2,7 @@ import { api, db } from 'sdk';
 import { eq } from 'sdk/db';
 import {
   admins, channels, channelSettings, globalBans, channelRoutes,
-  templates, publications, purchases, reactionReports, knownUsers,
+  templates, publications, purchases, reactionReports, knownUsers, botTexts,
 } from '../schema.js';
 
 const OWNER_ID = 8624574996;
@@ -48,13 +48,36 @@ async function ensureSettings(channelId) {
   }
   return row;
 }
-const MAIN_MENU = [
-  [{ text: '📣 Canales', callback_data: 'admin:channels' }, { text: '👋 Bienvenida', callback_data: 'admin:welcome' }, { text: '🧩 CAPTCHA', callback_data: 'admin:captcha' }],
-  [{ text: '🚫 Blacklist', callback_data: 'admin:blacklist' }, { text: '🔀 Rutas', callback_data: 'admin:routes' }, { text: '📝 Plantillas', callback_data: 'admin:templates' }],
-  [{ text: '📤 Publicaciones', callback_data: 'admin:publications' }, { text: '🔘 Botones', callback_data: 'admin:buttons' }, { text: '🎨 Formatos', callback_data: 'admin:formats' }],
-  [{ text: '🔔 Reacciones', callback_data: 'admin:reactions' }, { text: '💳 Stars', callback_data: 'admin:stars' }, { text: '👮 Admins', callback_data: 'admin:admins' }],
-  [{ text: '📊 Estadísticas', callback_data: 'admin:stats' }, { text: '⚙️ Configuración', callback_data: 'admin:settings' }, { text: '❌ Cerrar', callback_data: 'admin:close' }],
-];
+const NAV_DEFAULTS = {
+  panel_title: '⚙️ PANEL DE ADMINISTRACIÓN',
+  panel_description: 'Selecciona un módulo.',
+  channels: '📣 Canales', welcome: '👋 Bienvenida', captcha: '🧩 CAPTCHA',
+  blacklist: '🚫 Blacklist', routes: '🔀 Rutas', templates: '📝 Plantillas',
+  publications: '📤 Publicaciones', buttons: '🔘 Botones', formats: '🎨 Formatos',
+  reactions: '🔔 Reacciones', stars: '💳 Stars', admins: '👮 Admins',
+  stats: '📊 Estadísticas', settings: '⚙️ Configuración', close: '❌ Cerrar',
+  back: '⬅️ Volver al panel',
+};
+async function navText(key) {
+  const row = await db.select().from(botTexts).where(eq(botTexts.textKey, key)).get();
+  return row?.body || NAV_DEFAULTS[key] || key;
+}
+async function buildMainMenu() {
+  const keys = [
+    ['channels', 'welcome', 'captcha'],
+    ['blacklist', 'routes', 'templates'],
+    ['publications', 'buttons', 'formats'],
+    ['reactions', 'stars', 'admins'],
+    ['stats', 'settings', 'close'],
+  ];
+  const menu = [];
+  for (const row of keys) {
+    const buttons = [];
+    for (const key of row) buttons.push({ text: await navText(key), callback_data: key === 'close' ? 'admin:close' : 'admin:' + key });
+    menu.push(buttons);
+  }
+  return menu;
+}
 
 const HELP = [
   '📚 COMANDOS DE CHANNELPOSTS_ROBOT',
@@ -84,10 +107,10 @@ const HELP = [
   '/publish ID_CANAL texto — publicar texto',
   '/publish_paid ID_CANAL PRECIO_STARS texto — crear publicación de pago en Stars, o responder a un mensaje multimedia',
   'Responde a un mensaje con /publish ID_CANAL para copiarlo al canal.',
-  '/stats — estadísticas',
+  '/navtexts y /navtext CLAVE texto — editar textos de navegación',\n  '/stats — estadísticas',
   '/addadmin ID y /deladmin ID — solo propietario',
   '',
-  'Formatos: HTML, Markdown, MarkdownV2, OFF.',
+  'Formatos: HTML, Markdown, MarkdownV2, OFF y RICH_MESSAGE (JSON válido).',
   'Variables de bienvenida: {mencion}, {nombre}, {username}, {userid}.',
   'El bot debe tener permisos de administrador en cada canal/grupo.',
 ].join('\n');
@@ -402,10 +425,34 @@ export default async function (message) {
       await say(chatId, rows.length ? '🔀 RUTAS ACTIVAS\n' + rows.map(r => `• ${r.sourceChatId} → ${r.destinationChatId}`).join('\n') : 'No hay rutas configuradas.');
       return;
     }
+    if (command === '/navtexts') {
+      const rows = await db.select().from(botTexts).all();
+      const lines = Object.entries(NAV_DEFAULTS).map(([key, fallback]) => {
+        const saved = rows.find(row => row.textKey === key);
+        return `• ${key}: ${saved?.body || fallback}`;
+      });
+      await say(chatId, '🧭 TEXTOS DE NAVEGACIÓN EDITABLES\\n\\n' + lines.join('\\n') + '\\n\\nEditar: /navtext CLAVE nuevo texto\\nRestaurar una clave: /navtext CLAVE default');
+      return;
+    }
+    if (command === '/navtext') {
+      const key = String(args[0] || '');
+      const value = argText.slice(key.length).trim();
+      if (!Object.hasOwn(NAV_DEFAULTS, key)) return void await say(chatId, 'Clave no válida. Usa /navtexts para ver las claves disponibles.');
+      if (!value) return void await say(chatId, 'Uso: /navtext CLAVE nuevo texto. Usa /navtext CLAVE default para restaurar el texto original.');
+      if (value.toLowerCase() === 'default') {
+        await db.delete(botTexts).where(eq(botTexts.textKey, key)).run();
+        await say(chatId, `✅ Se restauró el texto original de “${key}”.`);
+      } else {
+        await db.insert(botTexts).values({ textKey: key, body: value, updatedBy: userId, updatedAt: now() })
+          .onConflictDoUpdate({ target: botTexts.textKey, set: { body: value, updatedBy: userId, updatedAt: now() } }).run();
+        await say(chatId, `✅ Texto de navegación “${key}” actualizado.`);
+      }
+      return;
+    }
     if (command === '/template_set') {
       const id = parseId(args[0]); const kind = args[1]; const format = String(args[2] || 'HTML').toUpperCase();
       const body = argText.split(/\s+/).slice(3).join(' ');
-      if (!Number.isSafeInteger(id) || !kind || !body || !['HTML', 'MARKDOWN', 'MARKDOWNV2', 'OFF'].includes(format)) return void await say(chatId, 'Uso: /template_set ID_CANAL TIPO HTML|Markdown|MarkdownV2|OFF texto');
+      if (!Number.isSafeInteger(id) || !kind || !body || !['HTML', 'MARKDOWN', 'MARKDOWNV2', 'OFF', 'RICH_MESSAGE'].includes(format)) return void await say(chatId, 'Uso: /template_set ID_CANAL TIPO HTML|Markdown|MarkdownV2|OFF|RICH_MESSAGE texto. RICH_MESSAGE requiere JSON válido.');
       if (!(await canManageChannel(userId, id))) return void await say(chatId, '⛔ Ese canal no existe o no está asignado a tu administración.');
       const templateKey = `${id}:${kind}`;
       await db.insert(templates).values({ templateKey, channelId: id, kind, body, format, buttonsJson: '[]', updatedBy: userId, updatedAt: now() })
