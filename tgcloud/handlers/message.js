@@ -107,7 +107,8 @@ const HELP = [
   '/publish ID_CANAL texto — publicar texto',
   '/publish_paid ID_CANAL PRECIO_STARS texto — crear publicación de pago en Stars, o responder a un mensaje multimedia',
   'Responde a un mensaje con /publish ID_CANAL para copiarlo al canal.',
-  '/navtexts y /navtext CLAVE texto — editar textos de navegación',\n  '/stats — estadísticas',
+  '/navtexts y /navtext CLAVE texto — editar textos de navegación',
+  '/stats — estadísticas',
   '/addadmin ID y /deladmin ID — solo propietario',
   '',
   'Formatos: HTML, Markdown, MarkdownV2, OFF y RICH_MESSAGE (JSON válido).',
@@ -220,8 +221,8 @@ export default async function (message) {
       await say(chatId, '⛔ El panel solo está disponible para administradores autorizados en chat privado.');
       return;
     }
-    await say(chatId, '⚙️ PANEL DE ADMINISTRACIÓN\nChannelPosts_RoBot\n\nSelecciona un módulo. Los módulos de pago solo se habilitarán cuando el flujo real esté validado.', {
-      reply_markup: { inline_keyboard: MAIN_MENU },
+    await say(chatId, (await navText('panel_title')) + '\\nChannelPosts_RoBot\\n\\n' + (await navText('panel_description')), {
+      reply_markup: { inline_keyboard: await buildMainMenu() },
     });
     return;
   }
@@ -543,9 +544,16 @@ export default async function (message) {
         let rendered = template?.body ? template.body.replaceAll('{texto}', corrected) : corrected;
         if (settings.descriptionTemplate) rendered = settings.descriptionTemplate.replaceAll('{texto}', rendered);
         if (settings.hashtags) rendered += '\\n\\n' + settings.hashtags;
-        const extra = format === 'OFF' ? {} : { parse_mode: format === 'MARKDOWN' ? 'Markdown' : format === 'MARKDOWNV2' ? 'MarkdownV2' : 'HTML' };
-        sent = await api.sendMessage({ chat_id: id, text: rendered, ...extra, ...replyMarkup });
-        payload = { text: rendered, format };
+        if (format === 'RICH_MESSAGE') {
+          let richMessage;
+          try { richMessage = JSON.parse(rendered); } catch { return void await say(chatId, 'La plantilla RICH_MESSAGE debe ser JSON válido después de insertar {texto}.'); }
+          sent = await api.sendRichMessage({ chat_id: id, rich_message: richMessage, ...replyMarkup });
+          payload = { rich_message: richMessage, format };
+        } else {
+          const extra = format === 'OFF' ? {} : { parse_mode: format === 'MARKDOWN' ? 'Markdown' : format === 'MARKDOWNV2' ? 'MarkdownV2' : 'HTML' };
+          sent = await api.sendMessage({ chat_id: id, text: rendered, ...extra, ...replyMarkup });
+          payload = { text: rendered, format };
+        }
       }
       const messageId = sent.message_id ?? sent.message_ids?.[0] ?? now();
       const publicationKey = `${id}:${messageId}`;
