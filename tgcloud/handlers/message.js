@@ -86,6 +86,49 @@ async function buildMainMenu() {
   return menu;
 }
 
+function parseButtonSyntax(source, rulesUrl = '') {
+  const keyboard = [];
+  for (const rawLine of String(source ?? '').split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith('//')) continue;
+    const row = [];
+    for (let rawButton of line.split(/\s+\|\s+/)) {
+      rawButton = rawButton.trim();
+      let style;
+      const styleMatch = rawButton.match(/^#([gbsd])\s+/i);
+      if (styleMatch) {
+        const styles = { g: 'success', s: 'success', b: 'primary', d: 'danger' };
+        style = styles[styleMatch[1].toLowerCase()];
+        rawButton = rawButton.slice(styleMatch[0].length).trim();
+      }
+      const splitAt = rawButton.indexOf(' - ');
+      if (splitAt < 1) throw new Error('Cada botón debe usar: Texto - acción');
+      let label = rawButton.slice(0, splitAt).trim();
+      const action = rawButton.slice(splitAt + 3).trim();
+      const emoji = label.match(/\s+\{emoji:(\d+)\}$/i);
+      const button = { text: label.replace(/\s+\{emoji:\d+\}$/i, '').trim() };
+      if (emoji) button.icon_custom_emoji_id = emoji[1];
+      if (style) button.style = style;
+      if (/^https?:\/\//i.test(action)) button.url = action;
+      else if (/^callback:/i.test(action)) button.callback_data = 'btn:callback:' + action.slice(9).trim();
+      else if (/^popup:/i.test(action)) button.callback_data = 'btn:popup:' + action.slice(6).trim();
+      else if (/^copy:/i.test(action)) button.copy_text = { text: action.slice(5).trim() };
+      else if (/^share:/i.test(action)) button.url = 'https://t.me/share/url?text=' + encodeURIComponent(action.slice(6).trim());
+      else if (/^rules$/i.test(action)) {
+        if (!/^https?:\/\//i.test(rulesUrl)) throw new Error('Configura primero las reglas como URL con /navtext rules https://tu-enlace');
+        button.url = rulesUrl;
+      } else throw new Error('Acción no válida: usa URL, callback:TEXTO, popup:TEXTO, copy:TEXTO, share:TEXTO o rules.');
+      if (button.callback_data && button.callback_data.length > 64) throw new Error('El callback supera el límite de 64 caracteres; acorta el texto.');
+      if (!button.text) throw new Error('El texto del botón no puede estar vacío.');
+      row.push(button);
+    }
+    if (row.length) keyboard.push(row);
+  }
+  if (!keyboard.length) throw new Error('No se encontraron botones. Escribe una línea por fila y separa columnas con |.');
+  if (keyboard.length > 8 || keyboard.some(row => row.length > 8)) throw new Error('Telegram permite hasta 8 filas y 8 botones por fila.');
+  return keyboard;
+}
+
 const HELP = [
   '📚 COMANDOS DE CHANNELPOSTS_ROBOT',
   '/admin — panel privado de administración',
@@ -111,7 +154,11 @@ const HELP = [
   'Tipos de plantilla: default, text, photo, video, album, link y forward.',
   'Variables de plantilla: {contenido}, {titulo}, {descripcion}, {enlace}, {hashtags}, {fecha}, {canal} (también {texto}).',
   '/template_list ID_CANAL — listar plantillas',
-  '/template_buttons ID_CANAL TIPO JSON — configurar botones inline',
+  '/template_buttons ID_CANAL TIPO — configurar botones por sintaxis de líneas o JSON',
+  '/button_edit ID_CANAL TIPO N texto - acción — editar un botón (índice 1-based)',
+  '/button_delete ID_CANAL TIPO N — eliminar un botón individual',
+  'Sintaxis: Visitar canal - https://t.me/ejemplo | #g Acceder - https://t.me/ejemplo',
+  'Acciones: callback:TEXTO, popup:TEXTO, copy:TEXTO, share:TEXTO, rules. Estilos: #b azul, #g verde, #d rojo. Emoji premium: Texto {emoji:ID}.',
   '/template_delete ID_CANAL TIPO — borrar plantilla',
   '/publish ID_CANAL texto — publicar texto',
   '/publish_paid ID_CANAL PRECIO_STARS texto — crear publicación de pago en Stars, o responder a un mensaje multimedia',
@@ -544,21 +591,59 @@ export default async function (message) {
       return;
     }
     if (command === '/template_buttons') {
-      const id = parseId(args[0]); const kind = args[1];
-      const secondSpace = argText.indexOf(' ', argText.indexOf(' ') + 1);
-      const rawJson = secondSpace >= 0 ? argText.slice(secondSpace + 1).trim() : '';
-      if (!Number.isSafeInteger(id) || !kind || !rawJson) return void await say(chatId, 'Uso: /template_buttons ID_CANAL TIPO JSON_INLINE_KEYBOARD');
+      const id = parseId(args[0]); const kind = String(args[1] || '').toLowerCase();
+      const rawButtons = argText.split(/\s+/).slice(2).join(' ').trim();
+      if (!Number.isSafeInteger(id) || !kind || !rawButtons) return void await say(chatId, 'Uso: envía /template_buttons ID_CANAL TIPO y en el mismo mensaje añade las líneas de botones. Cada fila va en una línea; usa | para columnas. También acepta JSON.');
       if (!(await canManageChannel(userId, id))) return void await say(chatId, '⛔ Ese canal no existe o no está asignado a tu administración.');
-      let keyboard;
-      try { keyboard = JSON.parse(rawJson); } catch { return void await say(chatId, 'JSON no válido. Ejemplo: [[{"text":"Abrir","url":"https://t.me/","style":"primary"}]]'); }
-      if (!Array.isArray(keyboard) || keyboard.length > 8 || keyboard.some(row => !Array.isArray(row) || row.length > 8 || row.some(btn => !btn || typeof btn.text !== 'string' || !(typeof btn.url === 'string' || typeof btn.callback_data === 'string')))) {
-        return void await say(chatId, 'Cada botón debe tener text y una url o callback_data; máximo 8 filas y 8 botones por fila.');
-      }
-      const templateKey = `${id}:${kind}`;
-      const existing = await db.select().from(templates).where(eq(templates.templateKey, templateKey)).get();
+      const existing = await db.select().from(templates).where(eq(templates.templateKey, `${id}:${kind}`)).get();
       if (!existing) return void await say(chatId, 'Primero crea la plantilla con /template_set ID_CANAL TIPO FORMATO texto.');
-      await db.update(templates).set({ buttonsJson: JSON.stringify(keyboard), updatedBy: userId, updatedAt: now() }).where(eq(templates.templateKey, templateKey)).run();
-      await say(chatId, '✅ Botones guardados. Campos extra admitidos por Telegram, como icon_custom_emoji_id o style, se conservarán si la API los admite.');
+      let keyboard;
+      try {
+        if (rawButtons.startsWith('[')) keyboard = JSON.parse(rawButtons);
+        else {
+          const rules = await db.select().from(botTexts).where(eq(botTexts.textKey, 'rules')).get();
+          keyboard = parseButtonSyntax(rawButtons, rules?.body || '');
+        }
+      } catch (error) {
+        return void await say(chatId, '⚠️ No pude leer los botones: ' + String(error?.message || error) + '\n\nEjemplo:\nVisitar canal - https://t.me/ejemplo\n#g Acceder - https://t.me/ejemplo');
+      }
+      if (!Array.isArray(keyboard) || !keyboard.length || keyboard.length > 8 || keyboard.some(row => !Array.isArray(row) || row.length > 8 || row.some(btn => !btn || typeof btn.text !== 'string' || !(typeof btn.url === 'string' || typeof btn.callback_data === 'string' || (btn.copy_text && typeof btn.copy_text.text === 'string'))))) {
+        return void await say(chatId, 'Cada botón debe tener text y una acción válida (url, callback_data o copy_text); máximo 8 filas y 8 botones por fila.');
+      }
+      await db.update(templates).set({ buttonsJson: JSON.stringify(keyboard), updatedBy: userId, updatedAt: now() }).where(eq(templates.templateKey, `${id}:${kind}`)).run();
+      await say(chatId, '✅ Botones guardados para ' + id + ' / ' + kind + '. Usa /button_edit ID TIPO N para editar o /button_delete ID TIPO N para eliminar un botón individual.');
+      return;
+    }
+    if (command === '/button_edit' || command === '/button_delete') {
+      const id = parseId(args[0]); const kind = String(args[1] || '').toLowerCase(); const index = Number(args[2]);
+      if (!Number.isSafeInteger(id) || !kind || !Number.isInteger(index) || index < 1) return void await say(chatId, `Uso: ${command} ID_CANAL TIPO N${command === '/button_edit' ? ' Texto - acción' : ''}. N es el número del botón en el teclado, empezando por 1.`);
+      if (!(await canManageChannel(userId, id))) return void await say(chatId, '⛔ Ese canal no existe o no está asignado a tu administración.');
+      const key = `${id}:${kind}`;
+      const existing = await db.select().from(templates).where(eq(templates.templateKey, key)).get();
+      if (!existing) return void await say(chatId, 'No existe esa plantilla. Usa /template_list ID_CANAL.');
+      let keyboard;
+      try { keyboard = JSON.parse(existing.buttonsJson || '[]'); } catch { keyboard = []; }
+      const flat = [];
+      for (let r = 0; r < keyboard.length; r++) for (let c = 0; c < keyboard[r].length; c++) flat.push({ r, c, button: keyboard[r][c] });
+      if (index > flat.length) return void await say(chatId, `Solo hay ${flat.length} botones. Índices válidos: 1-${flat.length}.`);
+      if (command === '/button_delete') {
+        const target = flat[index - 1];
+        keyboard[target.r].splice(target.c, 1);
+        keyboard = keyboard.filter(row => row.length);
+      } else {
+        const editText = argText.split(/\s+/).slice(3).join(' ').trim();
+        if (!editText) return void await say(chatId, 'Uso: /button_edit ID_CANAL TIPO N Texto - acción\nEjemplo: /button_edit -100123 default 1 Visitar - https://t.me/ejemplo');
+        let newButton;
+        try {
+          const rules = await db.select().from(botTexts).where(eq(botTexts.textKey, 'rules')).get();
+          newButton = parseButtonSyntax(editText, rules?.body || '').flat();
+          if (newButton.length !== 1 || newButton[0].length !== 1) throw new Error('Para editar, introduce exactamente un botón sin |.');
+        } catch (error) { return void await say(chatId, '⚠️ ' + String(error?.message || error)); }
+        const target = flat[index - 1];
+        keyboard[target.r][target.c] = newButton[0][0];
+      }
+      await db.update(templates).set({ buttonsJson: JSON.stringify(keyboard), updatedBy: userId, updatedAt: now() }).where(eq(templates.templateKey, key)).run();
+      await say(chatId, command === '/button_delete' ? '🗑️ Botón eliminado.' : '✅ Botón actualizado.');
       return;
     }
     if (command === '/template_delete') {
