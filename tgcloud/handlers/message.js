@@ -50,13 +50,13 @@ async function ensureSettings(channelId) {
 }
 const NAV_DEFAULTS = {
   panel_title: '⚙️ PANEL DE ADMINISTRACIÓN',
-  panel_description: 'Selecciona un módulo.',
-  channels: '📣 Canales', welcome: '👋 Bienvenida', captcha: '🧩 CAPTCHA',
-  blacklist: '🚫 Blacklist', routes: '🔀 Rutas', templates: '📝 Plantillas',
-  publications: '📤 Publicaciones', buttons: '🔘 Botones', formats: '🎨 Formatos',
-  reactions: '🔔 Reacciones', stars: '💳 Stars', admins: '👮 Admins',
-  stats: '📊 Estadísticas', settings: '⚙️ Configuración', close: '❌ Cerrar', navigation: '🧭 Navegación',
-  back: '⬅️ Volver al panel',
+  panel_description: 'Selecciona una sección:',
+  channels: '📢 CANALES', welcome: '👋 BIENVENIDA', captcha: '🧩 CAPTCHA',
+  blacklist: '🚫 BANEO GLOBAL', routes: '🔀 DISTRIBUCIÓN', templates: '📝 PLANTILLAS',
+  publications: '📝 CREAR PUBLICACIÓN', buttons: '🔘 BOTONES', formats: '🎨 FORMATOS',
+  reactions: '🔔 REACCIONES', stars: '⭐ PREMIUM / ESTRELLAS', admins: '👥 ADMINISTRADORES',
+  stats: '📊 ESTADÍSTICAS', settings: '⚙️ CONFIGURACIÓN', close: '❌ CERRAR', navigation: '🧭 NAVEGACIÓN',
+  back: '🔙 VOLVER',
 };
 async function navText(key) {
   const row = await db.select().from(botTexts).where(eq(botTexts.textKey, key)).get();
@@ -64,11 +64,12 @@ async function navText(key) {
 }
 async function buildMainMenu() {
   const keys = [
-    ['channels', 'welcome', 'captcha'],
-    ['blacklist', 'routes', 'templates'],
-    ['publications', 'buttons', 'formats'],
-    ['reactions', 'stars', 'admins'],
-    ['stats', 'settings', 'close'],
+    ['channels', 'templates', 'formats'],
+    ['buttons', 'publications', 'stars'],
+    ['welcome', 'captcha', 'blacklist'],
+    ['routes', 'reactions', 'stats'],
+    ['admins', 'settings', 'navigation'],
+    ['close'],
   ];
   const menu = [];
   for (const row of keys) {
@@ -198,7 +199,7 @@ export default async function (message) {
       await api.sendInvoice({
         chat_id: chatId,
         title: 'Acceso a publicación',
-        description: 'Desbloquea el contenido exclusivo de ChannelPosts_RoBot.',
+        description: 'Desbloquea el contenido exclusivo de CANALES-BOT.',
         payload: publicationKey,
         provider_token: '',
         currency: 'XTR',
@@ -207,7 +208,7 @@ export default async function (message) {
       });
       return;
     }
-    await say(chatId, '👋 ¡Bienvenido a ChannelPosts_RoBot!\n\nGestiona canales, publicaciones, plantillas, botones, bienvenida, CAPTCHA, blacklist, rutas y reportes de reacciones. Usa /help para ver los comandos.', {
+    await say(chatId, '👋 ¡Bienvenido a CANALES-BOT!\n\nGestiona canales, publicaciones, plantillas, botones, bienvenida, CAPTCHA, blacklist, rutas y reportes de reacciones. Usa /help para ver los comandos.', {
       reply_markup: { inline_keyboard: [[{ text: '⚙️ PANEL DE ADMINISTRACIÓN', callback_data: 'admin:open' }], [{ text: '📚 Ayuda', callback_data: 'admin:help' }]] },
     });
     return;
@@ -221,7 +222,7 @@ export default async function (message) {
       await say(chatId, '⛔ El panel solo está disponible para administradores autorizados en chat privado.');
       return;
     }
-    await say(chatId, (await navText('panel_title')) + '\nChannelPosts_RoBot\n\n' + (await navText('panel_description')), {
+    await say(chatId, (await navText('panel_title')) + '\nCANALES-BOT\n\n' + (await navText('panel_description')), {
       reply_markup: { inline_keyboard: await buildMainMenu() },
     });
     return;
@@ -508,7 +509,7 @@ export default async function (message) {
       const teaser = await api.sendMessage({
         chat_id: id,
         text: `💎 PUBLICACIÓN EXCLUSIVA\n\nPrecio: ⭐ ${price}\nPulsa el botón para desbloquear el contenido con Telegram Stars.`,
-        reply_markup: { inline_keyboard: [[{ text: `⭐ Desbloquear · ${price}`, url: `https://t.me/ChannelPosts_RoBot?start=buy_${publicationKey}` }]] },
+        reply_markup: { inline_keyboard: [[{ text: `⭐ Desbloquear · ${price}`, url: `https://t.me/CANALES-BOT?start=buy_${publicationKey}` }]] },
       });
       const payload = body
         ? { type: 'text', text: body }
