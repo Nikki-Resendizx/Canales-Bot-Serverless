@@ -541,15 +541,36 @@ export default async function (message) {
       } else {
         if (!body) return void await say(chatId, 'Escribe texto o responde a una foto/vídeo/documento con /publish ID_CANAL.');
         const corrected = Number(settings.textCorrectionEnabled) ? correctText(body) : body;
-        let rendered = template?.body ? template.body.replaceAll('{texto}', corrected) : corrected;
-        if (settings.descriptionTemplate) rendered = settings.descriptionTemplate.replaceAll('{texto}', rendered);
-        if (settings.hashtags) rendered += '\n\n' + settings.hashtags;
         if (format === 'RICH_MESSAGE') {
           let richMessage;
-          try { richMessage = JSON.parse(rendered); } catch { return void await say(chatId, 'La plantilla RICH_MESSAGE debe ser JSON válido después de insertar {texto}.'); }
+          try {
+            richMessage = template?.body ? JSON.parse(template.body) : { markdown: corrected };
+          } catch {
+            return void await say(chatId, 'La plantilla RICH_MESSAGE debe ser JSON válido. Usa, por ejemplo: {"markdown":"**{texto}**"}');
+          }
+          const replaceText = value => {
+            if (typeof value === 'string') return value.replaceAll('{texto}', corrected);
+            if (Array.isArray(value)) return value.map(replaceText);
+            if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, replaceText(item)]));
+            return value;
+          };
+          richMessage = replaceText(richMessage);
+          const field = ['markdown', 'html'].find(key => typeof richMessage[key] === 'string');
+          if (field) {
+            if (settings.descriptionTemplate) richMessage[field] = settings.descriptionTemplate.replaceAll('{texto}', richMessage[field]);
+            if (settings.hashtags) richMessage[field] += '\n\n' + settings.hashtags;
+          } else if (Array.isArray(richMessage.blocks)) {
+            if (settings.descriptionTemplate) richMessage.blocks.push({ type: 'paragraph', text: settings.descriptionTemplate.replaceAll('{texto}', corrected) });
+            if (settings.hashtags) richMessage.blocks.push({ type: 'paragraph', text: settings.hashtags });
+          } else {
+            return void await say(chatId, 'RICH_MESSAGE necesita una propiedad markdown, html o blocks.');
+          }
           sent = await api.sendRichMessage({ chat_id: id, rich_message: richMessage, ...replyMarkup });
           payload = { rich_message: richMessage, format };
         } else {
+          let rendered = template?.body ? template.body.replaceAll('{texto}', corrected) : corrected;
+          if (settings.descriptionTemplate) rendered = settings.descriptionTemplate.replaceAll('{texto}', rendered);
+          if (settings.hashtags) rendered += '\n\n' + settings.hashtags;
           const extra = format === 'OFF' ? {} : { parse_mode: format === 'MARKDOWN' ? 'Markdown' : format === 'MARKDOWNV2' ? 'MarkdownV2' : 'HTML' };
           sent = await api.sendMessage({ chat_id: id, text: rendered, ...extra, ...replyMarkup });
           payload = { text: rendered, format };
