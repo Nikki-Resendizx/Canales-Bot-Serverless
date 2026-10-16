@@ -17,8 +17,14 @@ const NAV_DEFAULTS = {
   back: '🔙 VOLVER',
 };
 async function navText(key) {
-  const row = await db.select().from(botTexts).where(eq(botTexts.textKey, key)).get();
-  return row?.body || NAV_DEFAULTS[key] || key;
+  // El menú principal debe poder abrirse incluso si la migración de bot_texts aún no terminó.
+  try {
+    const row = await db.select().from(botTexts).where(eq(botTexts.textKey, key)).get();
+    return row?.body || NAV_DEFAULTS[key] || key;
+  } catch (error) {
+    console.log('No se pudieron leer los textos de navegación; se usarán valores predeterminados', String(error));
+    return NAV_DEFAULTS[key] || key;
+  }
 }
 async function buildMainMenu() {
   const keys = [
@@ -64,8 +70,8 @@ async function sendPanel(chatId, text, keyboard = null, messageId = null) {
     } catch (error) {
       const reason = String(error ?? '');
       if (/message is not modified/i.test(reason)) return;
-      console.log('No se pudo editar el panel', reason);
-      return;
+      // No dejar el panel invisible si Telegram no permite editar el mensaje original.
+      console.log('No se pudo editar el panel; se enviará un mensaje nuevo', reason);
     }
   }
   await api.sendMessage({ chat_id: chatId, text, reply_markup: { inline_keyboard: keyboard || [] } });
