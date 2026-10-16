@@ -15,9 +15,12 @@ La base Serverless y el panel administrativo ampliado están desplegados desde G
 - Blacklist global con resolución de `@username` cuando el bot ya ha observado a ese usuario, intento de baneo en todos los chats conectados y desbaneo global al retirarlo.
 - Rutas de publicación entre varios canales origen y un destino; se conserva el reenvío cuando Telegram entrega metadatos de mensaje reenviado.
 - Plantillas por canal: crear/editar, listar, borrar, formatos HTML/Markdown/MarkdownV2/OFF y botones inline en JSON.
+- Editor por canal: corrección básica de espacios/puntuación y mayúscula inicial, hashtags, plantilla de descripción con `{texto}` y texto de respaldo si falta el contenido.
+- Panel y comandos de canales limitados a los canales asignados a cada administrador; el propietario conserva acceso global.
 - Publicaciones de texto y copia de un mensaje al canal mediante `/publish`.
 - Flujo inicial de publicaciones de pago con Telegram Stars: `/publish_paid`, factura XTR, validación pre-checkout y entrega de texto o copia del mensaje tras el pago confirmado.
-- Reportes de cambios de reacciones identificadas y reportes separados de conteos agregados. Los conteos agregados nunca se presentan como si identificaran usuarios.
+- Reportes de cambios de reacciones identificadas y reportes separados de conteos agregados. Los conteos agregados nunca se presentan como si identificaran usuarios. Los reportes de reacción usan por defecto `-1004456932813` y se pueden cambiar con `/setreport`.
+- Alertas de publicaciones nuevas en canales conectados al canal de avisos `-1004424261064`.
 - Estadísticas de canales, rutas, plantillas, blacklist, publicaciones, compras y reacciones.
 - Registro de usuarios observados para resolver usernames sin inventar IDs.
 
@@ -29,7 +32,11 @@ La base Serverless y el panel administrativo ampliado están desplegados desde G
 - `/welcome ID on|off`
 - `/welcometext ID texto`
 - `/captcha ID on|off`
-- `/setreport ID_CANAL ID_CANAL_REPORTE`
+- `/correction ID on|off`
+- `/hashtags ID_CANAL texto`
+- `/description ID_CANAL texto` — admite `{texto}`
+- `/missingdata ID_CANAL texto`
+- `/setreport ID_CANAL ID_CANAL_REPORTE
 - `/blacklist_add ID|@username [motivo]` o `/globalban ID|@username [motivo]`
 - `/blacklist_remove ID|@username` o `/globalunban ID|@username`
 - `/route_add ORIGEN DESTINO`, `/route_remove ORIGEN DESTINO`, `/routes`
