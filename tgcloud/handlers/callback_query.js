@@ -9,7 +9,7 @@ const OWNER_ID = 8624574996;
 const NAV_DEFAULTS = {
   panel_title: '⚙️ PANEL DE ADMINISTRACIÓN',
   panel_description: 'Selecciona una sección:',
-  channels: '📢 CANALES', welcome: '👋 BIENVENIDA', captcha: '🧩 CAPTCHA',
+  channels: '📢 CANALES', welcome: '👋 BIENVENIDA', captcha: '🧩 CAPTCHA', hashtags: '️⃣ HASHTAGS',
   blacklist: '🚫 BANEO GLOBAL', routes: '🔀 DISTRIBUCIÓN', templates: '📝 PLANTILLAS',
   publications: '📝 CREAR PUBLICACIÓN', buttons: '🔘 BOTONES', formats: '🎨 FORMATOS',
   reactions: '🔔 REACCIONES', stars: '⭐ PREMIUM / ESTRELLAS', admins: '👥 ADMINISTRADORES',
@@ -28,12 +28,12 @@ async function navText(key) {
 }
 async function buildMainMenu() {
   const keys = [
-    ['channels', 'templates', 'formats'],
-    ['buttons', 'publications', 'stars'],
-    ['welcome', 'captcha', 'blacklist'],
-    ['routes', 'reactions', 'stats'],
-    ['admins', 'settings', 'navigation'],
-    ['close'],
+    ['channels', 'templates', 'hashtags'],
+    ['formats', 'buttons', 'publications'],
+    ['stars', 'welcome', 'captcha'],
+    ['blacklist', 'routes', 'reactions'],
+    ['stats', 'admins', 'settings'],
+    ['navigation', 'close'],
   ];
   const menu = [];
   for (const row of keys) {
@@ -298,6 +298,86 @@ export default async function (query) {
     await answer(query);
     await renderPanel('✏️ EDITAR BIENVENIDA\\n\\nEnvía el comando en este chat privado:\\n/welcometext ' + channelId + ' Tu texto de bienvenida\\n\\nVariables: {mencion}, {nombre}, {username}, {userid}.', [
       [{ text: '🔙 Volver a configuración', callback_data: 'admin:channelsettings:' + channelId }],
+    ]);
+    return;
+  }
+
+  if (section === 'templates' || section === 'hashtags') {
+    const rows = await managedChannels(userId);
+    const title = section === 'templates' ? '📝 PLANTILLAS POR CANAL' : '️⃣ HASHTAGS POR CANAL';
+    const keyboard = rows.map(row => [{
+      text: String(row.title || row.chatId).slice(0, 36),
+      callback_data: 'admin:' + (section === 'templates' ? 'templatechannel:' : 'hashtagchannel:') + row.chatId,
+    }]);
+    keyboard.push(await backRow());
+    await answer(query);
+    await renderPanel(title + '\\n\\n' + (rows.length ? 'Selecciona un canal para consultar y configurar sus opciones.' : 'No tienes canales registrados.'), keyboard);
+    return;
+  }
+  if (section === 'templatechannel' || section === 'hashtagchannel') {
+    const channelId = Number(parts[2]);
+    if (!Number.isSafeInteger(channelId) || !(await canManageChannel(userId, channelId))) {
+      await answer(query, 'No tienes permiso para administrar ese canal.', true); return;
+    }
+    const channel = await db.select().from(channels).where(eq(channels.chatId, channelId)).get();
+    if (!channel) { await answer(query, 'Canal no encontrado.', true); return; }
+    await answer(query);
+    if (section === 'hashtagchannel') {
+      const settings = await db.select().from(channelSettings).where(eq(channelSettings.channelId, channelId)).get();
+      await renderPanel('️⃣ HASHTAGS DEL CANAL\\n\\nCanal: ' + String(channel.title || channelId) + '\\nID: ' + channelId + '\\n\\nActuales: ' + (settings?.hashtags || '(sin hashtags)') + '\\n\\nPara editar: /hashtags ' + channelId + ' #Etiqueta1 #Etiqueta2\\nPara borrar: /hashtags ' + channelId + ' off', [
+        [{ text: '✏️ Editar hashtags', callback_data: 'admin:hashtagedit:' + channelId }],
+        [{ text: '🔙 Volver a canales', callback_data: 'admin:hashtags' }],
+      ]);
+    } else {
+      const rows = await db.select().from(templates).where(eq(templates.channelId, channelId)).all();
+      const kinds = [
+        ['text', '💬 Texto'], ['photo', '🖼️ Fotografía'], ['video', '🎬 Vídeo'],
+        ['album', '🖼️ Álbum'], ['link', '🔗 Enlace'], ['forward', '↪️ Reenviada'],
+      ];
+      const list = kinds.map(([kind,label]) => {
+        const row = rows.find(item => item.kind === kind || (kind === 'text' && item.kind === 'default'));
+        return label + ': ' + (row ? 'configurada (' + row.format + ')' : 'sin configurar');
+      }).join('\\n');
+      const keyboard = kinds.map(([kind,label]) => [{ text: label, callback_data: 'admin:templatekind:' + channelId + ':' + kind }]);
+      keyboard.push([{ text: '📋 Ver todas las plantillas', callback_data: 'admin:templatelist:' + channelId }]);
+      keyboard.push([{ text: '🔙 Volver a canales', callback_data: 'admin:templates' }]);
+      await renderPanel('📝 PLANTILLAS DEL CANAL\\n\\n' + String(channel.title || channelId) + ' (' + channelId + ')\\n\\n' + list + '\\n\\nVariables: {contenido}, {titulo}, {descripcion}, {enlace}, {hashtags}, {fecha}, {canal}.', keyboard);
+    }
+    return;
+  }
+  if (section === 'hashtagedit') {
+    const channelId = Number(parts[2]);
+    if (!Number.isSafeInteger(channelId) || !(await canManageChannel(userId, channelId))) {
+      await answer(query, 'No tienes permiso para administrar ese canal.', true); return;
+    }
+    await answer(query);
+    await renderPanel('✏️ EDITAR HASHTAGS\\n\\nEnvía en el chat privado:\\n/hashtags ' + channelId + ' #Etiqueta1 #Etiqueta2\\n\\nPara borrar los hashtags: /hashtags ' + channelId + ' off.', [
+      [{ text: '🔙 Volver', callback_data: 'admin:hashtagchannel:' + channelId }],
+    ]);
+    return;
+  }
+  if (section === 'templatekind') {
+    const channelId = Number(parts[2]); const kind = String(parts[3] || '');
+    const labels = { text:'💬 Mensajes de texto', photo:'🖼️ Fotografías', video:'🎬 Vídeos', album:'🖼️ Álbumes', link:'🔗 Enlaces', forward:'↪️ Publicaciones reenviadas' };
+    if (!Number.isSafeInteger(channelId) || !Object.hasOwn(labels, kind) || !(await canManageChannel(userId, channelId))) {
+      await answer(query, 'No tienes permiso o el tipo de plantilla no es válido.', true); return;
+    }
+    await answer(query);
+    await renderPanel('✏️ CONFIGURAR PLANTILLA: ' + labels[kind] + '\\n\\nGuardar o actualizar:\\n/template_set ' + channelId + ' ' + kind + ' HTML {contenido}\\n\\nPuedes cambiar HTML por Markdown, MarkdownV2, OFF o RICH_MESSAGE. Para volver a ver las plantillas guardadas usa /template_list ' + channelId + '.\\n\\nVariables: {contenido}, {titulo}, {descripcion}, {enlace}, {hashtags}, {fecha}, {canal}.', [
+      [{ text: '📋 Ver plantillas guardadas', callback_data: 'admin:templatelist:' + channelId }],
+      [{ text: '🔙 Volver a plantillas', callback_data: 'admin:templatechannel:' + channelId }],
+    ]);
+    return;
+  }
+  if (section === 'templatelist') {
+    const channelId = Number(parts[2]);
+    if (!Number.isSafeInteger(channelId) || !(await canManageChannel(userId, channelId))) {
+      await answer(query, 'No tienes permiso para administrar ese canal.', true); return;
+    }
+    const rows = await db.select().from(templates).where(eq(templates.channelId, channelId)).all();
+    await answer(query);
+    await renderPanel('📋 PLANTILLAS GUARDADAS\\n\\n' + (rows.length ? rows.map(t => '• ' + t.kind + ' (' + t.format + '): ' + t.body.slice(0, 140)).join('\\n') : 'No hay plantillas configuradas.') + '\\n\\nEliminar una: /template_delete ' + channelId + ' TIPO', [
+      [{ text: '🔙 Volver', callback_data: 'admin:templatechannel:' + channelId }],
     ]);
     return;
   }
