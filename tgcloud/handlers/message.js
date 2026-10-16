@@ -261,7 +261,7 @@ export default async function (message) {
       } else {
         username = args[1]?.startsWith('@') ? args[1].slice(1).toLowerCase() : '';
         reason = args.slice(username ? 2 : 1).join(' ') || 'Sin motivo especificado';
-        if (!username) {
+        if (!username && Number.isSafeInteger(id)) {
           const known = await db.select().from(knownUsers).where(eq(knownUsers.userId, id)).get();
           username = String(known?.username ?? '');
         }
