@@ -73,7 +73,70 @@ export default async function (message) {
   const text = String(message.text ?? '').trim();
   const isPrivate = chatId === userId;
 
+  if (message.successful_payment) {
+    const payment = message.successful_payment;
+    const publicationKey = String(payment.invoice_payload ?? '');
+    const publication = await db.select().from(publications).where(eq(publications.publicationKey, publicationKey)).get();
+    if (!publication || publication.status !== 'paid' || payment.currency !== 'XTR' || Number(payment.total_amount) !== Number(publication.starsPrice)) {
+      await say(chatId, '⚠️ El pago llegó, pero no pude validar la publicación. Contacta al administrador con el ID de pago: ' + String(payment.telegram_payment_charge_id ?? 'no disponible'));
+      return;
+    }
+    const purchaseKey = `${publicationKey}:${userId}`;
+    const previous = await db.select().from(purchases).where(eq(purchases.purchaseKey, purchaseKey)).get();
+    if (previous?.status === 'paid') {
+      await say(chatId, '✅ Este pago ya estaba registrado. Si no recibiste el contenido, contacta al administrador.');
+      return;
+    }
+    await db.insert(purchases).values({
+      purchaseKey, publicationKey, buyerId: userId,
+      telegramChargeId: String(payment.telegram_payment_charge_id ?? ''),
+      providerChargeId: String(payment.provider_payment_charge_id ?? ''),
+      status: 'paid', createdAt: now(), updatedAt: now(),
+    }).onConflictDoUpdate({
+      target: purchases.purchaseKey,
+      set: {
+        telegramChargeId: String(payment.telegram_payment_charge_id ?? ''),
+        providerChargeId: String(payment.provider_payment_charge_id ?? ''),
+        status: 'paid', updatedAt: now(),
+      },
+    }).run();
+    let paidContent = {};
+    try { paidContent = JSON.parse(publication.payloadJson || '{}'); } catch { paidContent = {}; }
+    if (paidContent.type === 'copy' && Number.isSafeInteger(Number(paidContent.sourceChatId)) && Number.isSafeInteger(Number(paidContent.sourceMessageId))) {
+      await api.copyMessage({ chat_id: userId, from_chat_id: Number(paidContent.sourceChatId), message_id: Number(paidContent.sourceMessageId) });
+    } else if (paidContent.type === 'text' && typeof paidContent.text === 'string') {
+      await say(chatId, '💎 CONTENIDO DESBLOQUEADO\n\n' + paidContent.text);
+    } else {
+      await say(chatId, '✅ Pago confirmado. El contenido requiere revisión del administrador; conserva este mensaje como comprobante.');
+    }
+    return;
+  }
+
   if (text === '/start' || text.startsWith('/start ')) {
+    const startPayload = text.split(/\\s+/)[1] || '';
+    if (startPayload.startsWith('buy_')) {
+      if (!isPrivate) {
+        await say(chatId, 'Abre el enlace en el chat privado del bot para comprar esta publicación.');
+        return;
+      }
+      const publicationKey = startPayload.slice(4);
+      const publication = await db.select().from(publications).where(eq(publications.publicationKey, publicationKey)).get();
+      if (!publication || publication.status !== 'paid' || Number(publication.starsPrice) < 1) {
+        await say(chatId, '⛔ Esta publicación de pago no está disponible.');
+        return;
+      }
+      await api.sendInvoice({
+        chat_id: chatId,
+        title: 'Acceso a publicación',
+        description: 'Desbloquea el contenido exclusivo de ChannelPosts_RoBot.',
+        payload: publicationKey,
+        provider_token: '',
+        currency: 'XTR',
+        prices: [{ label: 'Acceso', amount: Number(publication.starsPrice) }],
+        start_parameter: startPayload,
+      });
+      return;
+    }
     await say(chatId, '👋 ¡Bienvenido a ChannelPosts_RoBot!\n\nGestiona canales, publicaciones, plantillas, botones, bienvenida, CAPTCHA, blacklist, rutas y reportes de reacciones. Usa /help para ver los comandos.', {
       reply_markup: { inline_keyboard: [[{ text: '⚙️ PANEL DE ADMINISTRACIÓN', callback_data: 'admin:open' }], [{ text: '📚 Ayuda', callback_data: 'admin:help' }]] },
     });
@@ -250,6 +313,32 @@ export default async function (message) {
       if (!Number.isSafeInteger(id) || !kind) return void await say(chatId, 'Uso: /template_delete ID_CANAL TIPO');
       await db.delete(templates).where(eq(templates.templateKey, `${id}:${kind}`)).run();
       await say(chatId, '✅ Plantilla eliminada.');
+      return;
+    }
+    if (command === '/publish_paid') {
+      const id = parseId(args[0]); const price = Number(args[1]); const body = args.slice(2).join(' ').trim();
+      const reply = message.reply_to_message;
+      if (!Number.isSafeInteger(id) || !Number.isInteger(price) || price < 1 || price > 100000) {
+        return void await say(chatId, 'Uso: /publish_paid ID_CANAL PRECIO_STARS texto, o responde a un mensaje con /publish_paid ID_CANAL PRECIO_STARS.');
+      }
+      if (!body && !reply?.message_id) return void await say(chatId, 'Incluye el texto de pago o responde a un mensaje que contenga el contenido.');
+      const channel = await db.select().from(channels).where(eq(channels.chatId, id)).get();
+      if (!channel || !channel.active) return void await say(chatId, '⛔ Registra y activa primero ese canal con /addchannel.');
+      const publicationKey = `p_${now().toString(36)}_${Math.abs(id).toString(36)}`;
+      const teaser = await api.sendMessage({
+        chat_id: id,
+        text: `💎 PUBLICACIÓN EXCLUSIVA\n\nPrecio: ⭐ ${price}\nPulsa el botón para desbloquear el contenido con Telegram Stars.`,
+        reply_markup: { inline_keyboard: [[{ text: `⭐ Desbloquear · ${price}`, url: `https://t.me/ChannelPosts_RoBot?start=buy_${publicationKey}` }]] },
+      });
+      const payload = body
+        ? { type: 'text', text: body }
+        : { type: 'copy', sourceChatId: chatId, sourceMessageId: Number(reply.message_id) };
+      await db.insert(publications).values({
+        publicationKey, channelId: id, sourceMessageId: Number(teaser.message_id),
+        status: 'paid', starsPrice: price, payloadJson: JSON.stringify(payload),
+        createdBy: userId, createdAt: now(), updatedAt: now(),
+      }).run();
+      await say(chatId, `✅ Publicación de pago creada en ${channel.title || id}. Precio: ⭐ ${price}. Prueba el enlace antes de promocionarla.`);
       return;
     }
     if (command === '/publish') {
