@@ -37,7 +37,7 @@ La base Serverless y el panel administrativo ampliado están desplegados desde G
 - `/hashtags ID_CANAL texto`
 - `/description ID_CANAL texto` — admite `{texto}`
 - `/missingdata ID_CANAL texto`
-- `/setreport ID_CANAL ID_CANAL_REPORTE
+- `/setreport ID_CANAL ID_CANAL_REPORTE`
 - `/blacklist_add ID|@username [motivo]` o `/globalban ID|@username [motivo]`
 - `/blacklist_remove ID|@username` o `/globalunban ID|@username`
 - `/route_add ORIGEN DESTINO`, `/route_remove ORIGEN DESTINO`, `/routes`
