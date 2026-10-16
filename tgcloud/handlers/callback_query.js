@@ -56,10 +56,10 @@ async function answer(query, text = '', alert = false) {
     ...(text ? { text, show_alert: alert } : {}),
   });
 }
-async function sendPanel(chatId, text, keyboard = MAIN_MENU, messageId = null) {
+async function sendPanel(chatId, text, keyboard = null, messageId = null) {
   if (messageId) {
     try {
-      await api.editMessageText({ chat_id: chatId, message_id: messageId, text, reply_markup: { inline_keyboard: keyboard } });
+      await api.editMessageText({ chat_id: chatId, message_id: messageId, text, reply_markup: { inline_keyboard: keyboard || [] } });
       return;
     } catch (error) {
       const reason = String(error ?? '');
@@ -68,7 +68,7 @@ async function sendPanel(chatId, text, keyboard = MAIN_MENU, messageId = null) {
       return;
     }
   }
-  await api.sendMessage({ chat_id: chatId, text, reply_markup: { inline_keyboard: keyboard } });
+  await api.sendMessage({ chat_id: chatId, text, reply_markup: { inline_keyboard: keyboard || [] } });
 }
 function channelButtons(rows, kind) {
   return rows.map((row) => [{
@@ -134,7 +134,7 @@ export default async function (query) {
 
   if (section === 'open') {
     await answer(query);
-    await renderPanel('⚙️ PANEL DE ADMINISTRACIÓN\nChannelPosts_RoBot\nSelecciona un módulo.');
+    await renderPanel((await navText('panel_title')) + '\nChannelPosts_RoBot\n' + (await navText('panel_description')));
     return;
   }
   if (section === 'close') {
