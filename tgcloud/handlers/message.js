@@ -198,9 +198,19 @@ export default async function (message) {
       return;
     }
     if (command === '/addchannel') {
-      const id = parseId(args[0]);
-      if (!Number.isSafeInteger(id) || id === 0) return void await say(chatId, 'Uso: /addchannel ID [título]');
-      const title = args.slice(1).join(' ') || String(id);
+      const forwarded = message.reply_to_message ?? message;
+      const forwardSource = forwarded.forward_from_chat ?? forwarded.forward_origin?.chat ?? null;
+      let id = parseId(args[0]);
+      let title = '';
+      if (!Number.isSafeInteger(id) || id === 0) {
+        if (!Number.isSafeInteger(Number(forwardSource?.id)) || forwardSource?.type !== 'channel') {
+          return void await say(chatId, 'Uso: /addchannel ID [título]. También puedes reenviar una publicación del canal al bot y responder a ella con /addchannel [título] para detectar su ID.');
+        }
+        id = Number(forwardSource.id);
+        title = args.join(' ') || String(forwardSource.title ?? id);
+      } else {
+        title = args.slice(1).join(' ') || String(id);
+      }
       await db.insert(channels).values({ chatId: id, title, addedBy: userId, active: 1, createdAt: now() })
         .onConflictDoUpdate({ target: channels.chatId, set: { title, active: 1 } }).run();
       await ensureSettings(id);
