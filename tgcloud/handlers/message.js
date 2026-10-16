@@ -57,6 +57,7 @@ const HELP = [
   '/template_buttons ID_CANAL TIPO JSON — configurar botones inline',
   '/template_delete ID_CANAL TIPO — borrar plantilla',
   '/publish ID_CANAL texto — publicar texto',
+  '/publish_paid ID_CANAL PRECIO_STARS texto — crear publicación de pago en Stars, o responder a un mensaje multimedia,
   'Responde a un mensaje con /publish ID_CANAL para copiarlo al canal.',
   '/stats — estadísticas',
   '/addadmin ID y /deladmin ID — solo propietario',
