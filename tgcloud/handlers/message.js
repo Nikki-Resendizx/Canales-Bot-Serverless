@@ -316,10 +316,25 @@ export default async function (message) {
       } else {
         title = args.slice(1).join(' ') || String(id);
       }
+      const existingChannel = await db.select().from(channels).where(eq(channels.chatId, id)).get();
+      if (existingChannel && Number(existingChannel.addedBy) !== userId && userId !== OWNER_ID) {
+        return void await say(chatId, '⛔ Ese canal ya está registrado por otro administrador.');
+      }
+      let botMembership;
+      try {
+        const botInfo = await api.getMe();
+        botMembership = await api.getChatMember({ chat_id: id, user_id: botInfo.id });
+      } catch (error) {
+        console.log('No se pudo verificar el acceso al canal', id, String(error));
+        return void await say(chatId, '⚠️ No pude acceder a ese canal. Comprueba el ID y añade primero el bot como administrador.');
+      }
+      if (!['administrator', 'creator'].includes(String(botMembership?.status))) {
+        return void await say(chatId, '⚠️ El canal no se registró: primero añade el bot como administrador del canal y vuelve a intentarlo.');
+      }
       await db.insert(channels).values({ chatId: id, title, addedBy: userId, active: 1, createdAt: now() })
-        .onConflictDoUpdate({ target: channels.chatId, set: { title, active: 1 } }).run();
+        .onConflictDoUpdate({ target: channels.chatId, set: { title, active: 1, addedBy: userId } }).run();
       await ensureSettings(id);
-      await say(chatId, `✅ Canal registrado: ${title} (${id}). Añade el bot como administrador y concede los permisos requeridos.`);
+      await say(chatId, '✅ Canal verificado y registrado: ' + title + ' (' + id + '). Usa 📢 CANALES para activar, pausar, probar permisos o configurar el canal.');
       return;
     }
     if (command === '/delchannel') {
