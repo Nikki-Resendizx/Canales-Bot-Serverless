@@ -32,7 +32,18 @@ async function answer(query, text = '', alert = false) {
     ...(text ? { text, show_alert: alert } : {}),
   });
 }
-async function sendPanel(chatId, text, keyboard = MAIN_MENU) {
+async function sendPanel(chatId, text, keyboard = MAIN_MENU, messageId = null) {
+  if (messageId) {
+    try {
+      await api.editMessageText({ chat_id: chatId, message_id: messageId, text, reply_markup: { inline_keyboard: keyboard } });
+      return;
+    } catch (error) {
+      const reason = String(error ?? '');
+      if (/message is not modified/i.test(reason)) return;
+      console.log('No se pudo editar el panel', reason);
+      return;
+    }
+  }
   await api.sendMessage({ chat_id: chatId, text, reply_markup: { inline_keyboard: keyboard } });
 }
 function channelButtons(rows, kind) {
