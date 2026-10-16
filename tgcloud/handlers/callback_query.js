@@ -74,6 +74,7 @@ export default async function (query) {
   const userId = Number(query.from?.id);
   const message = query.message;
   const chatId = Number(message?.chat?.id);
+  const renderPanel = (text, keyboard = MAIN_MENU) => sendPanel(chatId, text, keyboard, message?.message_id);
 
   if (data.startsWith('captcha:')) {
     const [, rawChatId, rawUserId, chosenAnswer] = data.split(':');
