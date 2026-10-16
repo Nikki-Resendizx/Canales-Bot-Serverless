@@ -1,17 +1,53 @@
-name: Validate Serverless modules
+name: Validate and deploy Telegram Serverless
 
 on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   syntax:
+    name: Validate JavaScript modules
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
       - run: npm install
       - run: npm run validate
+
+  deploy:
+    name: Deploy to Telegram Serverless
+    runs-on: ubuntu-latest
+    needs: syntax
+    if: github.event_name != 'pull_request'
+    env:
+      TGCLOUD_TOKEN: ${{ secrets.TGCLOUD_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm install
+      - name: Skip deployment until the Telegram CLI token is configured
+        if: env.TGCLOUD_TOKEN == ''
+        run: echo "Deployment skipped. Add the TGCLOUD_TOKEN repository secret after enabling Serverless for the intended bot in @BotFather."
+      - name: Sync CLI state with the remote project
+        if: env.TGCLOUD_TOKEN != ''
+        run: npx tgcloud fetch
+      - name: Deploy validated modules
+        if: env.TGCLOUD_TOKEN != ''
+        run: npx tgcloud push
+      - name: Apply safe database schema changes
+        if: env.TGCLOUD_TOKEN != ''
+        run: npx tgcloud migrate --safe
+      - name: Synchronize Telegram webhook
+        if: env.TGCLOUD_TOKEN != ''
+        run: npx tgcloud webhook sync
