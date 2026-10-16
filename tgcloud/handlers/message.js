@@ -55,7 +55,7 @@ const NAV_DEFAULTS = {
   blacklist: '🚫 Blacklist', routes: '🔀 Rutas', templates: '📝 Plantillas',
   publications: '📤 Publicaciones', buttons: '🔘 Botones', formats: '🎨 Formatos',
   reactions: '🔔 Reacciones', stars: '💳 Stars', admins: '👮 Admins',
-  stats: '📊 Estadísticas', settings: '⚙️ Configuración', close: '❌ Cerrar',
+  stats: '📊 Estadísticas', settings: '⚙️ Configuración', close: '❌ Cerrar', navigation: '🧭 Navegación',
   back: '⬅️ Volver al panel',
 };
 async function navText(key) {
