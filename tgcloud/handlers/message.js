@@ -14,6 +14,14 @@ async function isAdmin(userId) {
   if (Number(userId) === OWNER_ID) return true;
   return Boolean(await db.select().from(admins).where(eq(admins.userId, Number(userId))).get());
 }
+async function canManageChannel(userId, channelId) {
+  const channel = await db.select().from(channels).where(eq(channels.chatId, Number(channelId))).get();
+  return Boolean(channel && (Number(userId) === OWNER_ID || Number(channel.addedBy) === Number(userId)));
+}
+async function managedChannels(userId) {
+  const rows = await db.select().from(channels).all();
+  return Number(userId) === OWNER_ID ? rows : rows.filter(row => Number(row.addedBy) === Number(userId));
+}
 async function say(chatId, text, extra = {}) {
   return api.sendMessage({ chat_id: chatId, text, ...extra });
 }
@@ -193,7 +201,7 @@ export default async function (message) {
   const argText = text.slice(commandRaw.length).trim();
   try {
     if (command === '/channels') {
-      const rows = await db.select().from(channels).all();
+      const rows = await managedChannels(userId);
       await say(chatId, rows.length ? '📣 CANALES REGISTRADOS\n' + rows.map(c => `• ${c.title || 'Sin título'} — ${c.chatId} — ${c.active ? 'activo' : 'inactivo'}`).join('\n') : 'No hay canales registrados. Usa /addchannel ID título.');
       return;
     }
@@ -220,6 +228,7 @@ export default async function (message) {
     if (command === '/delchannel') {
       const id = parseId(args[0]);
       if (!Number.isSafeInteger(id)) return void await say(chatId, 'Uso: /delchannel ID');
+      if (!(await canManageChannel(userId, id))) return void await say(chatId, '⛔ Ese canal no existe o no está asignado a tu administración.');
       await db.delete(channels).where(eq(channels.chatId, id)).run();
       await db.delete(channelSettings).where(eq(channelSettings.channelId, id)).run();
       await db.delete(channelRoutes).where(eq(channelRoutes.sourceChatId, id)).run();
@@ -230,6 +239,7 @@ export default async function (message) {
     if (command === '/welcome') {
       const id = parseId(args[0]); const mode = String(args[1] || '').toLowerCase();
       if (!Number.isSafeInteger(id) || !['on', 'off'].includes(mode)) return void await say(chatId, 'Uso: /welcome ID on|off');
+      if (!(await canManageChannel(userId, id))) return void await say(chatId, '⛔ Ese canal no existe o no está asignado a tu administración.');
       await ensureSettings(id);
       await db.update(channelSettings).set({ welcomeEnabled: mode === 'on' ? 1 : 0, updatedAt: now() }).where(eq(channelSettings.channelId, id)).run();
       await say(chatId, `✅ Bienvenida ${mode === 'on' ? 'activada' : 'desactivada'} para ${id}.`);
@@ -238,6 +248,7 @@ export default async function (message) {
     if (command === '/welcometext') {
       const id = parseId(args[0]); const body = argText.slice(String(args[0] ?? '').length).trim();
       if (!Number.isSafeInteger(id) || !body) return void await say(chatId, 'Uso: /welcometext ID texto. Variables: {mencion}, {nombre}, {username}, {userid}.');
+      if (!(await canManageChannel(userId, id))) return void await say(chatId, '⛔ Ese canal no existe o no está asignado a tu administración.');
       await ensureSettings(id);
       await db.update(channelSettings).set({ welcomeText: body, updatedAt: now() }).where(eq(channelSettings.channelId, id)).run();
       await say(chatId, '✅ Texto de bienvenida guardado.');
@@ -246,6 +257,7 @@ export default async function (message) {
     if (command === '/captcha') {
       const id = parseId(args[0]); const mode = String(args[1] || '').toLowerCase();
       if (!Number.isSafeInteger(id) || !['on', 'off'].includes(mode)) return void await say(chatId, 'Uso: /captcha ID on|off');
+      if (!(await canManageChannel(userId, id))) return void await say(chatId, '⛔ Ese canal no existe o no está asignado a tu administración.');
       await ensureSettings(id);
       await db.update(channelSettings).set({ captchaEnabled: mode === 'on' ? 1 : 0, updatedAt: now() }).where(eq(channelSettings.channelId, id)).run();
       await say(chatId, `✅ CAPTCHA ${mode === 'on' ? 'activado' : 'desactivado'} para ${id}. El fallo o vencimiento aplica baneo permanente.`);
@@ -254,6 +266,7 @@ export default async function (message) {
     if (command === '/setreport') {
       const id = parseId(args[0]); const reportId = parseId(args[1]);
       if (!Number.isSafeInteger(id) || !Number.isSafeInteger(reportId)) return void await say(chatId, 'Uso: /setreport ID_CANAL ID_REPORTE');
+      if (!(await canManageChannel(userId, id))) return void await say(chatId, '⛔ Ese canal no existe o no está asignado a tu administración.');
       await ensureSettings(id);
       await db.update(channelSettings).set({ reactionReportChatId: reportId, updatedAt: now() }).where(eq(channelSettings.channelId, id)).run();
       await say(chatId, '✅ Canal de reportes configurado. El bot debe poder publicar allí.');
@@ -325,6 +338,7 @@ export default async function (message) {
       const sourceRow = await db.select().from(channels).where(eq(channels.chatId, source)).get();
       const destinationRow = await db.select().from(channels).where(eq(channels.chatId, destination)).get();
       if (!sourceRow || !destinationRow) return void await say(chatId, 'Registra primero ambos canales con /addchannel ID título.');
+      if (!(await canManageChannel(userId, source)) || !(await canManageChannel(userId, destination))) return void await say(chatId, '⛔ Solo puedes crear rutas entre canales de tu administración.');
       const routeKey = `${source}:${destination}`;
       await db.insert(channelRoutes).values({ routeKey, sourceChatId: source, destinationChatId: destination, createdBy: userId, createdAt: now() })
         .onConflictDoUpdate({ target: channelRoutes.routeKey, set: { sourceChatId: source, destinationChatId: destination, createdBy: userId, createdAt: now() } }).run();
@@ -334,12 +348,15 @@ export default async function (message) {
     if (command === '/route_remove') {
       const source = parseId(args[0]); const destination = parseId(args[1]);
       if (!Number.isSafeInteger(source) || !Number.isSafeInteger(destination)) return void await say(chatId, 'Uso: /route_remove ORIGEN DESTINO');
+      if (!(await canManageChannel(userId, source)) || !(await canManageChannel(userId, destination))) return void await say(chatId, '⛔ Solo puedes eliminar rutas entre canales de tu administración.');
       await db.delete(channelRoutes).where(eq(channelRoutes.routeKey, `${source}:${destination}`)).run();
       await say(chatId, '✅ Ruta eliminada.');
       return;
     }
     if (command === '/routes') {
-      const rows = await db.select().from(channelRoutes).all();
+      const allRoutes = await db.select().from(channelRoutes).all();
+      const rows = [];
+      for (const route of allRoutes) if (await canManageChannel(userId, route.sourceChatId) && await canManageChannel(userId, route.destinationChatId)) rows.push(route);
       await say(chatId, rows.length ? '🔀 RUTAS ACTIVAS\n' + rows.map(r => `• ${r.sourceChatId} → ${r.destinationChatId}`).join('\n') : 'No hay rutas configuradas.');
       return;
     }
@@ -347,6 +364,7 @@ export default async function (message) {
       const id = parseId(args[0]); const kind = args[1]; const format = String(args[2] || 'HTML').toUpperCase();
       const body = argText.split(/\s+/).slice(3).join(' ');
       if (!Number.isSafeInteger(id) || !kind || !body || !['HTML', 'MARKDOWN', 'MARKDOWNV2', 'OFF'].includes(format)) return void await say(chatId, 'Uso: /template_set ID_CANAL TIPO HTML|Markdown|MarkdownV2|OFF texto');
+      if (!(await canManageChannel(userId, id))) return void await say(chatId, '⛔ Ese canal no existe o no está asignado a tu administración.');
       const templateKey = `${id}:${kind}`;
       await db.insert(templates).values({ templateKey, channelId: id, kind, body, format, buttonsJson: '[]', updatedBy: userId, updatedAt: now() })
         .onConflictDoUpdate({ target: templates.templateKey, set: { body, format, updatedBy: userId, updatedAt: now() } }).run();
@@ -356,6 +374,7 @@ export default async function (message) {
     if (command === '/template_list') {
       const id = parseId(args[0]);
       if (!Number.isSafeInteger(id)) return void await say(chatId, 'Uso: /template_list ID_CANAL');
+      if (!(await canManageChannel(userId, id))) return void await say(chatId, '⛔ Ese canal no existe o no está asignado a tu administración.');
       const rows = await db.select().from(templates).where(eq(templates.channelId, id)).all();
       await say(chatId, rows.length ? '📝 PLANTILLAS\n' + rows.map(t => `• ${t.kind} (${t.format}): ${t.body.slice(0, 120)}`).join('\n') : 'No hay plantillas para ese canal.');
       return;
@@ -365,6 +384,7 @@ export default async function (message) {
       const secondSpace = argText.indexOf(' ', argText.indexOf(' ') + 1);
       const rawJson = secondSpace >= 0 ? argText.slice(secondSpace + 1).trim() : '';
       if (!Number.isSafeInteger(id) || !kind || !rawJson) return void await say(chatId, 'Uso: /template_buttons ID_CANAL TIPO JSON_INLINE_KEYBOARD');
+      if (!(await canManageChannel(userId, id))) return void await say(chatId, '⛔ Ese canal no existe o no está asignado a tu administración.');
       let keyboard;
       try { keyboard = JSON.parse(rawJson); } catch { return void await say(chatId, 'JSON no válido. Ejemplo: [[{"text":"Abrir","url":"https://t.me/","style":"primary"}]]'); }
       if (!Array.isArray(keyboard) || keyboard.length > 8 || keyboard.some(row => !Array.isArray(row) || row.length > 8 || row.some(btn => !btn || typeof btn.text !== 'string' || !(typeof btn.url === 'string' || typeof btn.callback_data === 'string')))) {
@@ -380,6 +400,7 @@ export default async function (message) {
     if (command === '/template_delete') {
       const id = parseId(args[0]); const kind = args[1];
       if (!Number.isSafeInteger(id) || !kind) return void await say(chatId, 'Uso: /template_delete ID_CANAL TIPO');
+      if (!(await canManageChannel(userId, id))) return void await say(chatId, '⛔ Ese canal no existe o no está asignado a tu administración.');
       await db.delete(templates).where(eq(templates.templateKey, `${id}:${kind}`)).run();
       await say(chatId, '✅ Plantilla eliminada.');
       return;
@@ -392,7 +413,7 @@ export default async function (message) {
       }
       if (!body && !reply?.message_id) return void await say(chatId, 'Incluye el texto de pago o responde a un mensaje que contenga el contenido.');
       const channel = await db.select().from(channels).where(eq(channels.chatId, id)).get();
-      if (!channel || !channel.active) return void await say(chatId, '⛔ Registra y activa primero ese canal con /addchannel.');
+      if (!channel || !channel.active || !(await canManageChannel(userId, id))) return void await say(chatId, '⛔ Ese canal no está activo o no está asignado a tu administración.');
       const publicationKey = `p_${now().toString(36)}_${Math.abs(id).toString(36)}`;
       const teaser = await api.sendMessage({
         chat_id: id,
@@ -414,7 +435,7 @@ export default async function (message) {
       const id = parseId(args[0]); const body = argText.slice(String(args[0] ?? '').length).trim();
       if (!Number.isSafeInteger(id)) return void await say(chatId, 'Uso: /publish ID_CANAL texto, o responde a un mensaje multimedia con /publish ID_CANAL.');
       const row = await db.select().from(channels).where(eq(channels.chatId, id)).get();
-      if (!row || !row.active) return void await say(chatId, '⛔ Ese canal no está registrado o está inactivo.');
+      if (!row || !row.active || !(await canManageChannel(userId, id))) return void await say(chatId, '⛔ Ese canal no está activo o no está asignado a tu administración.');
       const template = await db.select().from(templates).where(eq(templates.templateKey, `${id}:default`)).get();
       let replyMarkup = {};
       try {
