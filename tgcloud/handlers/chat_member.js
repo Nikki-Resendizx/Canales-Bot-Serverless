@@ -4,10 +4,14 @@ import { channels, channelSettings, captchaSessions, globalBans, knownUsers } fr
 
 function renderWelcome(template, user) {
   const name = [user.first_name, user.last_name].filter(Boolean).join(' ') || 'usuario';
+  const escapedName = name.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
+  const escapedUsername = user.username
+    ? '@' + String(user.username).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
+    : '';
   return String(template || '👋 ¡Bienvenido, {nombre}!')
-    .replaceAll('{mencion}', `<a href="tg://user?id=${user.id}">${name.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')}</a>`)
-    .replaceAll('{nombre}', name)
-    .replaceAll('{username}', user.username ? `@${user.username}` : '')
+    .replaceAll('{mencion}', `<a href="tg://user?id=${user.id}">${escapedName}</a>`)
+    .replaceAll('{nombre}', escapedName)
+    .replaceAll('{username}', escapedUsername)
     .replaceAll('{userid}', String(user.id));
 }
 
