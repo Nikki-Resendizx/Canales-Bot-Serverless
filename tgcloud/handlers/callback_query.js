@@ -78,9 +78,24 @@ async function sendPanel(chatId, text, keyboard = null, messageId = null) {
 }
 function channelButtons(rows, kind) {
   return rows.map((row) => [{
-    text: `${String(row.title || row.chatId).slice(0, 42)} · ${kind === 'welcome' ? 'Bienvenida' : 'CAPTCHA'}: ${Number(kind === 'welcome' ? row.welcomeEnabled : row.captchaEnabled) ? 'ON' : 'OFF'}`,
+    text: `${String(row.title || row.chatId).slice(0, 42)} · ${kind === 'welcome' ? 'Bienvenida' : kind === 'captcha' ? 'CAPTCHA' : 'Corrección'}: ${Number(kind === 'welcome' ? row.welcomeEnabled : kind === 'captcha' ? row.captchaEnabled : row.textCorrectionEnabled) ? 'ON' : 'OFF'}`,
     callback_data: `admin:toggle:${kind}:${row.chatId}`,
   }]);
+}
+function channelManagementButtons(rows) {
+  const keyboard = [];
+  for (const row of rows) {
+    const label = String(row.title || row.chatId).slice(0, 24);
+    keyboard.push([
+      { text: `${row.active ? '🟢' : '🔴'} ${label}`, callback_data: `admin:channelsettings:${row.chatId}` },
+      { text: row.active ? '⏸ Desactivar' : '▶️ Activar', callback_data: `admin:channelactive:${row.chatId}` },
+      { text: '🗑️', callback_data: `admin:channeldelete:${row.chatId}` },
+    ]);
+  }
+  keyboard.push([{ text: '➕ Agregar Canal', callback_data: 'admin:channeladd' }]);
+  keyboard.push([{ text: '➕ Añadir por ID', callback_data: 'admin:channeladdmanual' }, { text: '🔎 Detectar canal', callback_data: 'admin:detectchannel' }]);
+  keyboard.push([{ text: '🔙 VOLVER', callback_data: 'admin:back' }]);
+  return keyboard;
 }
 async function backRow() { return [{ text: await navText('back'), callback_data: 'admin:back' }]; }
 function moduleText(section) {
@@ -156,17 +171,17 @@ export default async function (query) {
   if (section === 'toggle') {
     const kind = parts[2];
     const channelId = Number(parts[3]);
-    if (!Number.isSafeInteger(channelId) || !['welcome', 'captcha'].includes(kind)) {
+    if (!Number.isSafeInteger(channelId) || !['welcome', 'captcha', 'correction'].includes(kind)) {
       await answer(query, 'Configuración no válida.', true);
       return;
     }
     const row = await db.select().from(channelSettings).where(eq(channelSettings.channelId, channelId)).get();
     if (!row) { await answer(query, 'Primero registra el canal con /addchannel ID título.', true); return; }
     if (!(await canManageChannel(userId, channelId))) { await answer(query, 'No tienes permiso para administrar ese canal.', true); return; }
-    const column = kind === 'welcome' ? 'welcomeEnabled' : 'captchaEnabled';
+    const column = kind === 'welcome' ? 'welcomeEnabled' : kind === 'captcha' ? 'captchaEnabled' : 'textCorrectionEnabled';
     const enabled = Number(row[column]) ? 0 : 1;
     await db.update(channelSettings).set({ [column]: enabled, updatedAt: Date.now() }).where(eq(channelSettings.channelId, channelId)).run();
-    await answer(query, `${kind === 'welcome' ? 'Bienvenida' : 'CAPTCHA'} ${enabled ? 'activado' : 'desactivado'}`);
+    await answer(query, `${kind === 'welcome' ? 'Bienvenida' : kind === 'captcha' ? 'CAPTCHA' : 'Corrección de texto'} ${enabled ? 'activado' : 'desactivado'}`);
     const rows = await managedChannels(userId);
     const settingsRows = [];
     for (const channel of rows) {
@@ -175,7 +190,77 @@ export default async function (query) {
     }
     const keyboard = channelButtons(settingsRows, kind);
     keyboard.push(await backRow());
-    await renderPanel((kind === 'welcome' ? '👋 BIENVENIDA POR CANAL' : '🧩 CAPTCHA POR CANAL') + '\nPulsa un canal para alternar la función.', keyboard);
+    await renderPanel((kind === 'welcome' ? '👋 BIENVENIDA POR CANAL' : kind === 'captcha' ? '🧩 CAPTCHA POR CANAL' : '✍️ CORRECCIÓN POR CANAL') + '\nPulsa un canal para alternar la función.', keyboard);
+    return;
+  }
+
+  if (section === 'channelactive') {
+    const channelId = Number(parts[2]);
+    if (!Number.isSafeInteger(channelId) || !(await canManageChannel(userId, channelId))) {
+      await answer(query, 'No tienes permiso para administrar ese canal.', true); return;
+    }
+    const channel = await db.select().from(channels).where(eq(channels.chatId, channelId)).get();
+    if (!channel) { await answer(query, 'El canal ya no está registrado.', true); return; }
+    const active = Number(channel.active) ? 0 : 1;
+    await db.update(channels).set({ active }).where(eq(channels.chatId, channelId)).run();
+    await answer(query, active ? 'Procesamiento del canal activado.' : 'Procesamiento del canal desactivado.');
+    await renderPanel('📣 ADMINISTRACIÓN DE CANALES\\n\\nActiva o pausa el procesamiento automático por canal. Pulsa el nombre para configurar opciones individuales.', channelManagementButtons(await managedChannels(userId)));
+    return;
+  }
+  if (section === 'channeldelete') {
+    const channelId = Number(parts[2]);
+    if (!Number.isSafeInteger(channelId) || !(await canManageChannel(userId, channelId))) {
+      await answer(query, 'No tienes permiso para administrar ese canal.', true); return;
+    }
+    const channel = await db.select().from(channels).where(eq(channels.chatId, channelId)).get();
+    if (!channel) { await answer(query, 'El canal ya no está registrado.', true); return; }
+    await answer(query);
+    await renderPanel('⚠️ CONFIRMAR ELIMINACIÓN\\n\\nSe quitará ' + String(channel.title || channelId) + ' (' + channelId + ') y su configuración individual. Las publicaciones ya enviadas a Telegram no se borrarán.', [
+      [{ text: '🗑️ Sí, eliminar configuración', callback_data: 'admin:channeldeleteconfirm:' + channelId }],
+      [{ text: '🔙 Cancelar', callback_data: 'admin:channels' }],
+    ]);
+    return;
+  }
+  if (section === 'channeldeleteconfirm') {
+    const channelId = Number(parts[2]);
+    if (!Number.isSafeInteger(channelId) || !(await canManageChannel(userId, channelId))) {
+      await answer(query, 'No tienes permiso para administrar ese canal.', true); return;
+    }
+    await db.delete(channels).where(eq(channels.chatId, channelId)).run();
+    await db.delete(channelSettings).where(eq(channelSettings.channelId, channelId)).run();
+    await db.delete(channelRoutes).where(eq(channelRoutes.sourceChatId, channelId)).run();
+    await db.delete(channelRoutes).where(eq(channelRoutes.destinationChatId, channelId)).run();
+    await answer(query, 'Canal y configuración eliminados.');
+    await renderPanel('📣 ADMINISTRACIÓN DE CANALES\\n\\nCanal eliminado de la configuración. Las publicaciones ya enviadas no se borran.', channelManagementButtons(await managedChannels(userId)));
+    return;
+  }
+  if (section === 'channelsettings') {
+    const channelId = Number(parts[2]);
+    if (!Number.isSafeInteger(channelId) || !(await canManageChannel(userId, channelId))) {
+      await answer(query, 'No tienes permiso para administrar ese canal.', true); return;
+    }
+    const channel = await db.select().from(channels).where(eq(channels.chatId, channelId)).get();
+    if (!channel) { await answer(query, 'El canal ya no está registrado.', true); return; }
+    const setting = await db.select().from(channelSettings).where(eq(channelSettings.channelId, channelId)).get();
+    await answer(query);
+    await renderPanel('⚙️ CONFIGURACIÓN INDIVIDUAL\\n\\n' + String(channel.title || channelId) + ' (' + channelId + ')\\nProcesamiento: ' + (channel.active ? 'ACTIVO' : 'PAUSADO') + '\\nBienvenida: ' + (setting?.welcomeEnabled ? 'ON' : 'OFF') + '\\nCAPTCHA: ' + (setting?.captchaEnabled ? 'ON' : 'OFF') + '\\nCorrección de texto: ' + (setting?.textCorrectionEnabled ? 'ON' : 'OFF') + '\\n\\nCada opción se guarda por separado para este canal.', [
+      [{ text: '👋 Bienvenida ' + (setting?.welcomeEnabled ? '🟢' : '⚪'), callback_data: 'admin:toggle:welcome:' + channelId }],
+      [{ text: '🧩 CAPTCHA ' + (setting?.captchaEnabled ? '🟢' : '⚪'), callback_data: 'admin:toggle:captcha:' + channelId }],
+      [{ text: '✍️ Corrección ' + (setting?.textCorrectionEnabled ? '🟢' : '⚪'), callback_data: 'admin:toggle:correction:' + channelId }],
+      [{ text: '✏️ Editar bienvenida', callback_data: 'admin:welcomeedit:' + channelId }],
+      [{ text: '🔙 Volver a canales', callback_data: 'admin:channels' }],
+    ]);
+    return;
+  }
+  if (section === 'welcomeedit') {
+    const channelId = Number(parts[2]);
+    if (!Number.isSafeInteger(channelId) || !(await canManageChannel(userId, channelId))) {
+      await answer(query, 'No tienes permiso para administrar ese canal.', true); return;
+    }
+    await answer(query);
+    await renderPanel('✏️ EDITAR BIENVENIDA\\n\\nEnvía el comando en este chat privado:\\n/welcometext ' + channelId + ' Tu texto de bienvenida\\n\\nVariables: {mencion}, {nombre}, {username}, {userid}.', [
+      [{ text: '🔙 Volver a configuración', callback_data: 'admin:channelsettings:' + channelId }],
+    ]);
     return;
   }
 
@@ -187,11 +272,7 @@ export default async function (query) {
   if (section === 'channels') {
     const rows = await managedChannels(userId);
     const text = rows.length ? '📣 CANALES REGISTRADOS\n' + rows.map(c => `• ${c.title || 'Sin título'} — ${c.chatId} — ${c.active ? 'activo' : 'inactivo'}`).join('\n') : 'No hay canales registrados.';
-    await renderPanel(text + '\n\nElige “➕ Agregar Canal” para seleccionar el canal desde Telegram. También se conservan las opciones manuales y de detección por reenvío.\nQuitar: /delchannel ID', [
-      [{ text: '➕ Agregar Canal', callback_data: 'admin:channeladd' }],
-      [{ text: '➕ Añadir por ID', callback_data: 'admin:channeladdmanual' }, { text: '🔎 Detectar canal', callback_data: 'admin:detectchannel' }],
-      [{ text: await navText('back'), callback_data: 'admin:back' }],
-    ]);
+    await renderPanel(text + '\\n\\nPulsa el nombre de un canal para abrir sus opciones, activa/pausa el procesamiento o elimina su configuración. La eliminación requiere confirmación.', channelManagementButtons(rows));
     return;
   }
   if (section === 'welcome' || section === 'captcha') {
