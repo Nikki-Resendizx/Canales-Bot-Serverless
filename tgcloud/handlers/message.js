@@ -221,7 +221,7 @@ export default async function (message) {
       await say(chatId, '⛔ El panel solo está disponible para administradores autorizados en chat privado.');
       return;
     }
-    await say(chatId, (await navText('panel_title')) + '\\nChannelPosts_RoBot\\n\\n' + (await navText('panel_description')), {
+    await say(chatId, (await navText('panel_title')) + '\nChannelPosts_RoBot\n\n' + (await navText('panel_description')), {
       reply_markup: { inline_keyboard: await buildMainMenu() },
     });
     return;
@@ -432,7 +432,7 @@ export default async function (message) {
         const saved = rows.find(row => row.textKey === key);
         return `• ${key}: ${saved?.body || fallback}`;
       });
-      await say(chatId, '🧭 TEXTOS DE NAVEGACIÓN EDITABLES\\n\\n' + lines.join('\\n') + '\\n\\nEditar: /navtext CLAVE nuevo texto\\nRestaurar una clave: /navtext CLAVE default');
+      await say(chatId, '🧭 TEXTOS DE NAVEGACIÓN EDITABLES\n\n' + lines.join('\n') + '\n\nEditar: /navtext CLAVE nuevo texto\nRestaurar una clave: /navtext CLAVE default');
       return;
     }
     if (command === '/navtext') {
@@ -543,7 +543,7 @@ export default async function (message) {
         const corrected = Number(settings.textCorrectionEnabled) ? correctText(body) : body;
         let rendered = template?.body ? template.body.replaceAll('{texto}', corrected) : corrected;
         if (settings.descriptionTemplate) rendered = settings.descriptionTemplate.replaceAll('{texto}', rendered);
-        if (settings.hashtags) rendered += '\\n\\n' + settings.hashtags;
+        if (settings.hashtags) rendered += '\n\n' + settings.hashtags;
         if (format === 'RICH_MESSAGE') {
           let richMessage;
           try { richMessage = JSON.parse(rendered); } catch { return void await say(chatId, 'La plantilla RICH_MESSAGE debe ser JSON válido después de insertar {texto}.'); }
