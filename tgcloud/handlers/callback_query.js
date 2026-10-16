@@ -8,13 +8,13 @@ import {
 const OWNER_ID = 8624574996;
 const NAV_DEFAULTS = {
   panel_title: '⚙️ PANEL DE ADMINISTRACIÓN',
-  panel_description: 'Selecciona un módulo.',
-  channels: '📣 Canales', welcome: '👋 Bienvenida', captcha: '🧩 CAPTCHA',
-  blacklist: '🚫 Blacklist', routes: '🔀 Rutas', templates: '📝 Plantillas',
-  publications: '📤 Publicaciones', buttons: '🔘 Botones', formats: '🎨 Formatos',
-  reactions: '🔔 Reacciones', stars: '💳 Stars', admins: '👮 Admins',
-  stats: '📊 Estadísticas', settings: '⚙️ Configuración', close: '❌ Cerrar',
-  navigation: '🧭 Navegación', back: '⬅️ Volver al panel',
+  panel_description: 'Selecciona una sección:',
+  channels: '📢 CANALES', welcome: '👋 BIENVENIDA', captcha: '🧩 CAPTCHA',
+  blacklist: '🚫 BANEO GLOBAL', routes: '🔀 DISTRIBUCIÓN', templates: '📝 PLANTILLAS',
+  publications: '📝 CREAR PUBLICACIÓN', buttons: '🔘 BOTONES', formats: '🎨 FORMATOS',
+  reactions: '🔔 REACCIONES', stars: '⭐ PREMIUM / ESTRELLAS', admins: '👥 ADMINISTRADORES',
+  stats: '📊 ESTADÍSTICAS', settings: '⚙️ CONFIGURACIÓN', close: '❌ CERRAR', navigation: '🧭 NAVEGACIÓN',
+  back: '🔙 VOLVER',
 };
 async function navText(key) {
   const row = await db.select().from(botTexts).where(eq(botTexts.textKey, key)).get();
@@ -22,12 +22,12 @@ async function navText(key) {
 }
 async function buildMainMenu() {
   const keys = [
-    ['channels', 'welcome', 'captcha'],
-    ['blacklist', 'routes', 'templates'],
-    ['publications', 'buttons', 'formats'],
-    ['reactions', 'stars', 'admins'],
-    ['stats', 'settings', 'close'],
-    ['navigation'],
+    ['channels', 'templates', 'formats'],
+    ['buttons', 'publications', 'stars'],
+    ['welcome', 'captcha', 'blacklist'],
+    ['routes', 'reactions', 'stats'],
+    ['admins', 'settings', 'navigation'],
+    ['close'],
   ];
   const menu = [];
   for (const row of keys) {
@@ -134,7 +134,7 @@ export default async function (query) {
 
   if (section === 'open') {
     await answer(query);
-    await renderPanel((await navText('panel_title')) + '\nChannelPosts_RoBot\n' + (await navText('panel_description')));
+    await renderPanel((await navText('panel_title')) + '\nCANALES-BOT\n' + (await navText('panel_description')));
     return;
   }
   if (section === 'close') {
@@ -144,7 +144,7 @@ export default async function (query) {
   }
   if (section === 'back') {
     await answer(query);
-    await renderPanel((await navText('panel_title')) + '\nChannelPosts_RoBot\n' + (await navText('panel_description')));
+    await renderPanel((await navText('panel_title')) + '\nCANALES-BOT\n' + (await navText('panel_description')));
     return;
   }
   if (section === 'toggle') {
