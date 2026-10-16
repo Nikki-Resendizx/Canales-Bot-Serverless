@@ -217,7 +217,7 @@ export default async function (message) {
     }
     if (command === '/template_buttons') {
       const id = parseId(args[0]); const kind = args[1];
-      const rawJson = argText.slice(argText.indexOf(kind) + String(kind).length).trim();
+      const firstSpace = argText.indexOf(' '); const secondSpace = argText.indexOf(' ', firstSpace + 1);\n      const rawJson = secondSpace >= 0 ? argText.slice(secondSpace + 1).trim() : '';
       if (!Number.isSafeInteger(id) || !kind || !rawJson) return void await say(chatId, 'Uso: /template_buttons ID_CANAL TIPO JSON_INLINE_KEYBOARD');
       let keyboard;
       try { keyboard = JSON.parse(rawJson); } catch { return void await say(chatId, 'JSON no válido. Ejemplo: [[{"text":"Visitar","url":"https://t.me/"}]]'); }
