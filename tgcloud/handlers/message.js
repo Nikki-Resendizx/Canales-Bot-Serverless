@@ -212,6 +212,29 @@ export default async function (message) {
       await say(chatId, rows.length ? '📝 PLANTILLAS\n' + rows.map(t => `• ${t.kind} (${t.format}): ${t.body.slice(0,120)}`).join('\n') : 'No hay plantillas para ese canal.');
       return;
     }
+    if (command === '/template_buttons') {
+      const id = parseId(args[0]); const kind = args[1];
+      const rawJson = argText.split(/\\s+/).slice(2).join(' ');
+      if (!Number.isSafeInteger(id) || !kind || !rawJson) return void await say(chatId, 'Uso: /template_buttons ID_CANAL TIPO JSON_INLINE_KEYBOARD');
+      let keyboard;
+      try { keyboard = JSON.parse(rawJson); } catch { return void await say(chatId, 'JSON no válido. Ejemplo: [[{"text":"Visitar","url":"https://t.me/"}]]'); }
+      if (!Array.isArray(keyboard) || keyboard.length > 8 || keyboard.some(row => !Array.isArray(row) || row.length > 8 || row.some(btn => !btn || typeof btn.text !== 'string' || !(typeof btn.url === 'string' || typeof btn.callback_data === 'string')))) {
+        return void await say(chatId, 'El JSON debe ser una matriz de filas de botones con text y url o callback_data.');
+      }
+      const templateKey = `${id}:${kind}`;
+      const existing = await db.select().from(templates).where(eq(templates.templateKey, templateKey)).get();
+      if (!existing) return void await say(chatId, 'Primero crea la plantilla con /template_set ID_CANAL TIPO HTML|Markdown|MarkdownV2|OFF texto.');
+      await db.update(templates).set({ buttonsJson: JSON.stringify(keyboard), updatedBy: userId, updatedAt: now() }).where(eq(templates.templateKey, templateKey)).run();
+      await say(chatId, '✅ Botones guardados en la plantilla.');
+      return;
+    }
+    if (command === '/template_delete') {
+      const id = parseId(args[0]); const kind = args[1];
+      if (!Number.isSafeInteger(id) || !kind) return void await say(chatId, 'Uso: /template_delete ID_CANAL TIPO');
+      await db.delete(templates).where(eq(templates.templateKey, `${id}:${kind}`)).run();
+      await say(chatId, '✅ Plantilla eliminada.');
+      return;
+    }
     if (command === '/publish') {
       const id = parseId(args[0]); const body = argText.slice(String(args[0] ?? '').length).trim();
       if (!Number.isSafeInteger(id) || !body) return void await say(chatId, 'Uso: /publish ID_CANAL texto');
@@ -221,7 +244,12 @@ export default async function (message) {
       const payload = template?.body ? template.body.replaceAll('{texto}', body) : body;
       const format = String(template?.format || 'HTML').toUpperCase();
       const extra = format === 'OFF' ? {} : { parse_mode: format === 'MARKDOWN' ? 'Markdown' : format === 'MARKDOWNV2' ? 'MarkdownV2' : 'HTML' };
-      const sent = await api.sendMessage({ chat_id: id, text: payload, ...extra });
+      let replyMarkup = {};
+      try {
+        const keyboard = JSON.parse(template?.buttonsJson || '[]');
+        if (Array.isArray(keyboard) && keyboard.length) replyMarkup = { reply_markup: { inline_keyboard: keyboard } };
+      } catch { /* plantilla antigua o JSON dañado: publicar sin botones */ }
+      const sent = await api.sendMessage({ chat_id: id, text: payload, ...extra, ...replyMarkup });
       const publicationKey = `${id}:${sent.message_id ?? now()}`;
       await db.insert(publications).values({ publicationKey, channelId: id, sourceMessageId: sent.message_id ?? null, status: 'published', starsPrice: 0, payloadJson: JSON.stringify({ text: payload, format }), createdBy: userId, createdAt: now(), updatedAt: now() }).run();
       await say(chatId, `✅ Publicación enviada a ${row.title || id}.`);
