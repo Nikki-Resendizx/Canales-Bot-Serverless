@@ -1,6 +1,6 @@
 import { api, db } from 'sdk';
 import { eq } from 'sdk/db';
-import { channelSettings, captchaSessions, globalBans, knownUsers } from '../schema.js';
+import { channels, channelSettings, captchaSessions, globalBans, knownUsers } from '../schema.js';
 
 function renderWelcome(template, user) {
   const name = [user.first_name, user.last_name].filter(Boolean).join(' ') || 'usuario';
@@ -32,6 +32,9 @@ export default async function (update) {
       lastSeenAt: Date.now(),
     },
   }).run();
+
+  const connectedChannel = await db.select().from(channels).where(eq(channels.chatId, Number(chat.id))).get();
+  if (!connectedChannel || !Number(connectedChannel.active)) return;
 
   const banned = await db.select().from(globalBans).where(eq(globalBans.userId, user.id)).get();
   if (banned) {
