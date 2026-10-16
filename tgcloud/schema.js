@@ -102,3 +102,12 @@ export const reactionCountReports = table('reaction_count_reports', {
   countsJson: text('counts_json').notNull().default('[]'),
   createdAt: integer('created_at').notNull(),
 });
+
+
+// Usuarios que el bot ya ha visto; permite resolver @username sin inventar IDs.
+export const knownUsers = table('known_users', {
+  userId: integer('user_id').primaryKey(),
+  username: text('username').notNull().default(''),
+  displayName: text('display_name').notNull().default(''),
+  lastSeenAt: integer('last_seen_at').notNull(),
+});
