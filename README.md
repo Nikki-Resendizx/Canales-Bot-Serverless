@@ -8,13 +8,14 @@ La base Serverless y el panel administrativo ampliado están desplegados desde G
 
 ### Funciones implementadas en el código
 
-- `/start`, `/help` y panel privado `/admin` con tres botones por fila.
+- `/start`, `/help` y panel privado `/admin` con tres botones por fila; la navegación de botones edita el mismo mensaje del panel.
+- Textos editables de navegación con `/navtexts` y `/navtext CLAVE texto`; se pueden restaurar con `/navtext CLAVE default`.
 - Gestión de canales: registrar por ID y detectar el ID de un canal reenviando una publicación de ese canal; listar y quitar canales.
 - Bienvenida editable por canal con variables `{mencion}`, `{nombre}`, `{username}` y `{userid}`.
 - CAPTCHA aritmético por canal. Una respuesta incorrecta bloquea permanentemente al usuario en ese grupo; el vencimiento se comprueba cuando llega una respuesta, no mediante un temporizador de fondo.
 - Blacklist global con resolución de `@username` cuando el bot ya ha observado a ese usuario, intento de baneo en todos los chats conectados y desbaneo global al retirarlo.
 - Rutas de publicación entre varios canales origen y un destino; se conserva el reenvío cuando Telegram entrega metadatos de mensaje reenviado.
-- Plantillas por canal: crear/editar, listar, borrar, formatos HTML/Markdown/MarkdownV2/OFF y botones inline en JSON.
+- Plantillas por canal: crear/editar, listar, borrar, formatos HTML/Markdown/MarkdownV2/OFF/RICH_MESSAGE y botones inline en JSON. RICH_MESSAGE usa `sendRichMessage` con JSON válido en `html`, `markdown` o `blocks`.
 - Editor por canal: corrección básica de espacios/puntuación y mayúscula inicial, hashtags, plantilla de descripción con `{texto}` y texto de respaldo si falta el contenido.
 - Panel y comandos de canales limitados a los canales asignados a cada administrador; el propietario conserva acceso global.
 - Publicaciones de texto y copia de un mensaje al canal mediante `/publish`.
@@ -40,6 +41,7 @@ La base Serverless y el panel administrativo ampliado están desplegados desde G
 - `/blacklist_add ID|@username [motivo]` o `/globalban ID|@username [motivo]`
 - `/blacklist_remove ID|@username` o `/globalunban ID|@username`
 - `/route_add ORIGEN DESTINO`, `/route_remove ORIGEN DESTINO`, `/routes`
+- `/navtexts` y `/navtext CLAVE texto` — editar etiquetas del panel; `/navtext CLAVE default` restaura el texto original.
 - `/template_set ID_CANAL TIPO FORMATO texto`
 - `/template_list ID_CANAL`
 - `/template_buttons ID_CANAL TIPO JSON`
