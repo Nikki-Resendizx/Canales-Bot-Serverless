@@ -22,6 +22,10 @@ export const channelSettings = table('channel_settings', {
   captchaEnabled: integer('captcha_enabled').notNull().default(0),
   captchaQuestion: text('captcha_question').notNull().default(''),
   captchaAnswer: text('captcha_answer').notNull().default(''),
+  textCorrectionEnabled: integer('text_correction_enabled').notNull().default(0),
+  hashtags: text('hashtags').notNull().default(''),
+  descriptionTemplate: text('description_template').notNull().default(''),
+  missingDataText: text('missing_data_text').notNull().default(''),
   reactionReportChatId: integer('reaction_report_chat_id'),
   updatedAt: integer('updated_at').notNull(),
 });
