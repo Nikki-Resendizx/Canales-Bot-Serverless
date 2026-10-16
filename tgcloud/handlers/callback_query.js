@@ -227,7 +227,6 @@ export default async function (query) {
     return;
   }
   if (section === 'channeladd') {
-    await answer(query);
     await renderPanel('➕ AGREGAR CANAL\n\nPulsa el botón del mensaje siguiente y elige el canal. Telegram te pedirá agregar el bot como administrador y seleccionar los permisos solicitados. Cuando Telegram confirme que el bot es administrador, el canal se registrará automáticamente.\n\nSi el selector no está disponible en tu cliente, usa “Añadir por ID”.', [[{ text: await navText('back'), callback_data: 'admin:channels' }]]);
     await api.sendMessage({
       chat_id: chatId,
