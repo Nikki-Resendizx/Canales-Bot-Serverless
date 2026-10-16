@@ -2,17 +2,41 @@ import { api, db } from 'sdk';
 import { eq } from 'sdk/db';
 import {
   admins, captchaSessions, channels, channelSettings, channelRoutes,
-  templates, globalBans, publications, purchases, reactionReports,
+  templates, globalBans, publications, purchases, reactionReports, botTexts,
 } from '../schema.js';
 
 const OWNER_ID = 8624574996;
-const MAIN_MENU = [
-  [{ text: '📣 Canales', callback_data: 'admin:channels' }, { text: '👋 Bienvenida', callback_data: 'admin:welcome' }, { text: '🧩 CAPTCHA', callback_data: 'admin:captcha' }],
-  [{ text: '🚫 Blacklist', callback_data: 'admin:blacklist' }, { text: '🔀 Rutas', callback_data: 'admin:routes' }, { text: '📝 Plantillas', callback_data: 'admin:templates' }],
-  [{ text: '📤 Publicaciones', callback_data: 'admin:publications' }, { text: '🔘 Botones', callback_data: 'admin:buttons' }, { text: '🎨 Formatos', callback_data: 'admin:formats' }],
-  [{ text: '🔔 Reacciones', callback_data: 'admin:reactions' }, { text: '💳 Stars', callback_data: 'admin:stars' }, { text: '👮 Admins', callback_data: 'admin:admins' }],
-  [{ text: '📊 Estadísticas', callback_data: 'admin:stats' }, { text: '⚙️ Configuración', callback_data: 'admin:settings' }, { text: '❌ Cerrar', callback_data: 'admin:close' }],
-];
+const NAV_DEFAULTS = {
+  panel_title: '⚙️ PANEL DE ADMINISTRACIÓN',
+  panel_description: 'Selecciona un módulo.',
+  channels: '📣 Canales', welcome: '👋 Bienvenida', captcha: '🧩 CAPTCHA',
+  blacklist: '🚫 Blacklist', routes: '🔀 Rutas', templates: '📝 Plantillas',
+  publications: '📤 Publicaciones', buttons: '🔘 Botones', formats: '🎨 Formatos',
+  reactions: '🔔 Reacciones', stars: '💳 Stars', admins: '👮 Admins',
+  stats: '📊 Estadísticas', settings: '⚙️ Configuración', close: '❌ Cerrar',
+  navigation: '🧭 Navegación', back: '⬅️ Volver al panel',
+};
+async function navText(key) {
+  const row = await db.select().from(botTexts).where(eq(botTexts.textKey, key)).get();
+  return row?.body || NAV_DEFAULTS[key] || key;
+}
+async function buildMainMenu() {
+  const keys = [
+    ['channels', 'welcome', 'captcha'],
+    ['blacklist', 'routes', 'templates'],
+    ['publications', 'buttons', 'formats'],
+    ['reactions', 'stars', 'admins'],
+    ['stats', 'settings', 'close'],
+    ['navigation'],
+  ];
+  const menu = [];
+  for (const row of keys) {
+    const buttons = [];
+    for (const key of row) buttons.push({ text: await navText(key), callback_data: key === 'close' ? 'admin:close' : 'admin:' + key });
+    menu.push(buttons);
+  }
+  return menu;
+}
 
 async function isAdmin(userId) {
   if (Number(userId) === OWNER_ID) return true;
@@ -74,7 +98,7 @@ export default async function (query) {
   const userId = Number(query.from?.id);
   const message = query.message;
   const chatId = Number(message?.chat?.id);
-  const renderPanel = (text, keyboard = MAIN_MENU) => sendPanel(chatId, text, keyboard, message?.message_id);
+  const renderPanel = async (text, keyboard = null) => sendPanel(chatId, text, keyboard || await buildMainMenu(), message?.message_id);
 
   if (data.startsWith('captcha:')) {
     const [, rawChatId, rawUserId, chosenAnswer] = data.split(':');
@@ -110,7 +134,7 @@ export default async function (query) {
 
   if (section === 'open') {
     await answer(query);
-    await sendPanel(chatId, '⚙️ PANEL DE ADMINISTRACIÓN\nChannelPosts_RoBot\nSelecciona un módulo.');
+    await renderPanel('⚙️ PANEL DE ADMINISTRACIÓN\nChannelPosts_RoBot\nSelecciona un módulo.');
     return;
   }
   if (section === 'close') {
@@ -120,7 +144,7 @@ export default async function (query) {
   }
   if (section === 'back') {
     await answer(query);
-    await sendPanel(chatId, '⚙️ PANEL DE ADMINISTRACIÓN\nChannelPosts_RoBot\nSelecciona un módulo.');
+    await renderPanel('⚙️ PANEL DE ADMINISTRACIÓN\nChannelPosts_RoBot\nSelecciona un módulo.');
     return;
   }
   if (section === 'toggle') {
@@ -145,15 +169,19 @@ export default async function (query) {
     }
     const keyboard = channelButtons(settingsRows, kind);
     keyboard.push(backRow());
-    await sendPanel(chatId, (kind === 'welcome' ? '👋 BIENVENIDA POR CANAL' : '🧩 CAPTCHA POR CANAL') + '\nPulsa un canal para alternar la función.', keyboard);
+    await renderPanel((kind === 'welcome' ? '👋 BIENVENIDA POR CANAL' : '🧩 CAPTCHA POR CANAL') + '\nPulsa un canal para alternar la función.', keyboard);
     return;
   }
 
   await answer(query);
+  if (section === 'navigation') {
+    await renderPanel('🧭 TEXTOS DE NAVEGACIÓN\\n\\nUsa /navtexts para consultar las claves. Edita con /navtext CLAVE nuevo texto. Para restaurar: /navtext CLAVE default.\\n\\nClaves: panel_title, panel_description, channels, welcome, captcha, blacklist, routes, templates, publications, buttons, formats, reactions, stars, admins, stats, settings, close, navigation, back.', [[{ text: await navText('back'), callback_data: 'admin:back' }]]);
+    return;
+  }
   if (section === 'channels') {
     const rows = await managedChannels(userId);
     const text = rows.length ? '📣 CANALES REGISTRADOS\n' + rows.map(c => `• ${c.title || 'Sin título'} — ${c.chatId} — ${c.active ? 'activo' : 'inactivo'}`).join('\n') : 'No hay canales registrados.';
-    await sendPanel(chatId, text + '\n\nQuitar: /delchannel ID', [
+    await renderPanel(text + '\n\nQuitar: /delchannel ID', [
       [{ text: '➕ Añadir por ID', callback_data: 'admin:channeladd' }, { text: '🔎 Detectar canal', callback_data: 'admin:detectchannel' }],
       [{ text: '⬅️ Volver al panel', callback_data: 'admin:back' }],
     ]);
@@ -168,13 +196,13 @@ export default async function (query) {
     }
     const keyboard = channelButtons(settingsRows, section);
     keyboard.push(backRow());
-    await sendPanel(chatId, (section === 'welcome' ? '👋 BIENVENIDA POR CANAL' : '🧩 CAPTCHA POR CANAL') + '\nPulsa un canal para activar/desactivar.\n' + (section === 'welcome' ? 'Editar texto: /welcometext ID texto' : 'Fallo o vencimiento aplica bloqueo permanente.'), keyboard);
+    await renderPanel((section === 'welcome' ? '👋 BIENVENIDA POR CANAL' : '🧩 CAPTCHA POR CANAL') + '\nPulsa un canal para activar/desactivar.\n' + (section === 'welcome' ? 'Editar texto: /welcometext ID texto' : 'Fallo o vencimiento aplica bloqueo permanente.'), keyboard);
     return;
   }
   if (section === 'admins') {
-    if (userId !== OWNER_ID) { await sendPanel(chatId, '👮 Solo el propietario puede gestionar administradores.', [[{ text: '⬅️ Volver', callback_data: 'admin:back' }]]); return; }
+    if (userId !== OWNER_ID) { await renderPanel('👮 Solo el propietario puede gestionar administradores.', [[{ text: '⬅️ Volver', callback_data: 'admin:back' }]]); return; }
     const rows = await db.select().from(admins).all();
-    await sendPanel(chatId, '👮 ADMINISTRADORES\n' + (rows.length ? rows.map(a => `• ${a.userId} (${a.role})`).join('\n') : 'Sin administradores adicionales.') + '\n\nAñadir: /addadmin ID\nEliminar: /deladmin ID', [[{ text: '⬅️ Volver', callback_data: 'admin:back' }]]);
+    await renderPanel('👮 ADMINISTRADORES\n' + (rows.length ? rows.map(a => `• ${a.userId} (${a.role})`).join('\n') : 'Sin administradores adicionales.') + '\n\nAñadir: /addadmin ID\nEliminar: /deladmin ID', [[{ text: '⬅️ Volver', callback_data: 'admin:back' }]]);
     return;
   }
   if (section === 'stats') {
@@ -184,29 +212,29 @@ export default async function (query) {
       db.select().from(publications).all(), db.select().from(purchases).all(),
       db.select().from(reactionReports).all(),
     ]);
-    await sendPanel(chatId, `📊 ESTADÍSTICAS\nCanales: ${c.length}\nRutas: ${r.length}\nPlantillas: ${t.length}\nBlacklist: ${b.length}\nPublicaciones: ${p.length}\nCompras registradas: ${purchaseRows.length}\nReacciones identificadas registradas: ${reactionRows.length}`, [[{ text: '⬅️ Volver', callback_data: 'admin:back' }]]);
+    await renderPanel(`📊 ESTADÍSTICAS\nCanales: ${c.length}\nRutas: ${r.length}\nPlantillas: ${t.length}\nBlacklist: ${b.length}\nPublicaciones: ${p.length}\nCompras registradas: ${purchaseRows.length}\nReacciones identificadas registradas: ${reactionRows.length}`, [[{ text: '⬅️ Volver', callback_data: 'admin:back' }]]);
     return;
   }
   if (section === 'stars') {
-    await sendPanel(chatId, moduleText('stars'), [[{ text: '⬅️ Volver', callback_data: 'admin:back' }]]);
+    await renderPanel(moduleText('stars'), [[{ text: '⬅️ Volver', callback_data: 'admin:back' }]]);
     return;
   }
   if (section === 'channeladd') {
-    await sendPanel(chatId, '➕ AÑADIR CANAL\nEnvía en este chat: /addchannel ID Título. El bot debe ser administrador del canal.', [[{ text: '⬅️ Volver a canales', callback_data: 'admin:channels' }]]);
+    await renderPanel('➕ AÑADIR CANAL\nEnvía en este chat: /addchannel ID Título. El bot debe ser administrador del canal.', [[{ text: '⬅️ Volver a canales', callback_data: 'admin:channels' }]]);
     return;
   }
   if (section === 'detectchannel') {
-    await sendPanel(chatId, '🔎 DETECTAR CANAL\n1. Reenvía al bot una publicación del canal que quieres conectar.\n2. Responde a esa publicación reenviada con: /addchannel Título\nEl bot leerá el ID del canal desde los metadatos del reenvío; si Telegram oculta esos metadatos, usa el ID manualmente.', [[{ text: '⬅️ Volver a canales', callback_data: 'admin:channels' }]]);
+    await renderPanel('🔎 DETECTAR CANAL\n1. Reenvía al bot una publicación del canal que quieres conectar.\n2. Responde a esa publicación reenviada con: /addchannel Título\nEl bot leerá el ID del canal desde los metadatos del reenvío; si Telegram oculta esos metadatos, usa el ID manualmente.', [[{ text: '⬅️ Volver a canales', callback_data: 'admin:channels' }]]);
     return;
   }
   const text = moduleText(section);
   if (text) {
-    await sendPanel(chatId, text, [[{ text: '📚 Ver comandos', callback_data: 'admin:help' }, { text: '⬅️ Volver', callback_data: 'admin:back' }]]);
+    await renderPanel(text, [[{ text: '📚 Ver comandos', callback_data: 'admin:help' }, { text: '⬅️ Volver', callback_data: 'admin:back' }]]);
     return;
   }
   if (section === 'help') {
-    await sendPanel(chatId, 'Comandos generales: /help, /channels, /addchannel, /delchannel, /welcome, /welcometext, /captcha, /setreport, /blacklist_add, /blacklist_remove, /blacklist, /route_add, /route_remove, /routes, /template_set, /template_list, /template_buttons, /template_delete, /publish, /stats, /addadmin y /deladmin.', [[{ text: '⬅️ Volver', callback_data: 'admin:back' }]]);
+    await renderPanel('Comandos generales: /help, /channels, /addchannel, /delchannel, /welcome, /welcometext, /captcha, /setreport, /blacklist_add, /blacklist_remove, /blacklist, /route_add, /route_remove, /routes, /template_set, /template_list, /template_buttons, /template_delete, /publish, /stats, /addadmin y /deladmin.', [[{ text: '⬅️ Volver', callback_data: 'admin:back' }]]);
     return;
   }
-  await sendPanel(chatId, 'Sección no reconocida.', [[{ text: '⬅️ Volver', callback_data: 'admin:back' }]]);
+  await renderPanel('Sección no reconocida.', [[{ text: '⬅️ Volver', callback_data: 'admin:back' }]]);
 }
