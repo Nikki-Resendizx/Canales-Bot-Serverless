@@ -177,6 +177,9 @@ export default async function (message) {
     if (command === '/route_add') {
       const source = parseId(args[0]); const destination = parseId(args[1]);
       if (!Number.isSafeInteger(source) || !Number.isSafeInteger(destination) || source === destination) return void await say(chatId, 'Uso: /route_add ORIGEN DESTINO (deben ser distintos IDs numéricos).');
+      const sourceRow = await db.select().from(channels).where(eq(channels.chatId, source)).get();
+      const destinationRow = await db.select().from(channels).where(eq(channels.chatId, destination)).get();
+      if (!sourceRow || !destinationRow) return void await say(chatId, 'Registra primero ambos canales con /addchannel ID título.');
       const routeKey = `${source}:${destination}`;
       await db.insert(channelRoutes).values({ routeKey, sourceChatId: source, destinationChatId: destination, createdBy: userId, createdAt: now() })
         .onConflictDoUpdate({ target: channelRoutes.routeKey, set: { sourceChatId: source, destinationChatId: destination, createdBy: userId, createdAt: now() } }).run();
@@ -237,21 +240,34 @@ export default async function (message) {
     }
     if (command === '/publish') {
       const id = parseId(args[0]); const body = argText.slice(String(args[0] ?? '').length).trim();
-      if (!Number.isSafeInteger(id) || !body) return void await say(chatId, 'Uso: /publish ID_CANAL texto');
+      if (!Number.isSafeInteger(id)) return void await say(chatId, 'Uso: /publish ID_CANAL texto, o responde a un mensaje multimedia con /publish ID_CANAL.');
       const row = await db.select().from(channels).where(eq(channels.chatId, id)).get();
       if (!row || !row.active) return void await say(chatId, '⛔ Ese canal no está registrado o está inactivo.');
       const template = await db.select().from(templates).where(eq(templates.templateKey, `${id}:default`)).get();
-      const payload = template?.body ? template.body.replaceAll('{texto}', body) : body;
-      const format = String(template?.format || 'HTML').toUpperCase();
-      const extra = format === 'OFF' ? {} : { parse_mode: format === 'MARKDOWN' ? 'Markdown' : format === 'MARKDOWNV2' ? 'MarkdownV2' : 'HTML' };
       let replyMarkup = {};
       try {
         const keyboard = JSON.parse(template?.buttonsJson || '[]');
         if (Array.isArray(keyboard) && keyboard.length) replyMarkup = { reply_markup: { inline_keyboard: keyboard } };
       } catch { /* plantilla antigua o JSON dañado: publicar sin botones */ }
-      const sent = await api.sendMessage({ chat_id: id, text: payload, ...extra, ...replyMarkup });
-      const publicationKey = `${id}:${sent.message_id ?? now()}`;
-      await db.insert(publications).values({ publicationKey, channelId: id, sourceMessageId: sent.message_id ?? null, status: 'published', starsPrice: 0, payloadJson: JSON.stringify({ text: payload, format }), createdBy: userId, createdAt: now(), updatedAt: now() }).run();
+      let sent;
+      let payload;
+      let format = String(template?.format || 'HTML').toUpperCase();
+      if (!body && message.reply_to_message?.message_id) {
+        sent = await api.copyMessage({
+          chat_id: id, from_chat_id: chatId,
+          message_id: message.reply_to_message.message_id,
+          ...replyMarkup,
+        });
+        payload = JSON.stringify({ copiedMessageId: message.reply_to_message.message_id, type: 'media_or_forwarded_message' });
+      } else {
+        if (!body) return void await say(chatId, 'Escribe texto o responde a una foto/vídeo/documento con /publish ID_CANAL.');
+        payload = template?.body ? template.body.replaceAll('{texto}', body) : body;
+        const extra = format === 'OFF' ? {} : { parse_mode: format === 'MARKDOWN' ? 'Markdown' : format === 'MARKDOWNV2' ? 'MarkdownV2' : 'HTML' };
+        sent = await api.sendMessage({ chat_id: id, text: payload, ...extra, ...replyMarkup });
+      }
+      const messageId = sent.message_id ?? sent.message_ids?.[0] ?? now();
+      const publicationKey = `${id}:${messageId}`;
+      await db.insert(publications).values({ publicationKey, channelId: id, sourceMessageId: messageId, status: 'published', starsPrice: 0, payloadJson: JSON.stringify({ payload, format }), createdBy: userId, createdAt: now(), updatedAt: now() }).run();
       await say(chatId, `✅ Publicación enviada a ${row.title || id}.`);
       return;
     }
