@@ -24,7 +24,7 @@ export default async function (post) {
           `Canal: ${post.chat.title ?? post.chat.username ?? sourceId}`,
           `Tipo: ${type}`,
           `Publicación: ${postLink}`,
-        ].join('\\n'),
+        ].join('\n'),
         link_preview_options: { is_disabled: true },
       });
     } catch (error) {
