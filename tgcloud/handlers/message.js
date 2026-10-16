@@ -108,6 +108,8 @@ const HELP = [
   '/route_remove ORIGEN DESTINO — borrar ruta',
   '/routes — listar rutas',
   '/template_set ID_CANAL TIPO FORMATO texto — crear/editar plantilla',
+  'Tipos de plantilla: default, text, photo, video, album, link y forward.',
+  'Variables de plantilla: {contenido}, {titulo}, {descripcion}, {enlace}, {hashtags}, {fecha}, {canal} (también {texto}).',
   '/template_list ID_CANAL — listar plantillas',
   '/template_buttons ID_CANAL TIPO JSON — configurar botones inline',
   '/template_delete ID_CANAL TIPO — borrar plantilla',
@@ -394,15 +396,16 @@ export default async function (message) {
       return;
     }
     if (command === '/hashtags' || command === '/description' || command === '/missingdata') {
-      const id = parseId(args[0]); const value = argText.slice(String(args[0] ?? '').length).trim();
+      const id = parseId(args[0]); let value = argText.slice(String(args[0] ?? '').length).trim();
       if (!Number.isSafeInteger(id) || !value) return void await say(chatId, `Uso: ${command} ID_CANAL texto`);
       if (!(await canManageChannel(userId, id))) return void await say(chatId, '⛔ Ese canal no existe o no está asignado a tu administración.');
       if (value.length > 1000) return void await say(chatId, 'El texto supera el límite de 1000 caracteres.');
       await ensureSettings(id);
+      if (command === '/hashtags' && value.toLowerCase() === 'off') value = '';
       const column = command === '/hashtags' ? 'hashtags' : command === '/description' ? 'descriptionTemplate' : 'missingDataText';
       await db.update(channelSettings).set({ [column]: value, updatedAt: now() }).where(eq(channelSettings.channelId, id)).run();
       const label = command === '/hashtags' ? 'Hashtags' : command === '/description' ? 'Plantilla de descripción' : 'Texto de respaldo para datos faltantes';
-      await say(chatId, `✅ ${label} guardado para el canal ${id}. En descripción puedes usar {texto}.`);
+      await say(chatId, command === '/hashtags' && !value ? `✅ Hashtags eliminados para el canal ${id}.` : `✅ ${label} guardado para el canal ${id}. Puedes usar {contenido}, {texto}, {canal}, {fecha}, {enlace} y {hashtags} donde corresponda.`);
       return;
     }
     if (command === '/blacklist_add' || command === '/globalban') {
@@ -522,9 +525,9 @@ export default async function (message) {
       return;
     }
     if (command === '/template_set') {
-      const id = parseId(args[0]); const kind = args[1]; const format = String(args[2] || 'HTML').toUpperCase();
+      const id = parseId(args[0]); const kind = String(args[1] || '').toLowerCase(); const format = String(args[2] || 'HTML').toUpperCase();
       const body = argText.split(/\s+/).slice(3).join(' ');
-      if (!Number.isSafeInteger(id) || !kind || !body || !['HTML', 'MARKDOWN', 'MARKDOWNV2', 'OFF', 'RICH_MESSAGE'].includes(format)) return void await say(chatId, 'Uso: /template_set ID_CANAL TIPO HTML|Markdown|MarkdownV2|OFF|RICH_MESSAGE texto. RICH_MESSAGE requiere JSON válido.');
+      if (!Number.isSafeInteger(id) || !['default', 'text', 'photo', 'video', 'album', 'link', 'forward'].includes(kind) || !body || !['HTML', 'MARKDOWN', 'MARKDOWNV2', 'OFF', 'RICH_MESSAGE'].includes(format)) return void await say(chatId, 'Uso: /template_set ID_CANAL default|text|photo|video|album|link|forward HTML|Markdown|MarkdownV2|OFF|RICH_MESSAGE texto. RICH_MESSAGE requiere JSON válido.');
       if (!(await canManageChannel(userId, id))) return void await say(chatId, '⛔ Ese canal no existe o no está asignado a tu administración.');
       const templateKey = `${id}:${kind}`;
       await db.insert(templates).values({ templateKey, channelId: id, kind, body, format, buttonsJson: '[]', updatedBy: userId, updatedAt: now() })
@@ -600,7 +603,13 @@ export default async function (message) {
       if (!Number.isSafeInteger(id)) return void await say(chatId, 'Uso: /publish ID_CANAL texto, o responde a un mensaje multimedia con /publish ID_CANAL.');
       const row = await db.select().from(channels).where(eq(channels.chatId, id)).get();
       if (!row || !row.active || !(await canManageChannel(userId, id))) return void await say(chatId, '⛔ Ese canal no está activo o no está asignado a tu administración.');
-      const template = await db.select().from(templates).where(eq(templates.templateKey, `${id}:default`)).get();
+      const reply = message.reply_to_message;
+      const kind = reply
+        ? (reply.media_group_id ? 'album' : (reply.photo ? 'photo' : reply.video ? 'video' : (reply.forward_origin || reply.forward_from || reply.forward_from_chat || reply.forward_sender_name) ? 'forward' : 'text'))
+        : (/https?:\\/\\//i.test(body) ? 'link' : 'text');
+      const specificTemplate = await db.select().from(templates).where(eq(templates.templateKey, `${id}:${kind}`)).get();
+      const defaultTemplate = await db.select().from(templates).where(eq(templates.templateKey, `${id}:default`)).get();
+      const template = specificTemplate || defaultTemplate;
       const settings = await ensureSettings(id);
       if (!body && !message.reply_to_message?.message_id && settings.missingDataText) body = settings.missingDataText;
       let replyMarkup = {};
@@ -642,9 +651,18 @@ export default async function (message) {
           sent = await api.sendRichMessage({ chat_id: id, rich_message: richMessage, ...replyMarkup });
           payload = { rich_message: richMessage, format };
         } else {
-          let rendered = template?.body ? template.body.replaceAll('{texto}', corrected) : corrected;
-          if (settings.descriptionTemplate) rendered = settings.descriptionTemplate.replaceAll('{texto}', rendered);
-          if (settings.hashtags) rendered += '\n\n' + settings.hashtags;
+          const title = corrected.split(/\\r?\\n/)[0] || '';
+          const linkMatch = corrected.match(/https?:\\/\\/[^\\s]+/i);
+          const values = {
+            '{contenido}': corrected, '{texto}': corrected, '{titulo}': title,
+            '{descripcion}': corrected, '{enlace}': linkMatch ? linkMatch[0] : '',
+            '{hashtags}': settings.hashtags || '', '{fecha}': new Date().toLocaleDateString('es-MX', { timeZone: 'America/Mexico_City' }),
+            '{canal}': String(row.title || id),
+          };
+          const applyVariables = value => Object.entries(values).reduce((result, [key, replacement]) => result.replaceAll(key, replacement), String(value ?? ''));
+          let rendered = template?.body ? applyVariables(template.body) : corrected;
+          if (settings.descriptionTemplate) rendered = applyVariables(settings.descriptionTemplate.replaceAll('{texto}', rendered).replaceAll('{contenido}', rendered));
+          if (settings.hashtags && !rendered.includes(settings.hashtags)) rendered += '\n\n' + settings.hashtags;
           const extra = format === 'OFF' ? {} : { parse_mode: format === 'MARKDOWN' ? 'Markdown' : format === 'MARKDOWNV2' ? 'MarkdownV2' : 'HTML' };
           sent = await api.sendMessage({ chat_id: id, text: rendered, ...extra, ...replyMarkup });
           payload = { text: rendered, format };
