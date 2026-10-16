@@ -2,10 +2,10 @@ import { api, db } from 'sdk';
 import { eq } from 'sdk/db';
 import { admins, captchaSessions } from '../schema.js';
 
-const OWNER_ID = 0; // Sustituir por el ID numérico del propietario antes de producción.
+const OWNER_ID = 8624574996;
 
 async function isAdmin(userId) {
-  if (OWNER_ID !== 0 && Number(userId) === OWNER_ID) return true;
+  if (Number(userId) === OWNER_ID) return true;
   return Boolean(await db.select().from(admins).where(eq(admins.userId, Number(userId))).get());
 }
 
