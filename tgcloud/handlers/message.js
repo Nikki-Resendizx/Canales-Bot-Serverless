@@ -606,7 +606,7 @@ export default async function (message) {
       const reply = message.reply_to_message;
       const kind = reply
         ? (reply.media_group_id ? 'album' : (reply.photo ? 'photo' : reply.video ? 'video' : (reply.forward_origin || reply.forward_from || reply.forward_from_chat || reply.forward_sender_name) ? 'forward' : 'text'))
-        : (/https?:\\/\\//i.test(body) ? 'link' : 'text');
+        : (body.includes('http://') || body.includes('https://') ? 'link' : 'text');
       const specificTemplate = await db.select().from(templates).where(eq(templates.templateKey, `${id}:${kind}`)).get();
       const defaultTemplate = await db.select().from(templates).where(eq(templates.templateKey, `${id}:default`)).get();
       const template = specificTemplate || defaultTemplate;
@@ -652,7 +652,7 @@ export default async function (message) {
           payload = { rich_message: richMessage, format };
         } else {
           const title = corrected.split(/\\r?\\n/)[0] || '';
-          const linkMatch = corrected.match(/https?:\\/\\/[^\\s]+/i);
+          const linkMatch = corrected.match(/https?:\/\/\S+/i);
           const values = {
             '{contenido}': corrected, '{texto}': corrected, '{titulo}': title,
             '{descripcion}': corrected, '{enlace}': linkMatch ? linkMatch[0] : '',
