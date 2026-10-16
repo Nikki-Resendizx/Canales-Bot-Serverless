@@ -205,7 +205,7 @@ export default async function (message) {
   }
 
   if (text === '/start' || text.startsWith('/start ')) {
-    const startPayload = text.split(/\\s+/)[1] || '';
+    const startPayload = text.split(/\s+/)[1] || '';
     if (startPayload.startsWith('buy_')) {
       if (!isPrivate) {
         await say(chatId, 'Abre el enlace en el chat privado del bot para comprar esta publicación.');
