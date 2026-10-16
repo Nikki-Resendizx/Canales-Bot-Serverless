@@ -1,6 +1,6 @@
 import { table, integer, text } from 'sdk/db';
 
-// Claves explícitas para mantener el esquema sencillo y compatible con SQLite.
+// Sin claves foráneas: los vínculos se validan desde los handlers.
 export const admins = table('admins', {
   userId: integer('user_id').primaryKey(),
   role: text('role').notNull().default('admin'),
@@ -22,6 +22,7 @@ export const channelSettings = table('channel_settings', {
   captchaEnabled: integer('captcha_enabled').notNull().default(0),
   captchaQuestion: text('captcha_question').notNull().default(''),
   captchaAnswer: text('captcha_answer').notNull().default(''),
+  reactionReportChatId: integer('reaction_report_chat_id'),
   updatedAt: integer('updated_at').notNull(),
 });
 
@@ -47,6 +48,40 @@ export const channelRoutes = table('channel_routes', {
   destinationChatId: integer('destination_chat_id').notNull(),
   createdBy: integer('created_by').notNull(),
   createdAt: integer('created_at').notNull(),
+});
+
+export const templates = table('templates', {
+  templateKey: text('template_key').primaryKey(),
+  channelId: integer('channel_id').notNull(),
+  kind: text('kind').notNull().default('default'),
+  body: text('body').notNull().default(''),
+  format: text('format').notNull().default('HTML'),
+  buttonsJson: text('buttons_json').notNull().default('[]'),
+  updatedBy: integer('updated_by').notNull(),
+  updatedAt: integer('updated_at').notNull(),
+});
+
+export const publications = table('publications', {
+  publicationKey: text('publication_key').primaryKey(),
+  channelId: integer('channel_id').notNull(),
+  sourceMessageId: integer('source_message_id'),
+  status: text('status').notNull().default('draft'),
+  starsPrice: integer('stars_price').notNull().default(0),
+  payloadJson: text('payload_json').notNull().default('{}'),
+  createdBy: integer('created_by').notNull(),
+  createdAt: integer('created_at').notNull(),
+  updatedAt: integer('updated_at').notNull(),
+});
+
+export const purchases = table('purchases', {
+  purchaseKey: text('purchase_key').primaryKey(),
+  publicationKey: text('publication_key').notNull(),
+  buyerId: integer('buyer_id').notNull(),
+  telegramChargeId: text('telegram_charge_id').notNull().default(''),
+  providerChargeId: text('provider_charge_id').notNull().default(''),
+  status: text('status').notNull().default('pending'),
+  createdAt: integer('created_at').notNull(),
+  updatedAt: integer('updated_at').notNull(),
 });
 
 export const reactionReports = table('reaction_reports', {
