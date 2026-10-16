@@ -145,7 +145,7 @@ export default async function (query) {
     return;
   }
   if (section === 'welcome' || section === 'captcha') {
-    const rows = await db.select().from(channels).all();
+    const rows = await managedChannels(userId);
     const settingsRows = [];
     for (const channel of rows) {
       const setting = await db.select().from(channelSettings).where(eq(channelSettings.channelId, channel.chatId)).get();
