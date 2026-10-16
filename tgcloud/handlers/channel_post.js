@@ -9,6 +9,8 @@ export default async function (post) {
   if (!post?.chat?.id || !post?.message_id) return;
   const sourceId = Number(post.chat.id);
   const connected = await db.select().from(channels).where(eq(channels.chatId, sourceId)).get();
+  // Un canal pausado no debe generar avisos ni disparar rutas automáticas.
+  if (connected && !Number(connected.active)) return;
   if (connected && Number(connected.active) && sourceId !== ALERTS_CHAT_ID && sourceId !== REACTION_REPORT_CHAT_ID) {
     const postLink = post.chat.username
       ? `https://t.me/${post.chat.username}/${post.message_id}`
