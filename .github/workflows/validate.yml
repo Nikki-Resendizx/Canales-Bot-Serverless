@@ -56,9 +56,9 @@ jobs:
           done
           echo "Could not safely deploy after 3 attempts."
           exit 1
-      - name: Apply safe database schema changes in isolated table batches
+      - name: Apply safe database schema changes
         if: env.TGCLOUD_TOKEN != ''
-        run: node .github/scripts/migrate-tables.mjs
+        run: npx tgcloud migrate --safe
       - name: Synchronize Telegram webhook
         # Mantener el webhook sincronizado aunque falle una migración de la base de datos.
         if: always() && env.TGCLOUD_TOKEN != ''
