@@ -88,6 +88,11 @@ export default async function (query) {
   const parts = data.split(':');
   const section = parts[1];
 
+  if (section === 'open') {
+    await answer(query);
+    await sendPanel(chatId, '⚙️ PANEL DE ADMINISTRACIÓN\nChannelPosts_RoBot\nSelecciona un módulo.');
+    return;
+  }
   if (section === 'close') {
     await answer(query);
     if (message?.message_id) await api.deleteMessage({ chat_id: chatId, message_id: message.message_id });
