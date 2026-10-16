@@ -527,10 +527,13 @@ export default async function (message) {
       const channel = await db.select().from(channels).where(eq(channels.chatId, id)).get();
       if (!channel || !channel.active || !(await canManageChannel(userId, id))) return void await say(chatId, '⛔ Ese canal no está activo o no está asignado a tu administración.');
       const publicationKey = `p_${now().toString(36)}_${Math.abs(id).toString(36)}`;
+      const botInfo = await api.getMe({});
+      const botUsername = String(botInfo?.username ?? '').replace(/^@/, '');
+      if (!botUsername) return void await say(chatId, '⚠️ Telegram no devolvió el username del bot; no se creó la publicación de pago.');
       const teaser = await api.sendMessage({
         chat_id: id,
         text: `💎 PUBLICACIÓN EXCLUSIVA\n\nPrecio: ⭐ ${price}\nPulsa el botón para desbloquear el contenido con Telegram Stars.`,
-        reply_markup: { inline_keyboard: [[{ text: `⭐ Desbloquear · ${price}`, url: `https://t.me/CANALES-BOT?start=buy_${publicationKey}` }]] },
+        reply_markup: { inline_keyboard: [[{ text: `⭐ Desbloquear · ${price}`, url: `https://t.me/${botUsername}?start=buy_${publicationKey}` }]] },
       });
       const payload = body
         ? { type: 'text', text: body }
