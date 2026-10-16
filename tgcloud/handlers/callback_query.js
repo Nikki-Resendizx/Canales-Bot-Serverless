@@ -1,6 +1,6 @@
 import { api, db } from 'sdk';
 import { eq } from 'sdk/db';
-import { admins } from '../schema.js';
+import { admins, captchaSessions } from '../schema.js';
 
 const OWNER_ID = 0; // Sustituir por el ID numérico del propietario antes de producción.
 
@@ -20,6 +20,34 @@ export default async function (query) {
   const data = query.data ?? '';
   const userId = query.from?.id;
   const message = query.message;
+
+  if (data.startsWith('captcha:')) {
+    const [, rawChatId, rawUserId, chosenAnswer] = data.split(':');
+    const chatId = Number(rawChatId);
+    const targetUserId = Number(rawUserId);
+    if (!Number.isFinite(chatId) || !Number.isFinite(targetUserId) || !message?.chat?.id ||
+        Number(message.chat.id) !== chatId || Number(userId) !== targetUserId) {
+      await api.answerCallbackQuery({ callback_query_id: query.id, text: 'Este CAPTCHA no te pertenece.', show_alert: true });
+      return;
+    }
+
+    const sessionKey = `${chatId}:${targetUserId}`;
+    const session = await db.select().from(captchaSessions).where(eq(captchaSessions.sessionKey, sessionKey)).get();
+    if (!session) {
+      await api.answerCallbackQuery({ callback_query_id: query.id, text: 'El CAPTCHA ya no está activo.', show_alert: true });
+      return;
+    }
+
+    await api.answerCallbackQuery({ callback_query_id: query.id });
+    await db.delete(captchaSessions).where(eq(captchaSessions.sessionKey, sessionKey)).run();
+    if (session.expiresAt < Date.now() || String(chosenAnswer) !== String(session.expectedAnswer)) {
+      await api.banChatMember({ chat_id: chatId, user_id: targetUserId, revoke_messages: true });
+      await api.sendMessage({ chat_id: chatId, text: `🚫 Usuario ${targetUserId} expulsado y bloqueado permanentemente por fallar o dejar vencer el CAPTCHA.` });
+      return;
+    }
+    await api.sendMessage({ chat_id: chatId, text: `✅ Usuario ${targetUserId} verificó el CAPTCHA correctamente.` });
+    return;
+  }
 
   if (!data.startsWith('admin:')) {
     await api.answerCallbackQuery({ callback_query_id: query.id, text: 'Acción desconocida.' });
