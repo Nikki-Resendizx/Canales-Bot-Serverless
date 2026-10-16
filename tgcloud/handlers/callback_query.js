@@ -141,7 +141,10 @@ export default async function (query) {
   if (section === 'channels') {
     const rows = await managedChannels(userId);
     const text = rows.length ? '📣 CANALES REGISTRADOS\n' + rows.map(c => `• ${c.title || 'Sin título'} — ${c.chatId} — ${c.active ? 'activo' : 'inactivo'}`).join('\n') : 'No hay canales registrados.';
-    await sendPanel(chatId, text + '\n\nAñadir: /addchannel ID título\nQuitar: /delchannel ID');
+    await sendPanel(chatId, text + '\n\nQuitar: /delchannel ID', [
+      [{ text: '➕ Añadir por ID', callback_data: 'admin:channeladd' }, { text: '🔎 Detectar canal', callback_data: 'admin:detectchannel' }],
+      [{ text: '⬅️ Volver al panel', callback_data: 'admin:back' }],
+    ]);
     return;
   }
   if (section === 'welcome' || section === 'captcha') {
@@ -174,6 +177,14 @@ export default async function (query) {
   }
   if (section === 'stars') {
     await sendPanel(chatId, moduleText('stars'), [[{ text: '⬅️ Volver', callback_data: 'admin:back' }]]);
+    return;
+  }
+  if (section === 'channeladd') {
+    await sendPanel(chatId, '➕ AÑADIR CANAL\nEnvía en este chat: /addchannel ID Título. El bot debe ser administrador del canal.', [[{ text: '⬅️ Volver a canales', callback_data: 'admin:channels' }]]);
+    return;
+  }
+  if (section === 'detectchannel') {
+    await sendPanel(chatId, '🔎 DETECTAR CANAL\n1. Reenvía al bot una publicación del canal que quieres conectar.\n2. Responde a esa publicación reenviada con: /addchannel Título\nEl bot leerá el ID del canal desde los metadatos del reenvío; si Telegram oculta esos metadatos, usa el ID manualmente.', [[{ text: '⬅️ Volver a canales', callback_data: 'admin:channels' }]]);
     return;
   }
   const text = moduleText(section);
