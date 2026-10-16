@@ -18,6 +18,14 @@ async function isAdmin(userId) {
   if (Number(userId) === OWNER_ID) return true;
   return Boolean(await db.select().from(admins).where(eq(admins.userId, Number(userId))).get());
 }
+async function canManageChannel(userId, channelId) {
+  const channel = await db.select().from(channels).where(eq(channels.chatId, Number(channelId))).get();
+  return Boolean(channel && (Number(userId) === OWNER_ID || Number(channel.addedBy) === Number(userId)));
+}
+async function managedChannels(userId) {
+  const rows = await db.select().from(channels).all();
+  return Number(userId) === OWNER_ID ? rows : rows.filter(row => Number(row.addedBy) === Number(userId));
+}
 async function answer(query, text = '', alert = false) {
   await api.answerCallbackQuery({
     callback_query_id: query.id,
@@ -112,11 +120,12 @@ export default async function (query) {
     }
     const row = await db.select().from(channelSettings).where(eq(channelSettings.channelId, channelId)).get();
     if (!row) { await answer(query, 'Primero registra el canal con /addchannel ID título.', true); return; }
+    if (!(await canManageChannel(userId, channelId))) { await answer(query, 'No tienes permiso para administrar ese canal.', true); return; }
     const column = kind === 'welcome' ? 'welcomeEnabled' : 'captchaEnabled';
     const enabled = Number(row[column]) ? 0 : 1;
     await db.update(channelSettings).set({ [column]: enabled, updatedAt: Date.now() }).where(eq(channelSettings.channelId, channelId)).run();
     await answer(query, `${kind === 'welcome' ? 'Bienvenida' : 'CAPTCHA'} ${enabled ? 'activado' : 'desactivado'}`);
-    const rows = await db.select().from(channels).all();
+    const rows = await managedChannels(userId);
     const settingsRows = [];
     for (const channel of rows) {
       const setting = await db.select().from(channelSettings).where(eq(channelSettings.channelId, channel.chatId)).get();
@@ -130,7 +139,7 @@ export default async function (query) {
 
   await answer(query);
   if (section === 'channels') {
-    const rows = await db.select().from(channels).all();
+    const rows = await managedChannels(userId);
     const text = rows.length ? '📣 CANALES REGISTRADOS\n' + rows.map(c => `• ${c.title || 'Sin título'} — ${c.chatId} — ${c.active ? 'activo' : 'inactivo'}`).join('\n') : 'No hay canales registrados.';
     await sendPanel(chatId, text + '\n\nAñadir: /addchannel ID título\nQuitar: /delchannel ID');
     return;
