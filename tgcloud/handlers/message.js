@@ -619,8 +619,30 @@ export default async function (message) {
       } catch { /* publicar sin botones si el JSON está dañado */ }
       let sent; let payload; const format = String(template?.format || 'HTML').toUpperCase();
       if (!body && message.reply_to_message?.message_id) {
-        sent = await api.copyMessage({ chat_id: id, from_chat_id: chatId, message_id: message.reply_to_message.message_id, ...replyMarkup });
-        payload = { copiedMessageId: message.reply_to_message.message_id, type: 'copied_message' };
+        const source = message.reply_to_message;
+        const copyOptions = { chat_id: id, from_chat_id: chatId, message_id: source.message_id, ...replyMarkup };
+        const isMedia = Boolean(source.photo || source.video || source.document || source.animation || source.audio || source.voice);
+        if (isMedia) {
+          const sourceCaption = String(source.caption || '');
+          const linkMatch = sourceCaption.match(/https?:\/\/\S+/i);
+          const title = sourceCaption.split(/\r?\n/)[0] || '';
+          const values = {
+            '{contenido}': sourceCaption, '{texto}': sourceCaption, '{titulo}': title,
+            '{descripcion}': sourceCaption, '{enlace}': linkMatch ? linkMatch[0] : '',
+            '{hashtags}': settings.hashtags || '', '{fecha}': new Date().toLocaleDateString('es-MX', { timeZone: 'America/Mexico_City' }),
+            '{canal}': String(row.title || id),
+          };
+          const applyVariables = value => Object.entries(values).reduce((result, [key, replacement]) => result.replaceAll(key, replacement), String(value ?? ''));
+          let caption = template?.body ? applyVariables(template.body) : sourceCaption;
+          if (settings.descriptionTemplate) caption = applyVariables(settings.descriptionTemplate.replaceAll('{texto}', caption).replaceAll('{contenido}', caption));
+          if (settings.hashtags && !caption.includes(settings.hashtags)) caption += (caption ? '\\n\\n' : '') + settings.hashtags;
+          if (caption) {
+            copyOptions.caption = caption;
+            if (format !== 'OFF') copyOptions.parse_mode = format === 'MARKDOWN' ? 'Markdown' : format === 'MARKDOWNV2' ? 'MarkdownV2' : 'HTML';
+          }
+        }
+        sent = await api.copyMessage(copyOptions);
+        payload = { copiedMessageId: source.message_id, type: 'copied_message', templateKind: kind };
       } else {
         if (!body) return void await say(chatId, 'Escribe texto o responde a una foto/vídeo/documento con /publish ID_CANAL.');
         const corrected = Number(settings.textCorrectionEnabled) ? correctText(body) : body;
