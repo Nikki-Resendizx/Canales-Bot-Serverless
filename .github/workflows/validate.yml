@@ -37,12 +37,25 @@ jobs:
       - name: Skip deployment until the Telegram CLI token is configured
         if: env.TGCLOUD_TOKEN == ''
         run: echo "Deployment skipped. Add the TGCLOUD_TOKEN repository secret after enabling Serverless for the intended bot in @BotFather."
-      - name: Sync CLI state with the remote project
+      - name: Sync and deploy validated modules safely
         if: env.TGCLOUD_TOKEN != ''
-        run: npx tgcloud fetch
-      - name: Deploy validated modules
-        if: env.TGCLOUD_TOKEN != ''
-        run: npx tgcloud push
+        shell: bash
+        run: |
+          # The Serverless project may advance between fetch and push.
+          # Retry a fresh sync; never force-push over a newer remote revision.
+          for attempt in 1 2 3; do
+            echo "Serverless sync/deploy attempt $attempt of 3"
+            npx tgcloud fetch
+            if npx tgcloud push; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "Remote revision changed or deploy failed; retrying with a fresh snapshot."
+              sleep 2
+            fi
+          done
+          echo "Could not safely deploy after 3 attempts."
+          exit 1
       - name: Apply safe database schema changes
         if: env.TGCLOUD_TOKEN != ''
         run: npx tgcloud migrate --safe
