@@ -1,6 +1,6 @@
 import { api, db } from 'sdk';
 import { eq } from 'sdk/db';
-import { channelSettings, captchaSessions, globalBans } from '../schema.js';
+import { channelSettings, captchaSessions, globalBans, knownUsers } from '../schema.js';
 
 function renderWelcome(template, user) {
   const name = [user.first_name, user.last_name].filter(Boolean).join(' ') || 'usuario';
@@ -17,6 +17,21 @@ export default async function (update) {
   const user = member?.user;
   if (!chat?.id || !user?.id || user.is_bot) return;
   if (!['member', 'restricted'].includes(member.status)) return;
+
+  const displayName = [user.first_name, user.last_name].filter(Boolean).join(' ');
+  await db.insert(knownUsers).values({
+    userId: Number(user.id),
+    username: String(user.username ?? '').toLowerCase(),
+    displayName,
+    lastSeenAt: Date.now(),
+  }).onConflictDoUpdate({
+    target: knownUsers.userId,
+    set: {
+      username: String(user.username ?? '').toLowerCase(),
+      displayName,
+      lastSeenAt: Date.now(),
+    },
+  }).run();
 
   const banned = await db.select().from(globalBans).where(eq(globalBans.userId, user.id)).get();
   if (banned) {
