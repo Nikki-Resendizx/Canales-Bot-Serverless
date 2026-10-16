@@ -76,12 +76,12 @@ function channelButtons(rows, kind) {
     callback_data: `admin:toggle:${kind}:${row.chatId}`,
   }]);
 }
-function backRow() { return [{ text: '⬅️ Volver al panel', callback_data: 'admin:back' }]; }
+async function backRow() { return [{ text: await navText('back'), callback_data: 'admin:back' }]; }
 function moduleText(section) {
   const modules = {
     publications: '📤 PUBLICACIONES\n\nPublicar texto: /publish ID_CANAL texto\nPublicar un mensaje con foto/vídeo/documento: responde a ese mensaje con /publish ID_CANAL\n\nPublicación de pago: /publish_paid ID_CANAL PRECIO_STARS texto (o responde a un mensaje). Prueba cualquier cobro con Stars antes de promocionarlo. El bot debe ser administrador en el canal.',
     buttons: '🔘 BOTONES INLINE\n\nDefine los botones de una plantilla como JSON: /template_buttons ID_CANAL TIPO JSON\nEjemplo: /template_buttons -100123 default [[{"text":"Abrir","url":"https://t.me/"}]]\nCada botón debe tener text y una url o callback_data. Los botones se adjuntan al publicar usando la plantilla default.',
-    formats: '🎨 FORMATOS Y VARIABLES\n\nFormatos disponibles: HTML, Markdown, MarkdownV2 y OFF.\nGuardar plantilla: /template_set ID_CANAL TIPO FORMATO texto. Editor: /correction ID on|off, /hashtags ID texto, /description ID texto, /missingdata ID texto\nVariables para plantillas: {texto}. Variables de bienvenida: {mencion}, {nombre}, {username}, {userid}.\nUsa HTML para enlaces, negrita, cursiva, subrayado y código admitidos por Telegram.',
+    formats: '🎨 FORMATOS Y VARIABLES\n\nFormatos disponibles: HTML, Markdown, MarkdownV2, OFF y RICH_MESSAGE (JSON válido).\nGuardar plantilla: /template_set ID_CANAL TIPO FORMATO texto. Editor: /correction ID on|off, /hashtags ID texto, /description ID texto, /missingdata ID texto\nVariables para plantillas: {texto}. Variables de bienvenida: {mencion}, {nombre}, {username}, {userid}.\nUsa HTML para enlaces, negrita, cursiva, subrayado y código admitidos por Telegram.',
     reactions: '🔔 REPORTES DE REACCIONES\n\nConfigurar canal de avisos: /setreport ID_CANAL ID_CANAL_REPORTE\nSe generan reportes separados: las reacciones individuales identificables se reportan con usuario/ID; los eventos de conteo se reportan como agregados y nunca inventan identidades. Telegram debe enviar los eventos de reacción al bot.',
     settings: '⚙️ CONFIGURACIÓN\n\nAñade el bot como administrador en cada canal/grupo con los permisos necesarios. Registra canales con /addchannel ID título.\nComandos: /help\nLa caché de módulos y la sincronización del webhook las administra Telegram Serverless/GitHub Actions, no un botón ficticio dentro del bot.',
     stars: '💳 TELEGRAM STARS\n\nEl flujo básico está conectado: /publish_paid ID_CANAL PRECIO_STARS texto, o responde a un mensaje para vender su copia. Usa moneda XTR (Telegram Stars). Antes de anunciarlo, haz una compra de prueba; los reembolsos todavía no están implementados.',
@@ -168,7 +168,7 @@ export default async function (query) {
       settingsRows.push({ ...channel, welcomeEnabled: setting?.welcomeEnabled ?? 0, captchaEnabled: setting?.captchaEnabled ?? 0 });
     }
     const keyboard = channelButtons(settingsRows, kind);
-    keyboard.push(backRow());
+    keyboard.push(await backRow());
     await renderPanel((kind === 'welcome' ? '👋 BIENVENIDA POR CANAL' : '🧩 CAPTCHA POR CANAL') + '\nPulsa un canal para alternar la función.', keyboard);
     return;
   }
@@ -183,7 +183,7 @@ export default async function (query) {
     const text = rows.length ? '📣 CANALES REGISTRADOS\n' + rows.map(c => `• ${c.title || 'Sin título'} — ${c.chatId} — ${c.active ? 'activo' : 'inactivo'}`).join('\n') : 'No hay canales registrados.';
     await renderPanel(text + '\n\nQuitar: /delchannel ID', [
       [{ text: '➕ Añadir por ID', callback_data: 'admin:channeladd' }, { text: '🔎 Detectar canal', callback_data: 'admin:detectchannel' }],
-      [{ text: '⬅️ Volver al panel', callback_data: 'admin:back' }],
+      [{ text: await navText('back'), callback_data: 'admin:back' }],
     ]);
     return;
   }
@@ -195,14 +195,14 @@ export default async function (query) {
       settingsRows.push({ ...channel, welcomeEnabled: setting?.welcomeEnabled ?? 0, captchaEnabled: setting?.captchaEnabled ?? 0 });
     }
     const keyboard = channelButtons(settingsRows, section);
-    keyboard.push(backRow());
+    keyboard.push(await backRow());
     await renderPanel((section === 'welcome' ? '👋 BIENVENIDA POR CANAL' : '🧩 CAPTCHA POR CANAL') + '\nPulsa un canal para activar/desactivar.\n' + (section === 'welcome' ? 'Editar texto: /welcometext ID texto' : 'Fallo o vencimiento aplica bloqueo permanente.'), keyboard);
     return;
   }
   if (section === 'admins') {
-    if (userId !== OWNER_ID) { await renderPanel('👮 Solo el propietario puede gestionar administradores.', [[{ text: '⬅️ Volver', callback_data: 'admin:back' }]]); return; }
+    if (userId !== OWNER_ID) { await renderPanel('👮 Solo el propietario puede gestionar administradores.', [[{ text: await navText('back'), callback_data: 'admin:back' }]]); return; }
     const rows = await db.select().from(admins).all();
-    await renderPanel('👮 ADMINISTRADORES\n' + (rows.length ? rows.map(a => `• ${a.userId} (${a.role})`).join('\n') : 'Sin administradores adicionales.') + '\n\nAñadir: /addadmin ID\nEliminar: /deladmin ID', [[{ text: '⬅️ Volver', callback_data: 'admin:back' }]]);
+    await renderPanel('👮 ADMINISTRADORES\n' + (rows.length ? rows.map(a => `• ${a.userId} (${a.role})`).join('\n') : 'Sin administradores adicionales.') + '\n\nAñadir: /addadmin ID\nEliminar: /deladmin ID', [[{ text: await navText('back'), callback_data: 'admin:back' }]]);
     return;
   }
   if (section === 'stats') {
@@ -212,29 +212,29 @@ export default async function (query) {
       db.select().from(publications).all(), db.select().from(purchases).all(),
       db.select().from(reactionReports).all(),
     ]);
-    await renderPanel(`📊 ESTADÍSTICAS\nCanales: ${c.length}\nRutas: ${r.length}\nPlantillas: ${t.length}\nBlacklist: ${b.length}\nPublicaciones: ${p.length}\nCompras registradas: ${purchaseRows.length}\nReacciones identificadas registradas: ${reactionRows.length}`, [[{ text: '⬅️ Volver', callback_data: 'admin:back' }]]);
+    await renderPanel(`📊 ESTADÍSTICAS\nCanales: ${c.length}\nRutas: ${r.length}\nPlantillas: ${t.length}\nBlacklist: ${b.length}\nPublicaciones: ${p.length}\nCompras registradas: ${purchaseRows.length}\nReacciones identificadas registradas: ${reactionRows.length}`, [[{ text: await navText('back'), callback_data: 'admin:back' }]]);
     return;
   }
   if (section === 'stars') {
-    await renderPanel(moduleText('stars'), [[{ text: '⬅️ Volver', callback_data: 'admin:back' }]]);
+    await renderPanel(moduleText('stars'), [[{ text: await navText('back'), callback_data: 'admin:back' }]]);
     return;
   }
   if (section === 'channeladd') {
-    await renderPanel('➕ AÑADIR CANAL\nEnvía en este chat: /addchannel ID Título. El bot debe ser administrador del canal.', [[{ text: '⬅️ Volver a canales', callback_data: 'admin:channels' }]]);
+    await renderPanel('➕ AÑADIR CANAL\nEnvía en este chat: /addchannel ID Título. El bot debe ser administrador del canal.', [[{ text: await navText('back'), callback_data: 'admin:channels' }]]);
     return;
   }
   if (section === 'detectchannel') {
-    await renderPanel('🔎 DETECTAR CANAL\n1. Reenvía al bot una publicación del canal que quieres conectar.\n2. Responde a esa publicación reenviada con: /addchannel Título\nEl bot leerá el ID del canal desde los metadatos del reenvío; si Telegram oculta esos metadatos, usa el ID manualmente.', [[{ text: '⬅️ Volver a canales', callback_data: 'admin:channels' }]]);
+    await renderPanel('🔎 DETECTAR CANAL\n1. Reenvía al bot una publicación del canal que quieres conectar.\n2. Responde a esa publicación reenviada con: /addchannel Título\nEl bot leerá el ID del canal desde los metadatos del reenvío; si Telegram oculta esos metadatos, usa el ID manualmente.', [[{ text: await navText('back'), callback_data: 'admin:channels' }]]);
     return;
   }
   const text = moduleText(section);
   if (text) {
-    await renderPanel(text, [[{ text: '📚 Ver comandos', callback_data: 'admin:help' }, { text: '⬅️ Volver', callback_data: 'admin:back' }]]);
+    await renderPanel(text, [[{ text: '📚 Ver comandos', callback_data: 'admin:help' }, { text: await navText('back'), callback_data: 'admin:back' }]]);
     return;
   }
   if (section === 'help') {
-    await renderPanel('Comandos generales: /help, /channels, /addchannel, /delchannel, /welcome, /welcometext, /captcha, /setreport, /blacklist_add, /blacklist_remove, /blacklist, /route_add, /route_remove, /routes, /template_set, /template_list, /template_buttons, /template_delete, /publish, /stats, /addadmin y /deladmin.', [[{ text: '⬅️ Volver', callback_data: 'admin:back' }]]);
+    await renderPanel('Comandos generales: /help, /channels, /addchannel, /delchannel, /welcome, /welcometext, /captcha, /setreport, /blacklist_add, /blacklist_remove, /blacklist, /route_add, /route_remove, /routes, /template_set, /template_list, /template_buttons, /template_delete, /publish, /stats, /addadmin y /deladmin.', [[{ text: await navText('back'), callback_data: 'admin:back' }]]);
     return;
   }
-  await renderPanel('Sección no reconocida.', [[{ text: '⬅️ Volver', callback_data: 'admin:back' }]]);
+  await renderPanel('Sección no reconocida.', [[{ text: await navText('back'), callback_data: 'admin:back' }]]);
 }
