@@ -2,7 +2,7 @@ import { api, db } from 'sdk';
 import { eq } from 'sdk/db';
 import {
   admins, channels, channelSettings, globalBans, channelRoutes,
-  templates, publications, purchases, reactionReports,
+  templates, publications, purchases, reactionReports, knownUsers,
 } from '../schema.js';
 
 const OWNER_ID = 8624574996;
@@ -73,6 +73,26 @@ export default async function (message) {
   const userId = Number(message.from.id);
   const text = String(message.text ?? '').trim();
   const isPrivate = chatId === userId;
+  if (!message.from.is_bot && Number.isSafeInteger(userId) && userId > 0) {
+    try {
+      const displayName = [message.from.first_name, message.from.last_name].filter(Boolean).join(' ');
+      await db.insert(knownUsers).values({
+        userId,
+        username: String(message.from.username ?? '').toLowerCase(),
+        displayName,
+        lastSeenAt: now(),
+      }).onConflictDoUpdate({
+        target: knownUsers.userId,
+        set: {
+          username: String(message.from.username ?? '').toLowerCase(),
+          displayName,
+          lastSeenAt: now(),
+        },
+      }).run();
+    } catch (error) {
+      console.log('No se pudo actualizar el registro de usuario conocido', String(error));
+    }
+  }
 
   if (message.successful_payment) {
     const payment = message.successful_payment;
@@ -229,21 +249,59 @@ export default async function (message) {
       await say(chatId, '✅ Canal de reportes configurado. El bot debe poder publicar allí.');
       return;
     }
-    if (command === '/blacklist_add') {
-      const id = parseId(args[0]);
-      if (!Number.isSafeInteger(id) || id === 0) return void await say(chatId, 'Uso: /blacklist_add ID [@usuario] [motivo]');
-      const username = args[1]?.startsWith('@') ? args[1].slice(1) : '';
-      const reason = args.slice(username ? 2 : 1).join(' ') || 'Sin motivo especificado';
+    if (command === '/blacklist_add' || command === '/globalban') {
+      let id = parseId(args[0]);
+      let username = '';
+      let reason = '';
+      if (!Number.isSafeInteger(id) && String(args[0] ?? '').startsWith('@')) {
+        username = String(args[0]).slice(1).toLowerCase();
+        const known = await db.select().from(knownUsers).where(eq(knownUsers.username, username)).get();
+        id = Number(known?.userId);
+        reason = args.slice(1).join(' ') || 'Sin motivo especificado';
+      } else {
+        username = args[1]?.startsWith('@') ? args[1].slice(1).toLowerCase() : '';
+        reason = args.slice(username ? 2 : 1).join(' ') || 'Sin motivo especificado';
+        if (!username) {
+          const known = await db.select().from(knownUsers).where(eq(knownUsers.userId, id)).get();
+          username = String(known?.username ?? '');
+        }
+      }
+      if (!Number.isSafeInteger(id) || id <= 0) return void await say(chatId, 'Uso: /blacklist_add ID|@username [motivo]. Para usar @username, el usuario debe haber interactuado con el bot o aparecer en un evento que el bot haya recibido.');
       await db.insert(globalBans).values({ userId: id, username, reason, bannedBy: userId, createdAt: now() })
         .onConflictDoUpdate({ target: globalBans.userId, set: { username, reason, bannedBy: userId, createdAt: now() } }).run();
-      await say(chatId, `🚫 Usuario ${id} añadido a la blacklist global. Se bloqueará al entrar en grupos donde el bot pueda banear.`);
+      const rows = await db.select().from(channels).all();
+      let bannedCount = 0;
+      for (const channel of rows) {
+        try {
+          await api.banChatMember({ chat_id: channel.chatId, user_id: id, revoke_messages: true });
+          bannedCount += 1;
+        } catch (error) {
+          console.log('No se pudo aplicar baneo global en', channel.chatId, String(error));
+        }
+      }
+      await say(chatId, `🚫 Usuario ${id}${username ? ' (@' + username + ')' : ''} añadido a la blacklist. Baneo aplicado en ${bannedCount}/${rows.length} chats conectados; también se bloqueará si intenta entrar de nuevo donde el bot tenga permisos.`);
       return;
     }
-    if (command === '/blacklist_remove') {
-      const id = parseId(args[0]);
-      if (!Number.isSafeInteger(id)) return void await say(chatId, 'Uso: /blacklist_remove ID');
+    if (command === '/blacklist_remove' || command === '/globalunban') {
+      let id = parseId(args[0]);
+      if (!Number.isSafeInteger(id) && String(args[0] ?? '').startsWith('@')) {
+        const username = String(args[0]).slice(1).toLowerCase();
+        const known = await db.select().from(knownUsers).where(eq(knownUsers.username, username)).get();
+        id = Number(known?.userId);
+      }
+      if (!Number.isSafeInteger(id) || id <= 0) return void await say(chatId, 'Uso: /blacklist_remove ID|@username');
       await db.delete(globalBans).where(eq(globalBans.userId, id)).run();
-      await say(chatId, `✅ Usuario ${id} eliminado de la blacklist global.`);
+      const rows = await db.select().from(channels).all();
+      let unbannedCount = 0;
+      for (const channel of rows) {
+        try {
+          await api.unbanChatMember({ chat_id: channel.chatId, user_id: id, only_if_banned: true });
+          unbannedCount += 1;
+        } catch (error) {
+          console.log('No se pudo aplicar desbaneo global en', channel.chatId, String(error));
+        }
+      }
+      await say(chatId, `✅ Usuario ${id} eliminado de la blacklist; desbaneo solicitado en ${unbannedCount}/${rows.length} chats conectados.`);
       return;
     }
     if (command === '/blacklist') {
