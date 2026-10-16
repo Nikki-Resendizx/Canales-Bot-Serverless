@@ -115,3 +115,12 @@ export const knownUsers = table('known_users', {
   displayName: text('display_name').notNull().default(''),
   lastSeenAt: integer('last_seen_at').notNull(),
 });
+
+
+// Textos editables de navegación y mensajes generales del bot.
+export const botTexts = table('bot_texts', {
+  textKey: text('text_key').primaryKey(),
+  body: text('body').notNull().default(''),
+  updatedBy: integer('updated_by').notNull(),
+  updatedAt: integer('updated_at').notNull(),
+});
