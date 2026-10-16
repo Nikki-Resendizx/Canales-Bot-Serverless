@@ -60,5 +60,6 @@ jobs:
         if: env.TGCLOUD_TOKEN != ''
         run: npx tgcloud migrate --safe
       - name: Synchronize Telegram webhook
-        if: env.TGCLOUD_TOKEN != ''
+        # Mantener el webhook sincronizado aunque falle una migración de la base de datos.
+        if: always() && env.TGCLOUD_TOKEN != ''
         run: npx tgcloud webhook sync
