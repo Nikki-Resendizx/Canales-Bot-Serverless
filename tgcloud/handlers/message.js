@@ -465,7 +465,7 @@ export default async function (message) {
       return;
     }
     if (command === '/publish') {
-      const id = parseId(args[0]); const body = argText.slice(String(args[0] ?? '').length).trim();
+      const id = parseId(args[0]); let body = argText.slice(String(args[0] ?? '').length).trim();
       if (!Number.isSafeInteger(id)) return void await say(chatId, 'Uso: /publish ID_CANAL texto, o responde a un mensaje multimedia con /publish ID_CANAL.');
       const row = await db.select().from(channels).where(eq(channels.chatId, id)).get();
       if (!row || !row.active || !(await canManageChannel(userId, id))) return void await say(chatId, '⛔ Ese canal no está activo o no está asignado a tu administración.');
