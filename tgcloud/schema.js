@@ -93,3 +93,12 @@ export const reactionReports = table('reaction_reports', {
   reaction: text('reaction').notNull(),
   createdAt: integer('created_at').notNull(),
 });
+
+// Los eventos message_reaction_count son agregados y no identifican a cada usuario.
+export const reactionCountReports = table('reaction_count_reports', {
+  reportKey: text('report_key').primaryKey(),
+  channelId: integer('channel_id').notNull(),
+  messageId: integer('message_id').notNull(),
+  countsJson: text('counts_json').notNull().default('[]'),
+  createdAt: integer('created_at').notNull(),
+});
