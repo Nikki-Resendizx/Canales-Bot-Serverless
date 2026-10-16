@@ -6,6 +6,7 @@ import {
 } from '../schema.js';
 
 const OWNER_ID = 8624574996;
+const DEFAULT_REACTION_REPORT_CHAT_ID = -1004456932813;
 const now = () => Date.now();
 const parseId = value => /^-?\d+$/.test(String(value ?? '')) ? Number(value) : NaN;
 const escapeHtml = value => String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
@@ -38,8 +39,11 @@ async function ensureSettings(channelId) {
   if (!row) {
     await db.insert(channelSettings).values({
       channelId, welcomeEnabled: 0, welcomeText: '👋 ¡Bienvenido, {mencion}!',
-      captchaEnabled: 0, captchaQuestion: '', captchaAnswer: '', updatedAt: now(),
+      captchaEnabled: 0, captchaQuestion: '', captchaAnswer: '', reactionReportChatId: DEFAULT_REACTION_REPORT_CHAT_ID, updatedAt: now(),
     }).run();
+    row = await db.select().from(channelSettings).where(eq(channelSettings.channelId, channelId)).get();
+  } else if (!row.reactionReportChatId) {
+    await db.update(channelSettings).set({ reactionReportChatId: DEFAULT_REACTION_REPORT_CHAT_ID, updatedAt: now() }).where(eq(channelSettings.channelId, channelId)).run();
     row = await db.select().from(channelSettings).where(eq(channelSettings.channelId, channelId)).get();
   }
   return row;
