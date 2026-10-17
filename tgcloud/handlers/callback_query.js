@@ -733,11 +733,11 @@ export default async function (query) {
   }
   const text = moduleText(section);
   if (text) {
-    await renderPanel(text, [[{ text: '📚 Ver comandos', callback_data: 'admin:help' }, { text: await navText('back'), callback_data: 'admin:back' }]]);
+    await renderPanel(text, [[{ text: await navText('back'), callback_data: 'admin:back' }]]);
     return;
   }
   if (section === 'help') {
-    await renderPanel('Comandos generales: /help, /channels, /addchannel, /delchannel, /welcome, /welcometext, /captcha, /setreport, /blacklist_add, /blacklist_remove, /blacklist, /route_add, /route_remove, /routes, /template_set, /template_list, /template_buttons, /template_delete, /publish, /stats, /addadmin y /deladmin.', [[{ text: await navText('back'), callback_data: 'admin:back' }]]);
+    await renderPanel('📚 AYUDA\\n\\nCANALES-BOT se administra desde los botones. Abre una sección, elige el canal y sigue las instrucciones que aparecen. Cuando una opción necesite texto, el bot abrirá un mensaje para responder; no hace falta escribir comandos.', [[{ text: await navText('back'), callback_data: 'admin:back' }]]);
     return;
   }
   await renderPanel('Sección no reconocida.', [[{ text: await navText('back'), callback_data: 'admin:back' }]]);
