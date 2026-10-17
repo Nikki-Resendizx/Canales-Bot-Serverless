@@ -9,9 +9,10 @@ const OWNER_ID = 8624574996;
 const NAV_DEFAULTS = {
   panel_title: '⚙️ PANEL DE ADMINISTRACIÓN',
   panel_description: 'Selecciona una sección:',
-  channels: '📢 CANALES', welcome: '👋 BIENVENIDA', captcha: '🧩 CAPTCHA', hashtags: '#️⃣ HASHTAGS',
+  channels: '📢 CANALES', welcome: '👋 BIENVENIDA', captcha: '🛡️ CAPTCHA', hashtags: '#️⃣ HASHTAGS',
   blacklist: '🚫 BANEO GLOBAL', routes: '🔀 DISTRIBUCIÓN', templates: '📝 PLANTILLAS',
-  publications: '📝 CREAR PUBLICACIÓN', buttons: '🔘 BOTONES', formats: '🎨 FORMATOS',
+  rules: '⚙️ REGLAS AUTOMÁTICAS', testmode: '🧪 MODO DE PRUEBA',
+  publications: '💰 PUBLICACIONES', buttons: '🔘 BOTONES', formats: '🎨 FORMATOS',
   reactions: '🔔 REACCIONES', stars: '⭐ PREMIUM / ESTRELLAS', admins: '👥 ADMINISTRADORES',
   stats: '📊 ESTADÍSTICAS', settings: '⚙️ CONFIGURACIÓN', close: '❌ CERRAR', navigation: '🧭 NAVEGACIÓN',
   back: '🔙 VOLVER',
@@ -28,12 +29,13 @@ async function navText(key) {
 }
 async function buildMainMenu() {
   const keys = [
-    ['channels', 'templates', 'hashtags'],
-    ['formats', 'buttons', 'publications'],
-    ['stars', 'welcome', 'captcha'],
-    ['blacklist', 'routes', 'reactions'],
-    ['stats', 'admins', 'settings'],
-    ['navigation', 'close'],
+    ['channels', 'templates'],
+    ['hashtags', 'buttons'],
+    ['rules', 'testmode'],
+    ['welcome', 'captcha'],
+    ['blacklist', 'admins'],
+    ['publications', 'stats'],
+    ['settings'],
   ];
   const menu = [];
   for (const row of keys) {
@@ -108,7 +110,7 @@ function moduleText(section) {
     stars: '💳 TELEGRAM STARS\n\nEl flujo básico está conectado: /publish_paid ID_CANAL PRECIO_STARS texto, o responde a un mensaje para vender su copia. Usa moneda XTR (Telegram Stars). Antes de anunciarlo, haz una compra de prueba; los reembolsos todavía no están implementados.',
     blacklist: '🚫 BLACKLIST GLOBAL\n\nAñadir: /blacklist_add ID [@usuario] [motivo]\nQuitar: /blacklist_remove ID\nConsultar: /blacklist\nLos baneos se aplican al entrar en grupos donde el bot tenga permiso de banear.',
     routes: '🔀 RUTAS ENTRE CANALES\n\nCrear: /route_add ID_ORIGEN ID_DESTINO\nEliminar: /route_remove ID_ORIGEN ID_DESTINO\nConsultar: /routes\nEl bot necesita permiso de lectura en el origen y publicación en el destino. Las rutas solo operan en canales registrados.',
-    templates: '📝 PLANTILLAS\n\nCrear/editar: /template_set ID_CANAL TIPO FORMATO texto\nListar: /template_list ID_CANAL\nBotones: /template_buttons ID_CANAL TIPO JSON\nEliminar: /template_delete ID_CANAL TIPO\nLa plantilla default se usa para publicar con /publish.',
+    templates: '📝 PLANTILLAS\n\nCrear/editar: /template_set ID_CANAL TIPO FORMATO texto\nListar: /template_list ID_CANAL\nBotones: /template_buttons ID_CANAL TIPO JSON\nEliminar: /template_delete ID_CANAL TIPO\nLa plantilla default se usa para publicar con /publish.',\n    rules: '⚙️ REGLAS AUTOMÁTICAS\n\nConfigura por canal:\n/correction ID on|off — normalización básica de texto\n/hashtags ID #Etiqueta1 #Etiqueta2 — hashtags automáticos\n/description ID plantilla con {texto} — plantilla de descripción\n/missingdata ID texto — texto alternativo si falta contenido\n\nEstas reglas se aplican cuando publicas con /publish. Guarda primero los cambios y prueba antes de publicar contenido real.',
   };
   return modules[section] || '';
 }
@@ -437,10 +439,10 @@ export default async function (query) {
 
   await answer(query);
   if (section === 'navigation') {
-    await renderPanel('🧭 TEXTOS DE NAVEGACIÓN\n\nUsa /navtexts para consultar las claves. Edita con /navtext CLAVE nuevo texto. Para restaurar: /navtext CLAVE default.\n\nClaves: panel_title, panel_description, channels, welcome, captcha, blacklist, routes, templates, publications, buttons, formats, reactions, stars, admins, stats, settings, close, navigation, back.', [[{ text: await navText('back'), callback_data: 'admin:back' }]]);
+    await renderPanel('🧭 TEXTOS DE NAVEGACIÓN\n\nUsa /navtexts para consultar las claves. Edita con /navtext CLAVE nuevo texto. Para restaurar: /navtext CLAVE default.\n\nClaves: panel_title, panel_description, channels, welcome, captcha, hashtags, blacklist, routes, templates, publications, buttons, formats, rules, testmode, reactions, stars, admins, stats, settings, navigation, back.', [[{ text: await navText('back'), callback_data: 'admin:back' }]]);
     return;
   }
-  if (section === 'channels') {
+  if (section === 'testmode') {\n    const rows = await managedChannels(userId);\n    const keyboard = rows.map(row => [{ text: '🧪 ' + String(row.title || row.chatId).slice(0, 45), callback_data: 'admin:channeltest:' + row.chatId }]);\n    keyboard.push(await backRow());\n    await renderPanel('🧪 MODO DE PRUEBA\\n\\nSelecciona un canal para comprobar permisos y acceso. Esta prueba no publica ni elimina mensajes y no modifica las publicaciones existentes.', keyboard);\n    return;\n  }\n  if (section === 'channels') {
     const rows = await managedChannels(userId);
     const text = rows.length ? '📣 CANALES REGISTRADOS\n' + rows.map(c => `• ${c.title || 'Sin título'} — ${c.chatId} — ${c.active ? 'activo' : 'inactivo'}`).join('\n') : 'No hay canales registrados.';
     await renderPanel(text + '\\n\\nPulsa el nombre de un canal para abrir sus opciones, activa/pausa el procesamiento o elimina su configuración. La eliminación requiere confirmación.', channelManagementButtons(rows));
