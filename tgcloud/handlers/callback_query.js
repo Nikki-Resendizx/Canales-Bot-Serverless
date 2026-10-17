@@ -663,7 +663,21 @@ export default async function (query) {
   if (section === 'admins') {
     if (userId !== OWNER_ID) { await renderPanel('👮 Solo el propietario puede gestionar administradores.', [[{ text: await navText('back'), callback_data: 'admin:back' }]]); return; }
     const rows = await db.select().from(admins).all();
-    await renderPanel('👮 ADMINISTRADORES\n' + (rows.length ? rows.map(a => `• ${a.userId} (${a.role})`).join('\n') : 'Sin administradores adicionales.') + '\n\nAñadir: /addadmin ID\nEliminar: /deladmin ID', [[{ text: await navText('back'), callback_data: 'admin:back' }]]);
+    const keyboard = [
+      [{ text: '➕ Añadir administrador', callback_data: 'admin:admininput:add' }],
+      [{ text: '➖ Quitar administrador', callback_data: 'admin:admininput:remove' }],
+      await backRow(),
+    ];
+    await renderPanel('👮 ADMINISTRADORES\\n\\n' + (rows.length ? rows.map(a => '• ' + a.userId + ' (' + a.role + ')').join('\\n') : 'Sin administradores adicionales.'), keyboard);
+    return;
+  }
+  if (section === 'admininput') {
+    if (userId !== OWNER_ID) { await answer(query, 'Solo el propietario puede gestionar administradores.', true); return; }
+    const action = String(parts[2] || '');
+    if (!['add','remove'].includes(action)) { await answer(query, 'Acción no válida.', true); return; }
+    await answer(query);
+    await api.sendMessage({ chat_id: chatId, text: '[CBGLOBAL:admin' + action + ']\\n✍️ Responde con el ID numérico de Telegram del usuario.', reply_markup: { force_reply: true, selective: true } });
+    await renderPanel('El cambio se aplicará al responder al mensaje del bot.', [[{ text: '🔙 Volver', callback_data: 'admin:admins' }]]);
     return;
   }
   if (section === 'stats') {
