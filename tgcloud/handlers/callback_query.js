@@ -214,7 +214,7 @@ export default async function (query) {
     const active = Number(channel.active) ? 0 : 1;
     await db.update(channels).set({ active }).where(eq(channels.chatId, channelId)).run();
     await answer(query, active ? 'Procesamiento del canal activado.' : 'Procesamiento del canal desactivado.');
-    await renderPanel('📣 ADMINISTRACIÓN DE CANALES\\n\\nActiva o pausa el procesamiento automático por canal. Pulsa el nombre para configurar opciones individuales.', channelManagementButtons(await managedChannels(userId)));
+    await renderPanel('📣 ADMINISTRACIÓN DE CANALES\n\nActiva o pausa el procesamiento automático por canal. Pulsa el nombre para configurar opciones individuales.', channelManagementButtons(await managedChannels(userId)));
     return;
   }
   if (section === 'channeldelete') {
@@ -225,7 +225,7 @@ export default async function (query) {
     const channel = await db.select().from(channels).where(eq(channels.chatId, channelId)).get();
     if (!channel) { await answer(query, 'El canal ya no está registrado.', true); return; }
     await answer(query);
-    await renderPanel('⚠️ CONFIRMAR ELIMINACIÓN\\n\\nSe quitará ' + String(channel.title || channelId) + ' (' + channelId + ') y su configuración individual. Las publicaciones ya enviadas a Telegram no se borrarán.', [
+    await renderPanel('⚠️ CONFIRMAR ELIMINACIÓN\n\nSe quitará ' + String(channel.title || channelId) + ' (' + channelId + ') y su configuración individual. Las publicaciones ya enviadas a Telegram no se borrarán.', [
       [{ text: '🗑️ Sí, eliminar configuración', callback_data: 'admin:channeldeleteconfirm:' + channelId }],
       [{ text: '🔙 Cancelar', callback_data: 'admin:channels' }],
     ]);
@@ -241,7 +241,7 @@ export default async function (query) {
     await db.delete(channelRoutes).where(eq(channelRoutes.sourceChatId, channelId)).run();
     await db.delete(channelRoutes).where(eq(channelRoutes.destinationChatId, channelId)).run();
     await answer(query, 'Canal y configuración eliminados.');
-    await renderPanel('📣 ADMINISTRACIÓN DE CANALES\\n\\nCanal eliminado de la configuración. Las publicaciones ya enviadas no se borran.', channelManagementButtons(await managedChannels(userId)));
+    await renderPanel('📣 ADMINISTRACIÓN DE CANALES\n\nCanal eliminado de la configuración. Las publicaciones ya enviadas no se borran.', channelManagementButtons(await managedChannels(userId)));
     return;
   }
   if (section === 'channeltest') {
@@ -271,7 +271,7 @@ export default async function (query) {
         '',
         isAdmin && canPost ? '✅ El canal está listo para las funciones de publicación que tienen permiso.' : '⚠️ Añade el bot como administrador y concede los permisos necesarios.',
         'Esta prueba no publica ni elimina mensajes.',
-      ].join('\\n');
+      ].join('\n');
       await renderPanel(report, [[{ text: '🔙 Volver a configuración', callback_data: 'admin:channelsettings:' + channelId }]]);
     } catch (error) {
       console.log('Falló la prueba de permisos del canal', channelId, String(error));
@@ -290,7 +290,7 @@ export default async function (query) {
     if (!channel) { await answer(query, 'El canal ya no está registrado.', true); return; }
     const setting = await db.select().from(channelSettings).where(eq(channelSettings.channelId, channelId)).get();
     await answer(query);
-    await renderPanel('⚙️ CONFIGURACIÓN INDIVIDUAL\\n\\n' + String(channel.title || channelId) + ' (' + channelId + ')\\nProcesamiento: ' + (channel.active ? 'ACTIVO' : 'PAUSADO') + '\\nBienvenida: ' + (setting?.welcomeEnabled ? 'ON' : 'OFF') + '\\nCAPTCHA: ' + (setting?.captchaEnabled ? 'ON' : 'OFF') + '\\nCorrección de texto: ' + (setting?.textCorrectionEnabled ? 'ON' : 'OFF') + '\\n\\nCada opción se guarda por separado para este canal.', [
+    await renderPanel('⚙️ CONFIGURACIÓN INDIVIDUAL\n\n' + String(channel.title || channelId) + ' (' + channelId + ')\nProcesamiento: ' + (channel.active ? 'ACTIVO' : 'PAUSADO') + '\nBienvenida: ' + (setting?.welcomeEnabled ? 'ON' : 'OFF') + '\nCAPTCHA: ' + (setting?.captchaEnabled ? 'ON' : 'OFF') + '\nCorrección de texto: ' + (setting?.textCorrectionEnabled ? 'ON' : 'OFF') + '\n\nCada opción se guarda por separado para este canal.', [
       [{ text: '👋 Bienvenida ' + (setting?.welcomeEnabled ? '🟢' : '⚪'), callback_data: 'admin:toggle:welcome:' + channelId }],
       [{ text: '🧩 CAPTCHA ' + (setting?.captchaEnabled ? '🟢' : '⚪'), callback_data: 'admin:toggle:captcha:' + channelId }],
       [{ text: '✍️ Corrección ' + (setting?.textCorrectionEnabled ? '🟢' : '⚪'), callback_data: 'admin:toggle:correction:' + channelId }],
@@ -306,7 +306,7 @@ export default async function (query) {
       await answer(query, 'No tienes permiso para administrar ese canal.', true); return;
     }
     await answer(query);
-    await api.sendMessage({ chat_id: chatId, text: '[CBINPUT:welcome:' + channelId + ']\\n✍️ Responde a este mensaje con el texto completo de bienvenida. Variables: {mencion}, {nombre}, {username}, {userid}, {canal}.', reply_markup: { force_reply: true, selective: true } });
+    await api.sendMessage({ chat_id: chatId, text: '[CBINPUT:welcome:' + channelId + ']\n✍️ Responde a este mensaje con el texto completo de bienvenida. Variables: {mencion}, {nombre}, {username}, {userid}, {canal}.', reply_markup: { force_reply: true, selective: true } });
     await renderPanel('El texto se guardará solo para este canal.', [
       [{ text: '🔙 Volver a configuración', callback_data: 'admin:channelsettings:' + channelId }],
     ]);
@@ -348,9 +348,9 @@ export default async function (query) {
     let keyboardData = [];
     try { keyboardData = JSON.parse(template?.buttonsJson || '[]'); } catch {}
     const flat = keyboardData.flat().filter(Boolean);
-    const detail = flat.length ? flat.map((button,i) => (i + 1) + '. ' + button.text + ' [' + (button.style || 'normal') + '] — ' + (button.url ? button.url : button.callback_data ? 'acción interna' : button.copy_text?.text ? 'copiar texto' : 'acción especial')).join('\\n') : '(sin botones configurados)';
+    const detail = flat.length ? flat.map((button,i) => (i + 1) + '. ' + button.text + ' [' + (button.style || 'normal') + '] — ' + (button.url ? button.url : button.callback_data ? 'acción interna' : button.copy_text?.text ? 'copiar texto' : 'acción especial')).join('\n') : '(sin botones configurados)';
     await answer(query);
-    await renderPanel('🔘 BOTONES DE LA PLANTILLA\\nCanal: ' + channelId + '\\nTipo: ' + kind + '\\n\\n' + detail + '\\n\\nPulsa editar y responde al mensaje del bot con una línea por fila. Separa botones de la misma fila con |. Ejemplo: Visitar canal - https://t.me/ejemplo\\n#g Acceder - https://t.me/ejemplo\\n\\nEstilos: #p azul, #g verde, #r rojo. Acciones: URL, callback:TEXTO, popup:TEXTO, copy:TEXTO, share:TEXTO, rules.', [
+    await renderPanel('🔘 BOTONES DE LA PLANTILLA\nCanal: ' + channelId + '\nTipo: ' + kind + '\n\n' + detail + '\n\nPulsa editar y responde al mensaje del bot con una línea por fila. Separa botones de la misma fila con |. Ejemplo: Visitar canal - https://t.me/ejemplo\n#g Acceder - https://t.me/ejemplo\n\nEstilos: #p azul, #g verde, #r rojo. Acciones: URL, callback:TEXTO, popup:TEXTO, copy:TEXTO, share:TEXTO, rules.', [
       [{ text: '✏️ Editar botones', callback_data: 'admin:buttoninput:' + channelId + ':' + kind }],
       [{ text: '🗑️ Quitar todos', callback_data: 'admin:buttonclear:' + channelId + ':' + kind }],
       [{ text: '🔙 Volver', callback_data: 'admin:buttonchannel:' + channelId }],
@@ -363,7 +363,7 @@ export default async function (query) {
       await answer(query, 'No tienes permiso o el tipo no es válido.', true); return;
     }
     await answer(query);
-    await api.sendMessage({ chat_id: chatId, text: '[CBINPUT:buttons:' + channelId + ':' + kind + ']\\n✍️ Responde a este mensaje con los botones. Una fila por línea; usa | para varias columnas. Ejemplo:\\nVisitar canal - https://t.me/ejemplo | #g Acceder - https://t.me/ejemplo', reply_markup: { force_reply: true, selective: true } });
+    await api.sendMessage({ chat_id: chatId, text: '[CBINPUT:buttons:' + channelId + ':' + kind + ']\n✍️ Responde a este mensaje con los botones. Una fila por línea; usa | para varias columnas. Ejemplo:\nVisitar canal - https://t.me/ejemplo | #g Acceder - https://t.me/ejemplo', reply_markup: { force_reply: true, selective: true } });
     await renderPanel('Los botones se guardarán solo en esta plantilla.', [[{ text: '🔙 Volver', callback_data: 'admin:buttonkind:' + channelId + ':' + kind }]]);
     return;
   }
@@ -386,9 +386,9 @@ export default async function (query) {
       [{ text: '🔄 Actualizar lista', callback_data: 'admin:blacklist' }],
       await backRow(),
     ];
-    const list = rows.length ? rows.slice(0,30).map(row => '• ' + row.userId + (row.username ? ' (@' + row.username + ')' : '') + (row.reason ? ' — ' + row.reason : '')).join('\\n') : '(lista vacía)';
+    const list = rows.length ? rows.slice(0,30).map(row => '• ' + row.userId + (row.username ? ' (@' + row.username + ')' : '') + (row.reason ? ' — ' + row.reason : '')).join('\n') : '(lista vacía)';
     await answer(query);
-    await renderPanel('🚫 BLACKLIST GLOBAL\\n\\n' + list + (rows.length > 30 ? '\\n… y ' + (rows.length - 30) + ' más.' : '') + '\\n\\nLos bloqueos se aplican a los canales que administras donde el bot tenga permisos.', keyboard);
+    await renderPanel('🚫 BLACKLIST GLOBAL\n\n' + list + (rows.length > 30 ? '\n… y ' + (rows.length - 30) + ' más.' : '') + '\n\nLos bloqueos se aplican a los canales que administras donde el bot tenga permisos.', keyboard);
     return;
   }
   if (section === 'blackinput') {
@@ -404,7 +404,7 @@ export default async function (query) {
     const keyboard = rows.map(row => [{ text: '⚙️ ' + String(row.title || row.chatId).slice(0, 38), callback_data: 'admin:rulechannel:' + row.chatId }]);
     keyboard.push(await backRow());
     await answer(query);
-    await renderPanel('⚙️ REGLAS AUTOMÁTICAS\\n\\nSelecciona un canal para configurar sus reglas. Cada canal conserva sus propios ajustes.', keyboard);
+    await renderPanel('⚙️ REGLAS AUTOMÁTICAS\n\nSelecciona un canal para configurar sus reglas. Cada canal conserva sus propios ajustes.', keyboard);
     return;
   }
   if (section === 'rulechannel') {
@@ -415,7 +415,7 @@ export default async function (query) {
     const channel = await db.select().from(channels).where(eq(channels.chatId, channelId)).get();
     const setting = await db.select().from(channelSettings).where(eq(channelSettings.channelId, channelId)).get();
     await answer(query);
-    await renderPanel('⚙️ REGLAS DEL CANAL\\n' + String(channel?.title || channelId) + '\\n\\nCorrección básica: ' + (setting?.textCorrectionEnabled ? 'ACTIVA' : 'DESACTIVADA') + '\\nHashtags: ' + (setting?.hashtags || '(ninguno)') + '\\nDescripción: ' + (setting?.descriptionTemplate || '(sin plantilla)') + '\\nTexto de respaldo: ' + (setting?.missingDataText || '(sin configurar)'), [
+    await renderPanel('⚙️ REGLAS DEL CANAL\n' + String(channel?.title || channelId) + '\n\nCorrección básica: ' + (setting?.textCorrectionEnabled ? 'ACTIVA' : 'DESACTIVADA') + '\nHashtags: ' + (setting?.hashtags || '(ninguno)') + '\nDescripción: ' + (setting?.descriptionTemplate || '(sin plantilla)') + '\nTexto de respaldo: ' + (setting?.missingDataText || '(sin configurar)'), [
       [{ text: '✍️ Corrección ' + (setting?.textCorrectionEnabled ? '🟢' : '⚪'), callback_data: 'admin:toggle:correction:' + channelId }],
       [{ text: '#️⃣ Editar hashtags', callback_data: 'admin:hashtagchannel:' + channelId }],
       [{ text: '📝 Editar descripción', callback_data: 'admin:ruleinput:description:' + channelId }],
@@ -431,7 +431,7 @@ export default async function (query) {
       await answer(query, 'No tienes permiso o la opción no es válida.', true); return;
     }
     await answer(query);
-    await api.sendMessage({ chat_id: chatId, text: '[CBINPUT:' + field + ':' + channelId + ']\\n✍️ Responde a este mensaje con el texto que quieres guardar. Variables disponibles: {contenido}, {texto}, {canal}, {fecha}, {enlace}, {hashtags}.', reply_markup: { force_reply: true, selective: true } });
+    await api.sendMessage({ chat_id: chatId, text: '[CBINPUT:' + field + ':' + channelId + ']\n✍️ Responde a este mensaje con el texto que quieres guardar. Variables disponibles: {contenido}, {texto}, {canal}, {fecha}, {enlace}, {hashtags}.', reply_markup: { force_reply: true, selective: true } });
     await renderPanel('La regla se guardará únicamente para este canal.', [[{ text: '🔙 Volver', callback_data: 'admin:rulechannel:' + channelId }]]);
     return;
   }
@@ -444,7 +444,7 @@ export default async function (query) {
     }]);
     keyboard.push(await backRow());
     await answer(query);
-    await renderPanel(title + '\\n\\n' + (rows.length ? 'Selecciona un canal para consultar y configurar sus opciones.' : 'No tienes canales registrados.'), keyboard);
+    await renderPanel(title + '\n\n' + (rows.length ? 'Selecciona un canal para consultar y configurar sus opciones.' : 'No tienes canales registrados.'), keyboard);
     return;
   }
   if (section === 'templatechannel' || section === 'hashtagchannel') {
@@ -457,7 +457,7 @@ export default async function (query) {
     await answer(query);
     if (section === 'hashtagchannel') {
       const settings = await db.select().from(channelSettings).where(eq(channelSettings.channelId, channelId)).get();
-      await renderPanel('#️⃣ HASHTAGS DEL CANAL\\n\\nCanal: ' + String(channel.title || channelId) + '\\nID: ' + channelId + '\\n\\nActuales: ' + (settings?.hashtags || '(sin hashtags)'), [
+      await renderPanel('#️⃣ HASHTAGS DEL CANAL\n\nCanal: ' + String(channel.title || channelId) + '\nID: ' + channelId + '\n\nActuales: ' + (settings?.hashtags || '(sin hashtags)'), [
         [{ text: '✏️ Editar hashtags', callback_data: 'admin:hashtagedit:' + channelId }],
         [{ text: '🗑️ Borrar hashtags', callback_data: 'admin:hashtagclear:' + channelId }],
         [{ text: '🔙 Volver a canales', callback_data: 'admin:hashtags' }],
@@ -471,11 +471,11 @@ export default async function (query) {
       const list = kinds.map(([kind,label]) => {
         const row = rows.find(item => item.kind === kind || (kind === 'text' && item.kind === 'default'));
         return label + ': ' + (row ? 'configurada (' + row.format + ')' : 'sin configurar');
-      }).join('\\n');
+      }).join('\n');
       const keyboard = kinds.map(([kind,label]) => [{ text: label, callback_data: 'admin:templatekind:' + channelId + ':' + kind }]);
       keyboard.push([{ text: '📋 Ver todas las plantillas', callback_data: 'admin:templatelist:' + channelId }]);
       keyboard.push([{ text: '🔙 Volver a canales', callback_data: 'admin:templates' }]);
-      await renderPanel('📝 PLANTILLAS DEL CANAL\\n\\n' + String(channel.title || channelId) + ' (' + channelId + ')\\n\\n' + list + '\\n\\nVariables: {contenido}, {titulo}, {descripcion}, {enlace}, {hashtags}, {fecha}, {canal}.', keyboard);
+      await renderPanel('📝 PLANTILLAS DEL CANAL\n\n' + String(channel.title || channelId) + ' (' + channelId + ')\n\n' + list + '\n\nVariables: {contenido}, {titulo}, {descripcion}, {enlace}, {hashtags}, {fecha}, {canal}.', keyboard);
     }
     return;
   }
@@ -488,7 +488,7 @@ export default async function (query) {
     await answer(query, 'Hashtags borrados.');
     const setting = await db.select().from(channelSettings).where(eq(channelSettings.channelId, channelId)).get();
     const channel = await db.select().from(channels).where(eq(channels.chatId, channelId)).get();
-    await renderPanel('#️⃣ HASHTAGS DEL CANAL\\n\\nCanal: ' + String(channel?.title || channelId) + '\\nActuales: ' + (setting?.hashtags || '(sin hashtags)'), [
+    await renderPanel('#️⃣ HASHTAGS DEL CANAL\n\nCanal: ' + String(channel?.title || channelId) + '\nActuales: ' + (setting?.hashtags || '(sin hashtags)'), [
       [{ text: '✏️ Editar hashtags', callback_data: 'admin:hashtagedit:' + channelId }],
       [{ text: '🔙 Volver', callback_data: 'admin:hashtags' }],
     ]);
@@ -500,7 +500,7 @@ export default async function (query) {
       await answer(query, 'No tienes permiso para administrar ese canal.', true); return;
     }
     await answer(query);
-    await api.sendMessage({ chat_id: chatId, text: '[CBINPUT:hashtags:' + channelId + ']\\n✍️ Responde a este mensaje con los hashtags que quieres añadir automáticamente, por ejemplo: #Noticias #Actualidad.', reply_markup: { force_reply: true, selective: true } });
+    await api.sendMessage({ chat_id: chatId, text: '[CBINPUT:hashtags:' + channelId + ']\n✍️ Responde a este mensaje con los hashtags que quieres añadir automáticamente, por ejemplo: #Noticias #Actualidad.', reply_markup: { force_reply: true, selective: true } });
     await renderPanel('Envía los hashtags como respuesta al mensaje del bot.', [
       [{ text: '🔙 Volver', callback_data: 'admin:hashtagchannel:' + channelId }],
     ]);
@@ -515,7 +515,7 @@ export default async function (query) {
       return;
     }
     await answer(query);
-    await renderPanel('✏️ PLANTILLA: ' + labels[kind] + '\\n\\n1. Elige el formato.\\n2. El bot te pedirá el texto y lo guardarás respondiendo al mensaje.\\n\\nVariables: {contenido}, {texto}, {titulo}, {descripcion}, {enlace}, {hashtags}, {fecha}, {canal}.', [
+    await renderPanel('✏️ PLANTILLA: ' + labels[kind] + '\n\n1. Elige el formato.\n2. El bot te pedirá el texto y lo guardarás respondiendo al mensaje.\n\nVariables: {contenido}, {texto}, {titulo}, {descripcion}, {enlace}, {hashtags}, {fecha}, {canal}.', [
       [{ text: 'HTML', callback_data: 'admin:templateinput:' + channelId + ':' + kind + ':HTML' }, { text: 'Markdown', callback_data: 'admin:templateinput:' + channelId + ':' + kind + ':MARKDOWN' }],
       [{ text: 'MarkdownV2', callback_data: 'admin:templateinput:' + channelId + ':' + kind + ':MARKDOWNV2' }, { text: 'OFF', callback_data: 'admin:templateinput:' + channelId + ':' + kind + ':OFF' }],
       [{ text: 'RICH_MESSAGE', callback_data: 'admin:templateinput:' + channelId + ':' + kind + ':RICH_MESSAGE' }],
@@ -530,7 +530,7 @@ export default async function (query) {
       await answer(query, 'La selección no es válida o no tienes permiso.', true); return;
     }
     await answer(query);
-    await api.sendMessage({ chat_id: chatId, text: '[CBINPUT:template:' + channelId + ':' + kind + ':' + format + ']\\n✍️ Envía el texto completo de la plantilla como respuesta a este mensaje. Puedes incluir varias líneas.\\n\\nVariables: {contenido}, {texto}, {titulo}, {descripcion}, {enlace}, {hashtags}, {fecha}, {canal}.', reply_markup: { force_reply: true, selective: true } });
+    await api.sendMessage({ chat_id: chatId, text: '[CBINPUT:template:' + channelId + ':' + kind + ':' + format + ']\n✍️ Envía el texto completo de la plantilla como respuesta a este mensaje. Puedes incluir varias líneas.\n\nVariables: {contenido}, {texto}, {titulo}, {descripcion}, {enlace}, {hashtags}, {fecha}, {canal}.', reply_markup: { force_reply: true, selective: true } });
     await renderPanel('Cuando envíes la plantilla, quedará guardada únicamente para este canal y tipo de publicación.', [[{ text: '🔙 Volver a plantillas', callback_data: 'admin:templatechannel:' + channelId }]]);
     return;
   }
@@ -541,7 +541,7 @@ export default async function (query) {
     }
     const rows = await db.select().from(templates).where(eq(templates.channelId, channelId)).all();
     await answer(query);
-    await renderPanel('📋 PLANTILLAS GUARDADAS\\n\\n' + (rows.length ? rows.map(t => '• ' + t.kind + ' (' + t.format + '): ' + t.body.slice(0, 140)).join('\\n') : 'No hay plantillas configuradas.') + '\\n\\nEliminar una: /template_delete ' + channelId + ' TIPO', [
+    await renderPanel('📋 PLANTILLAS GUARDADAS\n\n' + (rows.length ? rows.map(t => '• ' + t.kind + ' (' + t.format + '): ' + t.body.slice(0, 140)).join('\n') : 'No hay plantillas configuradas.') + '\n\nEliminar una: /template_delete ' + channelId + ' TIPO', [
       [{ text: '🔙 Volver', callback_data: 'admin:templatechannel:' + channelId }],
     ]);
     return;
@@ -562,7 +562,7 @@ export default async function (query) {
   if (section === 'channels') {
     const rows = await managedChannels(userId);
     const text = rows.length ? '📣 CANALES REGISTRADOS\n' + rows.map(c => `• ${c.title || 'Sin título'} — ${c.chatId} — ${c.active ? 'activo' : 'inactivo'}`).join('\n') : 'No hay canales registrados.';
-    await renderPanel(text + '\\n\\nPulsa el nombre de un canal para abrir sus opciones, activa/pausa el procesamiento o elimina su configuración. La eliminación requiere confirmación.', channelManagementButtons(rows));
+    await renderPanel(text + '\n\nPulsa el nombre de un canal para abrir sus opciones, activa/pausa el procesamiento o elimina su configuración. La eliminación requiere confirmación.', channelManagementButtons(rows));
     return;
   }
   if (section === 'welcome' || section === 'captcha') {
