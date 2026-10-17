@@ -276,7 +276,7 @@ export default async function (message) {
   }
 
   const globalInputPrompt = String(message.reply_to_message?.text ?? '');
-  const globalInputMatch = globalInputPrompt.match(/\\[CBGLOBAL:black(add|remove)\\]/i);
+  const globalInputMatch = globalInputPrompt.match(/\[CBGLOBAL:black(add|remove)\]/i);
   if (globalInputMatch && isPrivate && await isAdmin(userId) && text && !text.startsWith('/')) {
     const action = globalInputMatch[1].toLowerCase();
     const [first, ...rest] = text.split(/\\s+/);
@@ -324,7 +324,7 @@ export default async function (message) {
 
   // Los formularios del panel se completan respondiendo al mensaje solicitado; no requieren comandos.
   const inputPrompt = String(message.reply_to_message?.text ?? '');
-  const inputMatch = inputPrompt.match(/\\[CBINPUT:(template|hashtags|welcome|buttons|description|missingdata):(-?\\d+)(?::([a-z]+)(?::([A-Z_]+))?)?\\]/i);
+  const inputMatch = inputPrompt.match(/\[CBINPUT:(template|hashtags|welcome|buttons|description|missingdata):(-?\d+)(?::([a-z]+)(?::([A-Z_]+))?)?\]/i);
   if (inputMatch && isPrivate && await isAdmin(userId) && text && !text.startsWith('/')) {
     const [, inputType, rawChannelId, rawKind, rawFormat] = inputMatch;
     const channelId = Number(rawChannelId);
