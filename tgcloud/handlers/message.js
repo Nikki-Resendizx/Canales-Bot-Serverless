@@ -276,7 +276,23 @@ export default async function (message) {
   }
 
   const globalInputPrompt = String(message.reply_to_message?.text ?? '');
-  const globalInputMatch = globalInputPrompt.match(/\[CBGLOBAL:black(add|remove)\]/i);
+  const globalInputMatch = globalInputPrompt.match(/\[CBGLOBAL:(black(add|remove)|admin(add|remove))\]/i);
+  if (globalInputMatch && /^admin/i.test(globalInputMatch[1]) && isPrivate && userId === OWNER_ID && text && !text.startsWith('/')) {
+    const action = globalInputMatch[1].toLowerCase();
+    const target = parseId(text);
+    if (!Number.isSafeInteger(target) || target <= 0 || target === OWNER_ID) {
+      await say(chatId, '⚠️ Envía un ID numérico válido. El propietario no puede quitarse desde este menú.');
+      return;
+    }
+    if (action === 'adminadd') {
+      await db.insert(admins).values({ userId: target, role: 'admin', createdAt: now() }).onConflictDoNothing().run();
+      await say(chatId, '✅ Administrador añadido: ' + target + '.');
+    } else {
+      await db.delete(admins).where(eq(admins.userId, target)).run();
+      await say(chatId, '✅ Administrador eliminado: ' + target + '.');
+    }
+    return;
+  }
   if (globalInputMatch && isPrivate && await isAdmin(userId) && text && !text.startsWith('/')) {
     const action = globalInputMatch[1].toLowerCase();
     const [first, ...rest] = text.split(/\\s+/);
