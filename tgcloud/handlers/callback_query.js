@@ -348,14 +348,34 @@ export default async function (query) {
     let keyboardData = [];
     try { keyboardData = JSON.parse(template?.buttonsJson || '[]'); } catch {}
     const flat = keyboardData.flat().filter(Boolean);
-    const detail = flat.length ? flat.map((button,i) => {
-      const action = button.url ? 'URL: ' + button.url : button.callback_data ? 'Callback: ' + button.callback_data : button.copy_text?.text ? 'Copiar: ' + button.copy_text.text : 'acción especial';
-      return (i + 1) + '. ' + button.text + ' [' + (button.style || 'normal') + '] — ' + action;
-    }).join('\n') : '(sin botones configurados)';
+    const detail = flat.length ? flat.map((button,i) => (i + 1) + '. ' + button.text + ' [' + (button.style || 'normal') + '] — ' + (button.url ? button.url : button.callback_data ? 'acción interna' : button.copy_text?.text ? 'copiar texto' : 'acción especial')).join('\\n') : '(sin botones configurados)';
     await answer(query);
-    await renderPanel('🔘 CONFIGURAR BOTONES\nCanal: ' + channelId + '\nPlantilla: ' + kind + '\n\n' + detail + '\n\nSintaxis (una fila por línea, | separa columnas):\nVisitar canal - https://t.me/ejemplo\n#g Acceder - https://t.me/ejemplo\n\nAcciones: callback:TEXTO, popup:TEXTO, copy:TEXTO, share:TEXTO, rules. Emoji premium: Texto {emoji:ID}.\n\nComandos: /template_buttons ' + channelId + ' ' + kind + ' [líneas de botones]\n/button_edit ' + channelId + ' ' + kind + ' N Texto - acción\n/button_delete ' + channelId + ' ' + kind + ' N\n\nPara rules, configura una URL: /navtext rules https://tu-enlace-de-reglas', [
-      [{ text: '🔙 Volver al canal', callback_data: 'admin:buttonchannel:' + channelId }],
+    await renderPanel('🔘 BOTONES DE LA PLANTILLA\\nCanal: ' + channelId + '\\nTipo: ' + kind + '\\n\\n' + detail + '\\n\\nPulsa editar y responde al mensaje del bot con una línea por fila. Separa botones de la misma fila con |. Ejemplo: Visitar canal - https://t.me/ejemplo\\n#g Acceder - https://t.me/ejemplo\\n\\nEstilos: #p azul, #g verde, #r rojo. Acciones: URL, callback:TEXTO, popup:TEXTO, copy:TEXTO, share:TEXTO, rules.', [
+      [{ text: '✏️ Editar botones', callback_data: 'admin:buttoninput:' + channelId + ':' + kind }],
+      [{ text: '🗑️ Quitar todos', callback_data: 'admin:buttonclear:' + channelId + ':' + kind }],
+      [{ text: '🔙 Volver', callback_data: 'admin:buttonchannel:' + channelId }],
     ]);
+    return;
+  }
+  if (section === 'buttoninput') {
+    const channelId = Number(parts[2]); const kind = String(parts[3] || '');
+    if (!Number.isSafeInteger(channelId) || !['default','text','photo','video','album','link','forward'].includes(kind) || !(await canManageChannel(userId, channelId))) {
+      await answer(query, 'No tienes permiso o el tipo no es válido.', true); return;
+    }
+    await answer(query);
+    await api.sendMessage({ chat_id: chatId, text: '[CBINPUT:buttons:' + channelId + ':' + kind + ']\\n✍️ Responde a este mensaje con los botones. Una fila por línea; usa | para varias columnas. Ejemplo:\\nVisitar canal - https://t.me/ejemplo | #g Acceder - https://t.me/ejemplo', reply_markup: { force_reply: true, selective: true } });
+    await renderPanel('Los botones se guardarán solo en esta plantilla.', [[{ text: '🔙 Volver', callback_data: 'admin:buttonkind:' + channelId + ':' + kind }]]);
+    return;
+  }
+  if (section === 'buttonclear') {
+    const channelId = Number(parts[2]); const kind = String(parts[3] || '');
+    if (!Number.isSafeInteger(channelId) || !['default','text','photo','video','album','link','forward'].includes(kind) || !(await canManageChannel(userId, channelId))) {
+      await answer(query, 'No tienes permiso o el tipo no es válido.', true); return;
+    }
+    const template = await db.select().from(templates).where(eq(templates.templateKey, channelId + ':' + kind)).get();
+    if (template) await db.update(templates).set({ buttonsJson: '[]', updatedAt: Date.now(), updatedBy: userId }).where(eq(templates.templateKey, channelId + ':' + kind)).run();
+    await answer(query, 'Botones eliminados.');
+    await renderPanel('🔘 No hay botones configurados para ' + kind + '.', [[{ text: '🔙 Volver', callback_data: 'admin:buttonkind:' + channelId + ':' + kind }]]);
     return;
   }
   if (section === 'templates' || section === 'hashtags') {
