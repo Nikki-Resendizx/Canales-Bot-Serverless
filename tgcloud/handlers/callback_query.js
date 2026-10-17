@@ -378,6 +378,42 @@ export default async function (query) {
     await renderPanel('🔘 No hay botones configurados para ' + kind + '.', [[{ text: '🔙 Volver', callback_data: 'admin:buttonkind:' + channelId + ':' + kind }]]);
     return;
   }
+  if (section === 'rules') {
+    const rows = await managedChannels(userId);
+    const keyboard = rows.map(row => [{ text: '⚙️ ' + String(row.title || row.chatId).slice(0, 38), callback_data: 'admin:rulechannel:' + row.chatId }]);
+    keyboard.push(await backRow());
+    await answer(query);
+    await renderPanel('⚙️ REGLAS AUTOMÁTICAS\\n\\nSelecciona un canal para configurar sus reglas. Cada canal conserva sus propios ajustes.', keyboard);
+    return;
+  }
+  if (section === 'rulechannel') {
+    const channelId = Number(parts[2]);
+    if (!Number.isSafeInteger(channelId) || !(await canManageChannel(userId, channelId))) {
+      await answer(query, 'No tienes permiso para administrar ese canal.', true); return;
+    }
+    const channel = await db.select().from(channels).where(eq(channels.chatId, channelId)).get();
+    const setting = await db.select().from(channelSettings).where(eq(channelSettings.channelId, channelId)).get();
+    await answer(query);
+    await renderPanel('⚙️ REGLAS DEL CANAL\\n' + String(channel?.title || channelId) + '\\n\\nCorrección básica: ' + (setting?.textCorrectionEnabled ? 'ACTIVA' : 'DESACTIVADA') + '\\nHashtags: ' + (setting?.hashtags || '(ninguno)') + '\\nDescripción: ' + (setting?.descriptionTemplate || '(sin plantilla)') + '\\nTexto de respaldo: ' + (setting?.missingDataText || '(sin configurar)'), [
+      [{ text: '✍️ Corrección ' + (setting?.textCorrectionEnabled ? '🟢' : '⚪'), callback_data: 'admin:toggle:correction:' + channelId }],
+      [{ text: '#️⃣ Editar hashtags', callback_data: 'admin:hashtagchannel:' + channelId }],
+      [{ text: '📝 Editar descripción', callback_data: 'admin:ruleinput:description:' + channelId }],
+      [{ text: '🧩 Editar texto de respaldo', callback_data: 'admin:ruleinput:missingdata:' + channelId }],
+      [{ text: '🔙 Volver', callback_data: 'admin:rules' }],
+    ]);
+    return;
+  }
+  if (section === 'ruleinput') {
+    const field = String(parts[2] || '');
+    const channelId = Number(parts[3]);
+    if (!['description','missingdata'].includes(field) || !Number.isSafeInteger(channelId) || !(await canManageChannel(userId, channelId))) {
+      await answer(query, 'No tienes permiso o la opción no es válida.', true); return;
+    }
+    await answer(query);
+    await api.sendMessage({ chat_id: chatId, text: '[CBINPUT:' + field + ':' + channelId + ']\\n✍️ Responde a este mensaje con el texto que quieres guardar. Variables disponibles: {contenido}, {texto}, {canal}, {fecha}, {enlace}, {hashtags}.', reply_markup: { force_reply: true, selective: true } });
+    await renderPanel('La regla se guardará únicamente para este canal.', [[{ text: '🔙 Volver', callback_data: 'admin:rulechannel:' + channelId }]]);
+    return;
+  }
   if (section === 'templates' || section === 'hashtags') {
     const rows = await managedChannels(userId);
     const title = section === 'templates' ? '📝 PLANTILLAS POR CANAL' : '#️⃣ HASHTAGS POR CANAL';
