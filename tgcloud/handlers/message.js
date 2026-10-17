@@ -592,7 +592,7 @@ export default async function (message) {
     }
     if (command === '/template_buttons') {
       const id = parseId(args[0]); const kind = String(args[1] || '').toLowerCase();
-      const rawButtons = argText.split(/\s+/).slice(2).join(' ').trim();
+      const rawButtons = argText.replace(/^\S+\s+\S+\s*/, '').trim();
       if (!Number.isSafeInteger(id) || !kind || !rawButtons) return void await say(chatId, 'Uso: envía /template_buttons ID_CANAL TIPO y en el mismo mensaje añade las líneas de botones. Cada fila va en una línea; usa | para columnas. También acepta JSON.');
       if (!(await canManageChannel(userId, id))) return void await say(chatId, '⛔ Ese canal no existe o no está asignado a tu administración.');
       const existing = await db.select().from(templates).where(eq(templates.templateKey, `${id}:${kind}`)).get();
@@ -631,7 +631,7 @@ export default async function (message) {
         keyboard[target.r].splice(target.c, 1);
         keyboard = keyboard.filter(row => row.length);
       } else {
-        const editText = argText.split(/\s+/).slice(3).join(' ').trim();
+        const editText = argText.replace(/^\S+\s+\S+\s+\S+\s*/, '').trim();
         if (!editText) return void await say(chatId, 'Uso: /button_edit ID_CANAL TIPO N Texto - acción\nEjemplo: /button_edit -100123 default 1 Visitar - https://t.me/ejemplo');
         let newButton;
         try {
