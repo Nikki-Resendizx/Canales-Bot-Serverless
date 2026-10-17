@@ -109,6 +109,11 @@ async function completeManualPublication(post, channelId) {
       message_id: post.message_id,
       [isMedia ? 'caption' : 'text']: output,
       ...(mode ? { parse_mode: mode } : {}),
+      ...(!mode && original && output.startsWith(original)
+        ? (isMedia
+          ? (Array.isArray(post.caption_entities) ? { caption_entities: post.caption_entities } : {})
+          : (Array.isArray(post.entities) ? { entities: post.entities } : {}))
+        : {}),
       ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
     };
     try {
