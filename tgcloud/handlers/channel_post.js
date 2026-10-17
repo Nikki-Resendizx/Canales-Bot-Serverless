@@ -1,6 +1,6 @@
 import { api, db } from 'sdk';
 import { eq } from 'sdk/db';
-import { channels, channelRoutes } from '../schema.js';
+import { channels, channelRoutes, postAlertKeys } from '../schema.js';
 
 const ALERTS_CHAT_ID = -1004424261064;
 const REACTION_REPORT_CHAT_ID = -1004456932813;
@@ -15,25 +15,45 @@ export default async function (post) {
   if (!connected || !Number(connected.active)) return;
 
   if (sourceId !== ALERTS_CHAT_ID && sourceId !== REACTION_REPORT_CHAT_ID) {
-    const postLink = post.chat.username
-      ? `https://t.me/${post.chat.username}/${post.message_id}`
-      : String(sourceId).startsWith('-100')
-        ? `https://t.me/c/${String(sourceId).slice(4)}/${post.message_id}`
-        : 'enlace no disponible';
-    const type = post.media_group_id ? 'álbum (mensaje individual del grupo)' : post.photo ? 'foto' : post.video ? 'vídeo' : post.document ? 'documento' : post.text ? 'texto/enlace' : 'publicación';
+    // Una clave persistente por álbum evita un aviso por cada elemento del grupo.
+    const alertKey = post.media_group_id
+      ? `album:${sourceId}:${post.media_group_id}`
+      : `post:${sourceId}:${post.message_id}`;
+    let shouldAlert = false;
+
     try {
-      await api.sendMessage({
-        chat_id: ALERTS_CHAT_ID,
-        text: [
-          '📣 NUEVA PUBLICACIÓN EN CANAL CONECTADO',
-          `Canal: ${post.chat.title ?? post.chat.username ?? sourceId}`,
-          `Tipo: ${type}`,
-          `Publicación: ${postLink}`,
-        ].join('\n'),
-        link_preview_options: { is_disabled: true },
-      });
+      const existingAlert = await db.select().from(postAlertKeys)
+        .where(eq(postAlertKeys.alertKey, alertKey)).get();
+      if (!existingAlert) {
+        await db.insert(postAlertKeys).values({ alertKey, createdAt: Date.now() }).run();
+        shouldAlert = true;
+      }
     } catch (error) {
-      console.log('No se pudo enviar el aviso de publicación', String(error));
+      // Si no podemos confirmar la clave, omitimos el aviso para evitar duplicados.
+      console.log('No se pudo registrar la clave del aviso; se omite', String(error));
+    }
+
+    if (shouldAlert) {
+      const postLink = post.chat.username
+        ? `https://t.me/${post.chat.username}/${post.message_id}`
+        : String(sourceId).startsWith('-100')
+          ? `https://t.me/c/${String(sourceId).slice(4)}/${post.message_id}`
+          : 'enlace no disponible';
+      const type = post.media_group_id ? 'álbum' : post.photo ? 'foto' : post.video ? 'vídeo' : post.document ? 'documento' : post.text ? 'texto/enlace' : 'publicación';
+      try {
+        await api.sendMessage({
+          chat_id: ALERTS_CHAT_ID,
+          text: [
+            '📣 NUEVA PUBLICACIÓN EN CANAL CONECTADO',
+            `Canal: ${post.chat.title ?? post.chat.username ?? sourceId}`,
+            `Tipo: ${type}`,
+            `Publicación: ${postLink}`,
+          ].join('\n'),
+          link_preview_options: { is_disabled: true },
+        });
+      } catch (error) {
+        console.log('No se pudo enviar el aviso de publicación', String(error));
+      }
     }
   }
 
