@@ -124,3 +124,10 @@ export const botTexts = table('bot_texts', {
   updatedBy: integer('updated_by').notNull(),
   updatedAt: integer('updated_at').notNull(),
 });
+
+
+// Claves persistentes para evitar repetir avisos de publicaciones y álbumes.
+export const postAlertKeys = table('post_alert_keys', {
+  alertKey: text('alert_key').primaryKey(),
+  createdAt: integer('created_at').notNull(),
+});
