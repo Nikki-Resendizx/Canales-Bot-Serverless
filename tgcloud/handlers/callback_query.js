@@ -442,7 +442,14 @@ export default async function (query) {
     await renderPanel('🧭 TEXTOS DE NAVEGACIÓN\n\nUsa /navtexts para consultar las claves. Edita con /navtext CLAVE nuevo texto. Para restaurar: /navtext CLAVE default.\n\nClaves: panel_title, panel_description, channels, welcome, captcha, hashtags, blacklist, routes, templates, publications, buttons, formats, rules, testmode, reactions, stars, admins, stats, settings, navigation, back.', [[{ text: await navText('back'), callback_data: 'admin:back' }]]);
     return;
   }
-  if (section === 'testmode') {\n    const rows = await managedChannels(userId);\n    const keyboard = rows.map(row => [{ text: '🧪 ' + String(row.title || row.chatId).slice(0, 45), callback_data: 'admin:channeltest:' + row.chatId }]);\n    keyboard.push(await backRow());\n    await renderPanel('🧪 MODO DE PRUEBA\\n\\nSelecciona un canal para comprobar permisos y acceso. Esta prueba no publica ni elimina mensajes y no modifica las publicaciones existentes.', keyboard);\n    return;\n  }\n  if (section === 'channels') {
+  if (section === 'testmode') {
+    const rows = await managedChannels(userId);
+    const keyboard = rows.map(row => [{ text: '🧪 ' + String(row.title || row.chatId).slice(0, 45), callback_data: 'admin:channeltest:' + row.chatId }]);
+    keyboard.push(await backRow());
+    await renderPanel('🧪 MODO DE PRUEBA\\n\\nSelecciona un canal para comprobar permisos y acceso. Esta prueba no publica ni elimina mensajes y no modifica las publicaciones existentes.', keyboard);
+    return;
+  }
+  if (section === 'channels') {
     const rows = await managedChannels(userId);
     const text = rows.length ? '📣 CANALES REGISTRADOS\n' + rows.map(c => `• ${c.title || 'Sin título'} — ${c.chatId} — ${c.active ? 'activo' : 'inactivo'}`).join('\n') : 'No hay canales registrados.';
     await renderPanel(text + '\\n\\nPulsa el nombre de un canal para abrir sus opciones, activa/pausa el procesamiento o elimina su configuración. La eliminación requiere confirmación.', channelManagementButtons(rows));
