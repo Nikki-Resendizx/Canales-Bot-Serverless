@@ -2,8 +2,10 @@ import { api, db } from 'sdk';
 import { eq } from 'sdk/db';
 import { channels, channelSettings, captchaSessions, globalBans, knownUsers } from '../schema.js';
 
-function renderWelcome(template, user) {
+function renderWelcome(template, user, chat) {
   const name = [user.first_name, user.last_name].filter(Boolean).join(' ') || 'usuario';
+  const channelName = String(chat?.title ?? chat?.username ?? chat?.id ?? 'canal')
+    .replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
   const escapedName = name.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
   const escapedUsername = user.username
     ? '@' + String(user.username).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
@@ -12,7 +14,8 @@ function renderWelcome(template, user) {
     .replaceAll('{mencion}', `<a href="tg://user?id=${user.id}">${escapedName}</a>`)
     .replaceAll('{nombre}', escapedName)
     .replaceAll('{username}', escapedUsername)
-    .replaceAll('{userid}', String(user.id));
+    .replaceAll('{userid}', String(user.id))
+    .replaceAll('{canal}', channelName);
 }
 
 export default async function (update) {
@@ -52,7 +55,7 @@ export default async function (update) {
   if (settings.welcomeEnabled) {
     await api.sendMessage({
       chat_id: chat.id,
-      text: renderWelcome(settings.welcomeText, user),
+      text: renderWelcome(settings.welcomeText, user, chat),
       parse_mode: 'HTML',
     });
   }
@@ -70,16 +73,16 @@ export default async function (update) {
     userId: user.id,
     channelId: chat.id,
     expectedAnswer: String(answer),
-    expiresAt: now + 120000,
+    expiresAt: now + 600000,
     createdAt: now,
   }).onConflictDoUpdate({
     target: captchaSessions.sessionKey,
-    set: { expectedAnswer: String(answer), expiresAt: now + 120000, createdAt: now },
+    set: { expectedAnswer: String(answer), expiresAt: now + 600000, createdAt: now },
   }).run();
 
   await api.sendMessage({
     chat_id: chat.id,
-    text: `🔐 ${user.first_name ?? 'Usuario'}, responde para verificar que eres una persona: ¿cuánto es ${left} + ${right}? Tienes 2 minutos.`,
+    text: `🔐 ${user.first_name ?? 'Usuario'}, responde para verificar que eres una persona: ¿cuánto es ${left} + ${right}? Tienes 10 minutos.`,
     reply_markup: { inline_keyboard: [[...choices].sort(() => Math.random() - 0.5).map((choice) => ({
       text: String(choice),
       callback_data: `captcha:${chat.id}:${user.id}:${choice}`,
