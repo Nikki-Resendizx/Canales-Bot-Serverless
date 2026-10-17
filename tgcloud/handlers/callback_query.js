@@ -101,7 +101,7 @@ async function backRow() { return [{ text: await navText('back'), callback_data:
 function moduleText(section) {
   const modules = {
     publications: '📤 PUBLICACIONES\n\nPublicar texto: /publish ID_CANAL texto\nPublicar un mensaje con foto/vídeo/documento: responde a ese mensaje con /publish ID_CANAL\n\nPublicación de pago: /publish_paid ID_CANAL PRECIO_STARS texto (o responde a un mensaje). Prueba cualquier cobro con Stars antes de promocionarlo. El bot debe ser administrador en el canal.',
-    buttons: '🔘 BOTONES INLINE\n\nDefine los botones de una plantilla como JSON: /template_buttons ID_CANAL TIPO JSON\nEjemplo: /template_buttons -100123 default [[{"text":"Abrir","url":"https://t.me/"}]]\nCada botón debe tener text y una url o callback_data. Los botones se adjuntan al publicar usando la plantilla default.',
+    buttons: '🔘 BOTONES POR CANAL\\n\\nConfigura botones por líneas: /template_buttons ID_CANAL TIPO seguido de las líneas. Ejemplo: Visitar canal - https://t.me/ejemplo\\n#g Acceder - https://t.me/ejemplo\\nUsa | para varias columnas. Estilos: #b azul, #g verde, #d rojo. Acciones: callback:TEXTO, popup:TEXTO, copy:TEXTO, share:TEXTO, rules. Emoji premium: Texto {emoji:ID}.\\nEditar: /button_edit ID TIPO N Texto - acción. Eliminar: /button_delete ID TIPO N. Se adjuntan según la plantilla de publicación.',\n\nDefine los botones de una plantilla como JSON: /template_buttons ID_CANAL TIPO JSON\nEjemplo: /template_buttons -100123 default [[{"text":"Abrir","url":"https://t.me/"}]]\nCada botón debe tener text y una url o callback_data. Los botones se adjuntan al publicar usando la plantilla default.',
     formats: '🎨 FORMATOS Y VARIABLES\n\nFormatos disponibles: HTML, Markdown, MarkdownV2, OFF y RICH_MESSAGE (JSON válido).\nGuardar plantilla: /template_set ID_CANAL TIPO FORMATO texto. Editor: /correction ID on|off, /hashtags ID texto, /description ID texto, /missingdata ID texto\nVariables para plantillas: {texto}. Variables de bienvenida: {mencion}, {nombre}, {username}, {userid}.\nUsa HTML para enlaces, negrita, cursiva, subrayado y código admitidos por Telegram.',
     reactions: '🔔 REPORTES DE REACCIONES\n\nConfigurar canal de avisos: /setreport ID_CANAL ID_CANAL_REPORTE\nSe generan reportes separados: las reacciones individuales identificables se reportan con usuario/ID; los eventos de conteo se reportan como agregados y nunca inventan identidades. Telegram debe enviar los eventos de reacción al bot.',
     settings: '⚙️ CONFIGURACIÓN\n\nAñade el bot como administrador en cada canal/grupo con los permisos necesarios. Registra canales con /addchannel ID título.\nComandos: /help\nLa caché de módulos y la sincronización del webhook las administra Telegram Serverless/GitHub Actions, no un botón ficticio dentro del bot.',
@@ -144,6 +144,14 @@ export default async function (query) {
     return;
   }
 
+  if (data.startsWith('btn:popup:')) {
+    await answer(query, (data.slice('btn:popup:'.length) || 'Acción del botón').slice(0, 200), true);
+    return;
+  }
+  if (data.startsWith('btn:callback:')) {
+    await answer(query, (data.slice('btn:callback:'.length) || 'Acción ejecutada').slice(0, 200), true);
+    return;
+  }
   if (!data.startsWith('admin:')) { await answer(query, 'Acción desconocida.'); return; }
   if (!userId || chatId !== userId || !(await isAdmin(userId))) {
     await answer(query, 'No tienes permiso para usar este panel.', true);
@@ -302,6 +310,51 @@ export default async function (query) {
     return;
   }
 
+  if (section === 'buttons') {
+    const rows = await managedChannels(userId);
+    const keyboard = rows.map(row => [{ text: String(row.title || row.chatId).slice(0, 36), callback_data: 'admin:buttonchannel:' + row.chatId }]);
+    keyboard.push(await backRow());
+    await renderPanel('🔘 BOTONES POR CANAL\n\nSelecciona el canal al que pertenecen los botones. Se guardan dentro de cada plantilla y no afectan a otros canales.', keyboard);
+    return;
+  }
+  if (section === 'buttonchannel') {
+    const channelId = Number(parts[2]);
+    if (!Number.isSafeInteger(channelId) || !(await canManageChannel(userId, channelId))) {
+      await answer(query, 'No tienes permiso para administrar ese canal.', true); return;
+    }
+    const channel = await db.select().from(channels).where(eq(channels.chatId, channelId)).get();
+    const rows = await db.select().from(templates).where(eq(templates.channelId, channelId)).all();
+    const kinds = [['default','⭐ Predeterminada'],['text','💬 Texto'],['photo','🖼️ Fotos'],['video','🎬 Vídeos'],['album','🗂️ Álbumes'],['link','🔗 Enlaces'],['forward','↪️ Reenviadas']];
+    const keyboard = kinds.map(([kind,label]) => {
+      const template = rows.find(row => row.kind === kind);
+      let count = 0;
+      try { count = JSON.parse(template?.buttonsJson || '[]').reduce((n,row) => n + (Array.isArray(row) ? row.length : 0), 0); } catch {}
+      return [{ text: label + ' · ' + (count ? count + ' botón(es)' : 'sin botones'), callback_data: 'admin:buttonkind:' + channelId + ':' + kind }];
+    });
+    keyboard.push([{ text: '🔙 Volver a canales', callback_data: 'admin:buttons' }]);
+    await answer(query);
+    await renderPanel('🔘 BOTONES DEL CANAL\n\n' + String(channel?.title || channelId) + ' (' + channelId + ')\nSelecciona el tipo de publicación para consultar, crear o editar su teclado.', keyboard);
+    return;
+  }
+  if (section === 'buttonkind') {
+    const channelId = Number(parts[2]); const kind = String(parts[3] || '');
+    if (!Number.isSafeInteger(channelId) || !['default','text','photo','video','album','link','forward'].includes(kind) || !(await canManageChannel(userId, channelId))) {
+      await answer(query, 'No tienes permiso o el tipo no es válido.', true); return;
+    }
+    const template = await db.select().from(templates).where(eq(templates.templateKey, channelId + ':' + kind)).get();
+    let keyboardData = [];
+    try { keyboardData = JSON.parse(template?.buttonsJson || '[]'); } catch {}
+    const flat = keyboardData.flat().filter(Boolean);
+    const detail = flat.length ? flat.map((button,i) => {
+      const action = button.url ? 'URL: ' + button.url : button.callback_data ? 'Callback: ' + button.callback_data : button.copy_text?.text ? 'Copiar: ' + button.copy_text.text : 'acción especial';
+      return (i + 1) + '. ' + button.text + ' [' + (button.style || 'normal') + '] — ' + action;
+    }).join('\n') : '(sin botones configurados)';
+    await answer(query);
+    await renderPanel('🔘 CONFIGURAR BOTONES\nCanal: ' + channelId + '\nPlantilla: ' + kind + '\n\n' + detail + '\n\nSintaxis (una fila por línea, | separa columnas):\nVisitar canal - https://t.me/ejemplo\n#g Acceder - https://t.me/ejemplo\n\nAcciones: callback:TEXTO, popup:TEXTO, copy:TEXTO, share:TEXTO, rules. Emoji premium: Texto {emoji:ID}.\n\nComandos: /template_buttons ' + channelId + ' ' + kind + ' [líneas de botones]\n/button_edit ' + channelId + ' ' + kind + ' N Texto - acción\n/button_delete ' + channelId + ' ' + kind + ' N\n\nPara rules, configura una URL: /navtext rules https://tu-enlace-de-reglas', [
+      [{ text: '🔙 Volver al canal', callback_data: 'admin:buttonchannel:' + channelId }],
+    ]);
+    return;
+  }
   if (section === 'templates' || section === 'hashtags') {
     const rows = await managedChannels(userId);
     const title = section === 'templates' ? '📝 PLANTILLAS POR CANAL' : '#️⃣ HASHTAGS POR CANAL';
