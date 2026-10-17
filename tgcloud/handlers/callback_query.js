@@ -378,6 +378,33 @@ export default async function (query) {
     await renderPanel('🔘 No hay botones configurados para ' + kind + '.', [[{ text: '🔙 Volver', callback_data: 'admin:buttonkind:' + channelId + ':' + kind }]]);
     return;
   }
+  if (section === 'reactions') {
+    const rows = await managedChannels(userId);
+    const keyboard = rows.map(row => [{ text: '🔔 ' + String(row.title || row.chatId).slice(0,38), callback_data: 'admin:reactionchannel:' + row.chatId }]);
+    keyboard.push(await backRow());
+    await answer(query);
+    await renderPanel('🔔 REPORTES DE REACCIONES\\n\\nSelecciona un canal para configurar dónde se envían los avisos.', keyboard);
+    return;
+  }
+  if (section === 'reactionchannel') {
+    const channelId = Number(parts[2]);
+    if (!Number.isSafeInteger(channelId) || !(await canManageChannel(userId, channelId))) { await answer(query, 'No tienes permiso para ese canal.', true); return; }
+    const setting = await db.select().from(channelSettings).where(eq(channelSettings.channelId, channelId)).get();
+    await answer(query);
+    await renderPanel('🔔 REPORTES DE REACCIONES\\nCanal: ' + channelId + '\\nDestino actual: ' + (setting?.reactionReportChatId || 'predeterminado') + '\\n\\nEl destino debe ser un canal donde el bot pueda publicar.', [
+      [{ text: '✏️ Cambiar destino', callback_data: 'admin:reactioninput:' + channelId }],
+      [{ text: '🔙 Volver', callback_data: 'admin:reactions' }],
+    ]);
+    return;
+  }
+  if (section === 'reactioninput') {
+    const channelId = Number(parts[2]);
+    if (!Number.isSafeInteger(channelId) || !(await canManageChannel(userId, channelId))) { await answer(query, 'No tienes permiso para ese canal.', true); return; }
+    await answer(query);
+    await api.sendMessage({ chat_id: chatId, text: '[CBINPUT:report:' + channelId + ']\\n✍️ Responde con el ID numérico del canal o grupo que recibirá los reportes.', reply_markup: { force_reply: true, selective: true } });
+    await renderPanel('Envía el ID como respuesta al mensaje del bot.', [[{ text: '🔙 Volver', callback_data: 'admin:reactionchannel:' + channelId }]]);
+    return;
+  }
   if (section === 'routes') {
     const [routeRows, channelRows] = await Promise.all([db.select().from(channelRoutes).all(), managedChannels(userId)]);
     const names = new Map(channelRows.map(row => [Number(row.chatId), String(row.title || row.chatId)]));
