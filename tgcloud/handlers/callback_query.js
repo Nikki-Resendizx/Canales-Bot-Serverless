@@ -306,7 +306,8 @@ export default async function (query) {
       await answer(query, 'No tienes permiso para administrar ese canal.', true); return;
     }
     await answer(query);
-    await renderPanel('✏️ EDITAR BIENVENIDA\\n\\nEnvía el comando en este chat privado:\\n/welcometext ' + channelId + ' Tu texto de bienvenida\\n\\nVariables: {mencion}, {nombre}, {username}, {userid}.', [
+    await api.sendMessage({ chat_id: chatId, text: '[CBINPUT:welcome:' + channelId + ']\\n✍️ Responde a este mensaje con el texto completo de bienvenida. Variables: {mencion}, {nombre}, {username}, {userid}, {canal}.', reply_markup: { force_reply: true, selective: true } });
+    await renderPanel('El texto se guardará solo para este canal.', [
       [{ text: '🔙 Volver a configuración', callback_data: 'admin:channelsettings:' + channelId }],
     ]);
     return;
@@ -379,8 +380,9 @@ export default async function (query) {
     await answer(query);
     if (section === 'hashtagchannel') {
       const settings = await db.select().from(channelSettings).where(eq(channelSettings.channelId, channelId)).get();
-      await renderPanel('#️⃣ HASHTAGS DEL CANAL\\n\\nCanal: ' + String(channel.title || channelId) + '\\nID: ' + channelId + '\\n\\nActuales: ' + (settings?.hashtags || '(sin hashtags)') + '\\n\\nPara editar: /hashtags ' + channelId + ' #Etiqueta1 #Etiqueta2\\nPara borrar: /hashtags ' + channelId + ' off', [
+      await renderPanel('#️⃣ HASHTAGS DEL CANAL\\n\\nCanal: ' + String(channel.title || channelId) + '\\nID: ' + channelId + '\\n\\nActuales: ' + (settings?.hashtags || '(sin hashtags)'), [
         [{ text: '✏️ Editar hashtags', callback_data: 'admin:hashtagedit:' + channelId }],
+        [{ text: '🗑️ Borrar hashtags', callback_data: 'admin:hashtagclear:' + channelId }],
         [{ text: '🔙 Volver a canales', callback_data: 'admin:hashtags' }],
       ]);
     } else {
@@ -421,11 +423,13 @@ export default async function (query) {
       await answer(query, 'No tienes permiso para administrar ese canal.', true); return;
     }
     await answer(query);
-    await renderPanel('✏️ EDITAR HASHTAGS\\n\\nEnvía en el chat privado:\\n/hashtags ' + channelId + ' #Etiqueta1 #Etiqueta2\\n\\nPara borrar los hashtags: /hashtags ' + channelId + ' off.', [
+    await api.sendMessage({ chat_id: chatId, text: '[CBINPUT:hashtags:' + channelId + ']\\n✍️ Responde a este mensaje con los hashtags que quieres añadir automáticamente, por ejemplo: #Noticias #Actualidad.', reply_markup: { force_reply: true, selective: true } });
+    await renderPanel('Envía los hashtags como respuesta al mensaje del bot.', [
       [{ text: '🔙 Volver', callback_data: 'admin:hashtagchannel:' + channelId }],
     ]);
     return;
   }
+
   if (section === 'templatekind') {
     const channelId = Number(parts[2]); const kind = String(parts[3] || '');
     const labels = { text:'💬 Mensajes de texto', photo:'🖼️ Fotografías', video:'🎬 Vídeos', album:'🖼️ Álbumes', link:'🔗 Enlaces', forward:'↪️ Publicaciones reenviadas' };
