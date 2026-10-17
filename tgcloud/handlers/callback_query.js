@@ -400,6 +400,21 @@ export default async function (query) {
     }
     return;
   }
+  if (section === 'hashtagclear') {
+    const channelId = Number(parts[2]);
+    if (!Number.isSafeInteger(channelId) || !(await canManageChannel(userId, channelId))) {
+      await answer(query, 'No tienes permiso para administrar ese canal.', true); return;
+    }
+    await db.update(channelSettings).set({ hashtags: '', updatedAt: Date.now() }).where(eq(channelSettings.channelId, channelId)).run();
+    await answer(query, 'Hashtags borrados.');
+    const setting = await db.select().from(channelSettings).where(eq(channelSettings.channelId, channelId)).get();
+    const channel = await db.select().from(channels).where(eq(channels.chatId, channelId)).get();
+    await renderPanel('#️⃣ HASHTAGS DEL CANAL\\n\\nCanal: ' + String(channel?.title || channelId) + '\\nActuales: ' + (setting?.hashtags || '(sin hashtags)'), [
+      [{ text: '✏️ Editar hashtags', callback_data: 'admin:hashtagedit:' + channelId }],
+      [{ text: '🔙 Volver', callback_data: 'admin:hashtags' }],
+    ]);
+    return;
+  }
   if (section === 'hashtagedit') {
     const channelId = Number(parts[2]);
     if (!Number.isSafeInteger(channelId) || !(await canManageChannel(userId, channelId))) {
