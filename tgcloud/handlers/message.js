@@ -275,6 +275,50 @@ export default async function (message) {
     return;
   }
 
+  // Los formularios del panel se completan respondiendo al mensaje solicitado; no requieren comandos.
+  const inputPrompt = String(message.reply_to_message?.text ?? '');
+  const inputMatch = inputPrompt.match(/\\[CBINPUT:(template|hashtags|welcome):(-?\\d+)(?::([a-z]+):([A-Z_]+))?\\]/i);
+  if (inputMatch && isPrivate && await isAdmin(userId) && text && !text.startsWith('/')) {
+    const [, inputType, rawChannelId, rawKind, rawFormat] = inputMatch;
+    const channelId = Number(rawChannelId);
+    if (!Number.isSafeInteger(channelId) || !(await canManageChannel(userId, channelId))) {
+      await say(chatId, '⛔ No tienes permiso para editar ese canal.');
+      return;
+    }
+    try {
+      await ensureSettings(channelId);
+      if (inputType === 'template') {
+        const kind = String(rawKind || '').toLowerCase();
+        const format = String(rawFormat || 'HTML').toUpperCase();
+        if (!['default','text','photo','video','album','link','forward'].includes(kind) ||
+            !['HTML','MARKDOWN','MARKDOWNV2','OFF','RICH_MESSAGE'].includes(format)) {
+          await say(chatId, '⚠️ El tipo o formato de plantilla no es válido.');
+          return;
+        }
+        await db.insert(templates).values({
+          templateKey: channelId + ':' + kind, channelId, kind, body: text,
+          format, buttonsJson: '[]', updatedBy: userId, updatedAt: now(),
+        }).onConflictDoUpdate({
+          target: templates.templateKey,
+          set: { body: text, format, updatedBy: userId, updatedAt: now() },
+        }).run();
+        await say(chatId, '✅ Plantilla guardada para el canal ' + channelId + ' (' + kind + ', ' + format + ').');
+      } else if (inputType === 'hashtags') {
+        if (text.length > 1000) { await say(chatId, '⚠️ El texto supera 1000 caracteres.'); return; }
+        await db.update(channelSettings).set({ hashtags: text, updatedAt: now() }).where(eq(channelSettings.channelId, channelId)).run();
+        await say(chatId, '✅ Hashtags guardados para el canal ' + channelId + '.');
+      } else if (inputType === 'welcome') {
+        if (text.length > 3500) { await say(chatId, '⚠️ El texto supera 3500 caracteres.'); return; }
+        await db.update(channelSettings).set({ welcomeText: text, updatedAt: now() }).where(eq(channelSettings.channelId, channelId)).run();
+        await say(chatId, '✅ Bienvenida guardada para el canal ' + channelId + '.');
+      }
+    } catch (error) {
+      console.log('No se pudo guardar la configuración desde el panel de botones', String(error));
+      await say(chatId, '⚠️ No se pudo guardar. Revisa el esquema de datos y vuelve a intentarlo desde el panel.');
+    }
+    return;
+  }
+
   if (text === '/start' || text.startsWith('/start ')) {
     const startPayload = text.split(/\s+/)[1] || '';
     if (startPayload.startsWith('buy_')) {
