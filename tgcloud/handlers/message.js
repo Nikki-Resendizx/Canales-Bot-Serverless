@@ -160,7 +160,7 @@ const HELP = [
   '/button_edit ID_CANAL TIPO N texto - acción — editar un botón (índice 1-based)',
   '/button_delete ID_CANAL TIPO N — eliminar un botón individual',
   'Sintaxis: Visitar canal - https://t.me/ejemplo | #g Acceder - https://t.me/ejemplo',
-  'Acciones: callback:TEXTO, popup:TEXTO, copy:TEXTO, share:TEXTO, rules. Estilos: #b azul, #g verde, #d rojo. Emoji premium: Texto {emoji:ID}.',
+  'Acciones: callback:TEXTO, popup:TEXTO, copy:TEXTO, share:TEXTO, rules. Estilos: #p azul, #g verde, #r rojo (también #b/#d). Emoji premium: Texto {emoji:ID}. Separa columnas con | o &&.',
   '/template_delete ID_CANAL TIPO — borrar plantilla',
   '/publish ID_CANAL texto — publicar texto',
   '/publish_paid ID_CANAL PRECIO_STARS texto — crear publicación de pago en Stars, o responder a un mensaje multimedia',
