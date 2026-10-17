@@ -277,7 +277,7 @@ export default async function (message) {
 
   // Los formularios del panel se completan respondiendo al mensaje solicitado; no requieren comandos.
   const inputPrompt = String(message.reply_to_message?.text ?? '');
-  const inputMatch = inputPrompt.match(/\\[CBINPUT:(template|hashtags|welcome):(-?\\d+)(?::([a-z]+):([A-Z_]+))?\\]/i);
+  const inputMatch = inputPrompt.match(/\\[CBINPUT:(template|hashtags|welcome|buttons):(-?\\d+)(?::([a-z]+)(?::([A-Z_]+))?)?\\]/i);
   if (inputMatch && isPrivate && await isAdmin(userId) && text && !text.startsWith('/')) {
     const [, inputType, rawChannelId, rawKind, rawFormat] = inputMatch;
     const channelId = Number(rawChannelId);
@@ -311,6 +311,22 @@ export default async function (message) {
         if (text.length > 3500) { await say(chatId, '⚠️ El texto supera 3500 caracteres.'); return; }
         await db.update(channelSettings).set({ welcomeText: text, updatedAt: now() }).where(eq(channelSettings.channelId, channelId)).run();
         await say(chatId, '✅ Bienvenida guardada para el canal ' + channelId + '.');
+      } else if (inputType === 'buttons') {
+        const kind = String(rawKind || '').toLowerCase();
+        if (!['default','text','photo','video','album','link','forward'].includes(kind)) {
+          await say(chatId, '⚠️ El tipo de plantilla no es válido.'); return;
+        }
+        const keyboard = parseButtonSyntax(text);
+        const templateKey = channelId + ':' + kind;
+        const existing = await db.select().from(templates).where(eq(templates.templateKey, templateKey)).get();
+        await db.insert(templates).values({
+          templateKey, channelId, kind, body: existing?.body || '', format: existing?.format || 'OFF',
+          buttonsJson: JSON.stringify(keyboard), updatedBy: userId, updatedAt: now(),
+        }).onConflictDoUpdate({
+          target: templates.templateKey,
+          set: { buttonsJson: JSON.stringify(keyboard), updatedBy: userId, updatedAt: now() },
+        }).run();
+        await say(chatId, '✅ Botones guardados para el canal ' + channelId + ', plantilla ' + kind + '.');
       }
     } catch (error) {
       console.log('No se pudo guardar la configuración desde el panel de botones', String(error));
