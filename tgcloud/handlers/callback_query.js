@@ -395,7 +395,7 @@ export default async function (query) {
     const action = String(parts[2] || '');
     if (!['add','remove'].includes(action)) { await answer(query, 'Acción no válida.', true); return; }
     await answer(query);
-    await api.sendMessage({ chat_id: chatId, text: '[CBINPUT:black' + action + ':0]\\n' + (action === 'add' ? '✍️ Envía el ID de Telegram o @username y, opcionalmente, el motivo. Ejemplo: 123456789 spam' : '✍️ Envía el ID de Telegram o @username que quieres desbloquear.'), reply_markup: { force_reply: true, selective: true } });
+    await api.sendMessage({ chat_id: chatId, text: '[CBGLOBAL:black' + action + ']'\\n' + (action === 'add' ? '✍️ Envía el ID de Telegram o @username y, opcionalmente, el motivo. Ejemplo: 123456789 spam' : '✍️ Envía el ID de Telegram o @username que quieres desbloquear.'), reply_markup: { force_reply: true, selective: true } });
     await renderPanel('La acción se ejecutará al responder al mensaje del bot.', [[{ text: '🔙 Volver', callback_data: 'admin:blacklist' }]]);
     return;
   }
