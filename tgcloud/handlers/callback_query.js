@@ -415,13 +415,27 @@ export default async function (query) {
     const channelId = Number(parts[2]); const kind = String(parts[3] || '');
     const labels = { text:'💬 Mensajes de texto', photo:'🖼️ Fotografías', video:'🎬 Vídeos', album:'🖼️ Álbumes', link:'🔗 Enlaces', forward:'↪️ Publicaciones reenviadas' };
     if (!Number.isSafeInteger(channelId) || !Object.hasOwn(labels, kind) || !(await canManageChannel(userId, channelId))) {
-      await answer(query, 'No tienes permiso o el tipo de plantilla no es válido.', true); return;
+      await answer(query, 'No tienes permiso o el tipo de plantilla no es válido.', true);
+      return;
     }
     await answer(query);
-    await renderPanel('✏️ CONFIGURAR PLANTILLA: ' + labels[kind] + '\\n\\nGuardar o actualizar:\\n/template_set ' + channelId + ' ' + kind + ' HTML {contenido}\\n\\nPuedes cambiar HTML por Markdown, MarkdownV2, OFF o RICH_MESSAGE. Para volver a ver las plantillas guardadas usa /template_list ' + channelId + '.\\n\\nVariables: {contenido}, {titulo}, {descripcion}, {enlace}, {hashtags}, {fecha}, {canal}.', [
-      [{ text: '📋 Ver plantillas guardadas', callback_data: 'admin:templatelist:' + channelId }],
-      [{ text: '🔙 Volver a plantillas', callback_data: 'admin:templatechannel:' + channelId }],
+    await renderPanel('✏️ PLANTILLA: ' + labels[kind] + '\\n\\n1. Elige el formato.\\n2. El bot te pedirá el texto y lo guardarás respondiendo al mensaje.\\n\\nVariables: {contenido}, {texto}, {titulo}, {descripcion}, {enlace}, {hashtags}, {fecha}, {canal}.', [
+      [{ text: 'HTML', callback_data: 'admin:templateinput:' + channelId + ':' + kind + ':HTML' }, { text: 'Markdown', callback_data: 'admin:templateinput:' + channelId + ':' + kind + ':MARKDOWN' }],
+      [{ text: 'MarkdownV2', callback_data: 'admin:templateinput:' + channelId + ':' + kind + ':MARKDOWNV2' }, { text: 'OFF', callback_data: 'admin:templateinput:' + channelId + ':' + kind + ':OFF' }],
+      [{ text: 'RICH_MESSAGE', callback_data: 'admin:templateinput:' + channelId + ':' + kind + ':RICH_MESSAGE' }],
+      [{ text: '📋 Ver guardadas', callback_data: 'admin:templatelist:' + channelId }],
+      [{ text: '🔙 Volver', callback_data: 'admin:templatechannel:' + channelId }],
     ]);
+    return;
+  }
+  if (section === 'templateinput') {
+    const channelId = Number(parts[2]); const kind = String(parts[3] || ''); const format = String(parts[4] || '').toUpperCase();
+    if (!Number.isSafeInteger(channelId) || !['default','text','photo','video','album','link','forward'].includes(kind) || !['HTML','MARKDOWN','MARKDOWNV2','OFF','RICH_MESSAGE'].includes(format) || !(await canManageChannel(userId, channelId))) {
+      await answer(query, 'La selección no es válida o no tienes permiso.', true); return;
+    }
+    await answer(query);
+    await api.sendMessage({ chat_id: chatId, text: '[CBINPUT:template:' + channelId + ':' + kind + ':' + format + ']\\n✍️ Envía el texto completo de la plantilla como respuesta a este mensaje. Puedes incluir varias líneas.\\n\\nVariables: {contenido}, {texto}, {titulo}, {descripcion}, {enlace}, {hashtags}, {fecha}, {canal}.', reply_markup: { force_reply: true, selective: true } });
+    await renderPanel('Cuando envíes la plantilla, quedará guardada únicamente para este canal y tipo de publicación.', [[{ text: '🔙 Volver a plantillas', callback_data: 'admin:templatechannel:' + channelId }]]);
     return;
   }
   if (section === 'templatelist') {
