@@ -573,8 +573,11 @@ export default async function (query) {
       settingsRows.push({ ...channel, welcomeEnabled: setting?.welcomeEnabled ?? 0, captchaEnabled: setting?.captchaEnabled ?? 0 });
     }
     const keyboard = channelButtons(settingsRows, section);
+    if (section === 'welcome') {
+      for (const channel of settingsRows) keyboard.push([{ text: '✏️ Editar bienvenida · ' + String(channel.title || channel.chatId).slice(0, 24), callback_data: 'admin:welcomeedit:' + channel.chatId }]);
+    }
     keyboard.push(await backRow());
-    await renderPanel((section === 'welcome' ? '👋 BIENVENIDA POR CANAL' : '🧩 CAPTCHA POR CANAL') + '\nPulsa un canal para activar/desactivar.\n' + (section === 'welcome' ? 'Editar texto: /welcometext ID texto' : 'Fallo o vencimiento aplica bloqueo permanente.'), keyboard);
+    await renderPanel((section === 'welcome' ? '👋 BIENVENIDA POR CANAL' : '🧩 CAPTCHA POR CANAL') + '\nPulsa un canal para activar/desactivar.' + (section === 'welcome' ? '\nUsa los botones de edición para cambiar el texto.' : '\nEl fallo o vencimiento aplica bloqueo permanente.'), keyboard);
     return;
   }
   if (section === 'admins') {
