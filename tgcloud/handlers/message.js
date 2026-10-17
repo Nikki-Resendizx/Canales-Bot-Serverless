@@ -276,7 +276,7 @@ export default async function (message) {
   }
 
   const globalInputPrompt = String(message.reply_to_message?.text ?? '');
-  const globalInputMatch = globalInputPrompt.match(/\[CBGLOBAL:(black(add|remove)|admin(add|remove))\]/i);
+  const globalInputMatch = globalInputPrompt.match(/\[CBGLOBAL:(blackadd|blackremove|adminadd|adminremove)\]/i);
   if (globalInputMatch && /^admin/i.test(globalInputMatch[1]) && isPrivate && userId === OWNER_ID && text && !text.startsWith('/')) {
     const action = globalInputMatch[1].toLowerCase();
     const target = parseId(text);
@@ -294,7 +294,7 @@ export default async function (message) {
     return;
   }
   if (globalInputMatch && isPrivate && await isAdmin(userId) && text && !text.startsWith('/')) {
-    const action = globalInputMatch[1].toLowerCase();
+    const action = globalInputMatch[1].toLowerCase().replace(/^black/, '');
     const [first, ...rest] = text.split(/\\s+/);
     let targetId = parseId(first);
     let username = first.startsWith('@') ? first.slice(1).toLowerCase() : '';
