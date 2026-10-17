@@ -636,11 +636,12 @@ export default async function (message) {
         let newButton;
         try {
           const rules = await db.select().from(botTexts).where(eq(botTexts.textKey, 'rules')).get();
-          newButton = parseButtonSyntax(editText, rules?.body || '').flat();
-          if (newButton.length !== 1 || newButton[0].length !== 1) throw new Error('Para editar, introduce exactamente un botón sin |.');
+          const parsedKeyboard = parseButtonSyntax(editText, rules?.body || '');
+          if (parsedKeyboard.length !== 1 || parsedKeyboard[0].length !== 1) throw new Error('Para editar, introduce exactamente un botón sin |.');
+          newButton = parsedKeyboard[0][0];
         } catch (error) { return void await say(chatId, '⚠️ ' + String(error?.message || error)); }
         const target = flat[index - 1];
-        keyboard[target.r][target.c] = newButton[0][0];
+        keyboard[target.r][target.c] = newButton;
       }
       await db.update(templates).set({ buttonsJson: JSON.stringify(keyboard), updatedBy: userId, updatedAt: now() }).where(eq(templates.templateKey, key)).run();
       await say(chatId, command === '/button_delete' ? '🗑️ Botón eliminado.' : '✅ Botón actualizado.');
