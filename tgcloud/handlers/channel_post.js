@@ -9,9 +9,12 @@ export default async function (post) {
   if (!post?.chat?.id || !post?.message_id) return;
   const sourceId = Number(post.chat.id);
   const connected = await db.select().from(channels).where(eq(channels.chatId, sourceId)).get();
-  // Un canal pausado no debe generar avisos ni disparar rutas automáticas.
-  if (connected && !Number(connected.active)) return;
-  if (connected && Number(connected.active) && sourceId !== ALERTS_CHAT_ID && sourceId !== REACTION_REPORT_CHAT_ID) {
+
+  // En un entorno serverless no asumimos estado en memoria ni ejecutamos rutas
+  // de canales que no estén registrados y activos en la base de datos.
+  if (!connected || !Number(connected.active)) return;
+
+  if (sourceId !== ALERTS_CHAT_ID && sourceId !== REACTION_REPORT_CHAT_ID) {
     const postLink = post.chat.username
       ? `https://t.me/${post.chat.username}/${post.message_id}`
       : String(sourceId).startsWith('-100')
@@ -37,8 +40,15 @@ export default async function (post) {
   const routes = await db.select().from(channelRoutes).where(eq(channelRoutes.sourceChatId, sourceId)).all();
   if (!routes?.length) return;
 
+  // La configuración es la fuente de verdad: una ruta solo se ejecuta cuando
+  // origen y destino siguen registrados y activos. Cada destino falla aislado.
+  const registeredChannels = await db.select().from(channels).all();
+  const channelById = new Map(registeredChannels.map(channel => [Number(channel.chatId), channel]));
+
   for (const route of routes) {
-    if (Number(route.destinationChatId) === Number(post.chat.id)) continue;
+    const destination = channelById.get(Number(route.destinationChatId));
+    if (Number(route.destinationChatId) === sourceId) continue;
+    if (!destination || !Number(destination.active)) continue;
     try {
       if (post.forward_origin || post.forward_from || post.forward_from_chat || post.forward_sender_name) {
         await api.forwardMessage({
