@@ -293,7 +293,7 @@ export default async function (message) {
     }
     return;
   }
-  if (globalInputMatch && isPrivate && await isAdmin(userId) && text && !text.startsWith('/')) {
+  if (globalInputMatch && /^black/i.test(globalInputMatch[1]) && isPrivate && await isAdmin(userId) && text && !text.startsWith('/')) {
     const action = globalInputMatch[1].toLowerCase().replace(/^black/, '');
     const [first, ...rest] = text.split(/\\s+/);
     let targetId = parseId(first);
