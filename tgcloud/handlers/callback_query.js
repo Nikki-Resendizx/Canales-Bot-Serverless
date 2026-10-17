@@ -446,7 +446,7 @@ export default async function (query) {
     const rows = await managedChannels(userId);
     const keyboard = rows.map(row => [{ text: '🧪 ' + String(row.title || row.chatId).slice(0, 45), callback_data: 'admin:channeltest:' + row.chatId }]);
     keyboard.push(await backRow());
-    await renderPanel('🧪 MODO DE PRUEBA\\n\\nSelecciona un canal para comprobar permisos y acceso. Esta prueba no publica ni elimina mensajes y no modifica las publicaciones existentes.', keyboard);
+    await renderPanel('🧪 MODO DE PRUEBA\n\nSelecciona un canal para comprobar permisos y acceso. Esta prueba no publica ni elimina mensajes y no modifica las publicaciones existentes.', keyboard);
     return;
   }
   if (section === 'channels') {
