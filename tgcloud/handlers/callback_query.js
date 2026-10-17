@@ -378,6 +378,59 @@ export default async function (query) {
     await renderPanel('🔘 No hay botones configurados para ' + kind + '.', [[{ text: '🔙 Volver', callback_data: 'admin:buttonkind:' + channelId + ':' + kind }]]);
     return;
   }
+  if (section === 'routes') {
+    const [routeRows, channelRows] = await Promise.all([db.select().from(channelRoutes).all(), managedChannels(userId)]);
+    const names = new Map(channelRows.map(row => [Number(row.chatId), String(row.title || row.chatId)]));
+    const keyboard = routeRows
+      .filter(route => names.has(Number(route.sourceChatId)) && names.has(Number(route.destinationChatId)))
+      .map(route => [{ text: '🗑️ ' + names.get(Number(route.sourceChatId)).slice(0,16) + ' → ' + names.get(Number(route.destinationChatId)).slice(0,16), callback_data: 'admin:routedelete:' + route.sourceChatId + ':' + route.destinationChatId }]);
+    keyboard.unshift([{ text: '➕ Crear ruta', callback_data: 'admin:routeadd' }]);
+    keyboard.push(await backRow());
+    await answer(query);
+    await renderPanel('🔀 DISTRIBUCIÓN ENTRE CANALES\\n\\n' + (routeRows.length ? 'Pulsa una ruta para eliminarla.' : 'Aún no hay rutas configuradas.') + '\\n\\nLas rutas copian las publicaciones del canal de origen al destino.', keyboard);
+    return;
+  }
+  if (section === 'routeadd') {
+    const rows = await managedChannels(userId);
+    const keyboard = rows.map(row => [{ text: '📤 ' + String(row.title || row.chatId).slice(0,38), callback_data: 'admin:routesource:' + row.chatId }]);
+    keyboard.push(await backRow());
+    await answer(query);
+    await renderPanel('➕ CREAR RUTA\\n\\nSelecciona el canal de origen.', keyboard);
+    return;
+  }
+  if (section === 'routesource') {
+    const sourceId = Number(parts[2]);
+    if (!Number.isSafeInteger(sourceId) || !(await canManageChannel(userId, sourceId))) { await answer(query, 'No tienes permiso para ese canal.', true); return; }
+    const rows = (await managedChannels(userId)).filter(row => Number(row.chatId) !== sourceId);
+    const keyboard = rows.map(row => [{ text: '📥 ' + String(row.title || row.chatId).slice(0,38), callback_data: 'admin:routedest:' + sourceId + ':' + row.chatId }]);
+    keyboard.push([{ text: '🔙 Volver', callback_data: 'admin:routes' }]);
+    await answer(query);
+    await renderPanel('Selecciona el canal de destino para el origen ' + sourceId + '.', keyboard);
+    return;
+  }
+  if (section === 'routedest') {
+    const sourceId = Number(parts[2]); const destinationId = Number(parts[3]);
+    if (!Number.isSafeInteger(sourceId) || !Number.isSafeInteger(destinationId) || sourceId === destinationId ||
+        !(await canManageChannel(userId, sourceId)) || !(await canManageChannel(userId, destinationId))) {
+      await answer(query, 'La ruta no es válida o no tienes permiso.', true); return;
+    }
+    const routeKey = sourceId + ':' + destinationId;
+    await db.insert(channelRoutes).values({ routeKey, sourceChatId: sourceId, destinationChatId: destinationId, createdBy: userId, createdAt: Date.now() }).onConflictDoNothing().run();
+    await answer(query, 'Ruta guardada.');
+    await renderPanel('✅ Ruta creada: ' + sourceId + ' → ' + destinationId, [[{ text: '🔀 Ver rutas', callback_data: 'admin:routes' }], [await navText('back')].map(label => ({ text: label, callback_data: 'admin:back' }))]);
+    return;
+  }
+  if (section === 'routedelete') {
+    const sourceId = Number(parts[2]); const destinationId = Number(parts[3]);
+    if (!Number.isSafeInteger(sourceId) || !Number.isSafeInteger(destinationId) ||
+        !(await canManageChannel(userId, sourceId)) || !(await canManageChannel(userId, destinationId))) {
+      await answer(query, 'No tienes permiso para eliminar esa ruta.', true); return;
+    }
+    await db.delete(channelRoutes).where(eq(channelRoutes.routeKey, sourceId + ':' + destinationId)).run();
+    await answer(query, 'Ruta eliminada.');
+    await renderPanel('🗑️ Ruta eliminada.', [[{ text: '🔀 Ver rutas', callback_data: 'admin:routes' }], [{ text: '🔙 Volver', callback_data: 'admin:back' }]]);
+    return;
+  }
   if (section === 'blacklist') {
     const rows = await db.select().from(globalBans).all();
     const keyboard = [
