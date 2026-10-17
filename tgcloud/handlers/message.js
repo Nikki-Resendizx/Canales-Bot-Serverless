@@ -275,6 +275,53 @@ export default async function (message) {
     return;
   }
 
+  const globalInputPrompt = String(message.reply_to_message?.text ?? '');
+  const globalInputMatch = globalInputPrompt.match(/\\[CBGLOBAL:black(add|remove)\\]/i);
+  if (globalInputMatch && isPrivate && await isAdmin(userId) && text && !text.startsWith('/')) {
+    const action = globalInputMatch[1].toLowerCase();
+    const [first, ...rest] = text.split(/\\s+/);
+    let targetId = parseId(first);
+    let username = first.startsWith('@') ? first.slice(1).toLowerCase() : '';
+    if (!Number.isSafeInteger(targetId) && username) {
+      const known = await db.select().from(knownUsers).where(eq(knownUsers.username, username)).get();
+      targetId = Number(known?.userId);
+    }
+    if (!Number.isSafeInteger(targetId) || targetId <= 0) {
+      await say(chatId, '⚠️ No pude resolver ese usuario. Usa su ID numérico o un @username que el bot ya conozca.');
+      return;
+    }
+    if (action === 'add') {
+      const reason = rest.join(' ') || 'Sin motivo especificado';
+      await db.insert(globalBans).values({ userId: targetId, username, reason, bannedBy: userId, createdAt: now() })
+        .onConflictDoUpdate({ target: globalBans.userId, set: { username, reason, bannedBy: userId, createdAt: now() } }).run();
+      const rows = await managedChannels(userId);
+      let count = 0;
+      for (const channel of rows) {
+        try {
+          const actor = await api.getChatMember({ chat_id: channel.chatId, user_id: userId });
+          if (!['creator','administrator'].includes(actor.status)) continue;
+          await api.banChatMember({ chat_id: channel.chatId, user_id: targetId, revoke_messages: true });
+          count++;
+        } catch (error) { console.log('No se pudo aplicar blacklist desde el panel', channel.chatId, String(error)); }
+      }
+      await say(chatId, '🚫 Usuario añadido a la blacklist. Baneos aplicados en ' + count + '/' + rows.length + ' canales administrados.');
+    } else {
+      await db.delete(globalBans).where(eq(globalBans.userId, targetId)).run();
+      const rows = await managedChannels(userId);
+      let count = 0;
+      for (const channel of rows) {
+        try {
+          const actor = await api.getChatMember({ chat_id: channel.chatId, user_id: userId });
+          if (!['creator','administrator'].includes(actor.status)) continue;
+          await api.unbanChatMember({ chat_id: channel.chatId, user_id: targetId, only_if_banned: true });
+          count++;
+        } catch (error) { console.log('No se pudo aplicar desbaneo desde el panel', channel.chatId, String(error)); }
+      }
+      await say(chatId, '✅ Usuario eliminado de la blacklist. Desbaneos solicitados en ' + count + '/' + rows.length + ' canales administrados.');
+    }
+    return;
+  }
+
   // Los formularios del panel se completan respondiendo al mensaje solicitado; no requieren comandos.
   const inputPrompt = String(message.reply_to_message?.text ?? '');
   const inputMatch = inputPrompt.match(/\\[CBINPUT:(template|hashtags|welcome|buttons|description|missingdata):(-?\\d+)(?::([a-z]+)(?::([A-Z_]+))?)?\\]/i);
