@@ -29,6 +29,10 @@ function applyTemplate(template, values) {
   return result.trim();
 }
 
+function escapeHtml(value) {
+  return String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('\"', '&quot;');
+}
+
 function parseMode(format) {
   const value = String(format ?? 'HTML').toUpperCase();
   if (value === 'HTML') return 'HTML';
@@ -65,15 +69,16 @@ async function completeManualPublication(post, channelId) {
     timeZone: 'America/Mexico_City', dateStyle: 'medium', timeStyle: 'short',
   }).format(new Date());
 
+  const format = String(template?.format ?? 'OFF').toUpperCase();
   const values = {
-    contenido: original,
-    texto: original,
-    titulo: original.split('\n')[0] ?? '',
-    descripcion: original,
+    contenido: format === 'HTML' ? escapeHtml(original) : original,
+    texto: format === 'HTML' ? escapeHtml(original) : original,
+    titulo: format === 'HTML' ? escapeHtml(original.split('\n')[0] ?? '') : (original.split('\n')[0] ?? ''),
+    descripcion: format === 'HTML' ? escapeHtml(original) : original,
     enlace: link,
-    hashtags: String(settings?.hashtags ?? '').trim(),
+    hashtags: format === 'HTML' ? escapeHtml(String(settings?.hashtags ?? '').trim()) : String(settings?.hashtags ?? '').trim(),
     fecha: date,
-    canal: String(post.chat.title ?? post.chat.username ?? channelId),
+    canal: format === 'HTML' ? escapeHtml(String(post.chat.title ?? post.chat.username ?? channelId)) : String(post.chat.title ?? post.chat.username ?? channelId),
   };
 
   let output = original;
@@ -94,7 +99,8 @@ async function completeManualPublication(post, channelId) {
   const isMedia = Boolean(post.photo || post.video || post.animation || post.document || post.audio || post.voice || post.video_note);
   const canEditContent = !post.media_group_id || hasCaption || hasText;
   const contentChanged = canEditContent && output !== original && Boolean(output);
-  const replyMarkup = buttons.length ? { inline_keyboard: buttons } : undefined;
+  const canAddButtons = !post.media_group_id || hasCaption || hasText;
+  const replyMarkup = buttons.length && canAddButtons ? { inline_keyboard: buttons } : undefined;
   const mode = parseMode(template?.format ?? 'OFF');
 
   if (contentChanged) {
