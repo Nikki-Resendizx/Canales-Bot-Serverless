@@ -324,7 +324,7 @@ export default async function (message) {
 
   // Los formularios del panel se completan respondiendo al mensaje solicitado; no requieren comandos.
   const inputPrompt = String(message.reply_to_message?.text ?? '');
-  const inputMatch = inputPrompt.match(/\[CBINPUT:(template|hashtags|welcome|buttons|description|missingdata):(-?\d+)(?::([a-z]+)(?::([A-Z_]+))?)?\]/i);
+  const inputMatch = inputPrompt.match(/\[CBINPUT:(template|hashtags|welcome|buttons|description|missingdata|report):(-?\d+)(?::([a-z]+)(?::([A-Z_]+))?)?\]/i);
   if (inputMatch && isPrivate && await isAdmin(userId) && text && !text.startsWith('/')) {
     const [, inputType, rawChannelId, rawKind, rawFormat] = inputMatch;
     const channelId = Number(rawChannelId);
@@ -379,6 +379,11 @@ export default async function (message) {
         const column = inputType === 'description' ? 'descriptionTemplate' : 'missingDataText';
         await db.update(channelSettings).set({ [column]: text, updatedAt: now() }).where(eq(channelSettings.channelId, channelId)).run();
         await say(chatId, '✅ ' + (inputType === 'description' ? 'Plantilla de descripción' : 'Texto de respaldo') + ' guardado para el canal ' + channelId + '.');
+      } else if (inputType === 'report') {
+        const reportId = parseId(text);
+        if (!Number.isSafeInteger(reportId) || reportId === 0) { await say(chatId, '⚠️ Envía un ID numérico válido de canal o grupo.'); return; }
+        await db.update(channelSettings).set({ reactionReportChatId: reportId, updatedAt: now() }).where(eq(channelSettings.channelId, channelId)).run();
+        await say(chatId, '✅ Destino de reportes guardado para el canal ' + channelId + '.');
       }
     } catch (error) {
       console.log('No se pudo guardar la configuración desde el panel de botones', String(error));
