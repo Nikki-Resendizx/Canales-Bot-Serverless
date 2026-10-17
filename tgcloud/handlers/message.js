@@ -51,9 +51,10 @@ async function ensureSettings(channelId) {
 const NAV_DEFAULTS = {
   panel_title: '⚙️ PANEL DE ADMINISTRACIÓN',
   panel_description: 'Selecciona una sección:',
-  channels: '📢 CANALES', welcome: '👋 BIENVENIDA', captcha: '🧩 CAPTCHA',
+  channels: '📢 CANALES', welcome: '👋 BIENVENIDA', captcha: '🛡️ CAPTCHA', hashtags: '#️⃣ HASHTAGS',
   blacklist: '🚫 BANEO GLOBAL', routes: '🔀 DISTRIBUCIÓN', templates: '📝 PLANTILLAS',
-  publications: '📝 CREAR PUBLICACIÓN', buttons: '🔘 BOTONES', formats: '🎨 FORMATOS',
+  rules: '⚙️ REGLAS AUTOMÁTICAS', testmode: '🧪 MODO DE PRUEBA',
+  publications: '💰 PUBLICACIONES', buttons: '🔘 BOTONES', formats: '🎨 FORMATOS',
   reactions: '🔔 REACCIONES', stars: '⭐ PREMIUM / ESTRELLAS', admins: '👥 ADMINISTRADORES',
   stats: '📊 ESTADÍSTICAS', settings: '⚙️ CONFIGURACIÓN', close: '❌ CERRAR', navigation: '🧭 NAVEGACIÓN',
   back: '🔙 VOLVER', rules: '',
@@ -70,12 +71,13 @@ async function navText(key) {
 }
 async function buildMainMenu() {
   const keys = [
-    ['channels', 'templates', 'formats'],
-    ['buttons', 'publications', 'stars'],
-    ['welcome', 'captcha', 'blacklist'],
-    ['routes', 'reactions', 'stats'],
-    ['admins', 'settings', 'navigation'],
-    ['close'],
+    ['channels', 'templates'],
+    ['hashtags', 'buttons'],
+    ['rules', 'testmode'],
+    ['welcome', 'captcha'],
+    ['blacklist', 'admins'],
+    ['publications', 'stats'],
+    ['settings'],
   ];
   const menu = [];
   for (const row of keys) {
@@ -168,7 +170,7 @@ const HELP = [
   '/addadmin ID y /deladmin ID — solo propietario',
   '',
   'Formatos: HTML, Markdown, MarkdownV2, OFF y RICH_MESSAGE (JSON válido).',
-  'Variables de bienvenida: {mencion}, {nombre}, {username}, {userid}.',
+  'Variables de bienvenida: {mencion}, {nombre}, {username}, {userid}, {canal}.',
   'El bot debe tener permisos de administrador en cada canal/grupo.',
 ].join('\n');
 
