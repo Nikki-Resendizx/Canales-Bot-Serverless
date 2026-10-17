@@ -94,12 +94,12 @@ function parseButtonSyntax(source, rulesUrl = '') {
     const line = rawLine.trim();
     if (!line || line.startsWith('//')) continue;
     const row = [];
-    for (let rawButton of line.split(/\s+\|\s+/)) {
+    for (let rawButton of line.split(/\s+(?:\||&&)\s+/)) {
       rawButton = rawButton.trim();
       let style;
-      const styleMatch = rawButton.match(/^#([gbsd])\s+/i);
+      const styleMatch = rawButton.match(/^#([pgrbsd])\s+/i);
       if (styleMatch) {
-        const styles = { g: 'success', s: 'success', b: 'primary', d: 'danger' };
+        const styles = { p: 'primary', b: 'primary', g: 'success', s: 'success', r: 'danger', d: 'danger' };
         style = styles[styleMatch[1].toLowerCase()];
         rawButton = rawButton.slice(styleMatch[0].length).trim();
       }
@@ -113,20 +113,20 @@ function parseButtonSyntax(source, rulesUrl = '') {
       if (style) button.style = style;
       if (/^https?:\/\//i.test(action)) button.url = action;
       else if (/^callback:/i.test(action)) button.callback_data = 'btn:callback:' + action.slice(9).trim();
-      else if (/^popup:/i.test(action)) button.callback_data = 'btn:popup:' + action.slice(6).trim();
+      else if (/^(?:popup|alert):/i.test(action)) button.callback_data = 'btn:popup:' + action.slice(action.indexOf(':') + 1).trim();
       else if (/^copy:/i.test(action)) button.copy_text = { text: action.slice(5).trim() };
       else if (/^share:/i.test(action)) button.url = 'https://t.me/share/url?text=' + encodeURIComponent(action.slice(6).trim());
       else if (/^rules$/i.test(action)) {
         if (!/^https?:\/\//i.test(rulesUrl)) throw new Error('Configura primero las reglas como URL con /navtext rules https://tu-enlace');
         button.url = rulesUrl;
-      } else throw new Error('Acción no válida: usa URL, callback:TEXTO, popup:TEXTO, copy:TEXTO, share:TEXTO o rules.');
+      } else throw new Error('Acción no válida: usa URL, callback:TEXTO, popup:TEXTO, alert:TEXTO, copy:TEXTO, share:TEXTO o rules.');
       if (button.callback_data && button.callback_data.length > 64) throw new Error('El callback supera el límite de 64 caracteres; acorta el texto.');
       if (!button.text) throw new Error('El texto del botón no puede estar vacío.');
       row.push(button);
     }
     if (row.length) keyboard.push(row);
   }
-  if (!keyboard.length) throw new Error('No se encontraron botones. Escribe una línea por fila y separa columnas con |.');
+  if (!keyboard.length) throw new Error('No se encontraron botones. Escribe una línea por fila y separa columnas con | o &&.');
   if (keyboard.length > 8 || keyboard.some(row => row.length > 8)) throw new Error('Telegram permite hasta 8 filas y 8 botones por fila.');
   return keyboard;
 }
