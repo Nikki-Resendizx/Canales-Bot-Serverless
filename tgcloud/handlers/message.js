@@ -426,13 +426,13 @@ export default async function (message) {
       });
       return;
     }
-    await say(chatId, '👋 ¡Bienvenido a CANALES-BOT!\n\nGestiona canales, publicaciones, plantillas, botones, bienvenida, CAPTCHA, blacklist, rutas y reportes de reacciones. Usa /help para ver los comandos.', {
+    await say(chatId, '👋 ¡Bienvenido a CANALES-BOT!\n\nAdministra el bot desde los botones de este menú. Selecciona una sección y sigue las opciones en pantalla; no necesitas memorizar comandos.', {
       reply_markup: { inline_keyboard: [[{ text: '⚙️ PANEL DE ADMINISTRACIÓN', callback_data: 'admin:open' }], [{ text: '📚 Ayuda', callback_data: 'admin:help' }]] },
     });
     return;
   }
   if (text === '/help') {
-    await say(chatId, HELP);
+    await say(chatId, '📚 CANALES-BOT se maneja desde los botones del panel. Pulsa ⚙️ PANEL DE ADMINISTRACIÓN y elige la función que quieres configurar.', { reply_markup: { inline_keyboard: [[{ text: '⚙️ Abrir panel', callback_data: 'admin:open' }]] } });
     return;
   }
   if (text === '/admin') {
