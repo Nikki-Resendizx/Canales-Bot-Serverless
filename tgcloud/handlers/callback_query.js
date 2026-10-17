@@ -378,6 +378,27 @@ export default async function (query) {
     await renderPanel('🔘 No hay botones configurados para ' + kind + '.', [[{ text: '🔙 Volver', callback_data: 'admin:buttonkind:' + channelId + ':' + kind }]]);
     return;
   }
+  if (section === 'blacklist') {
+    const rows = await db.select().from(globalBans).all();
+    const keyboard = [
+      [{ text: '➕ Bloquear usuario', callback_data: 'admin:blackinput:add' }],
+      [{ text: '➖ Quitar bloqueo', callback_data: 'admin:blackinput:remove' }],
+      [{ text: '🔄 Actualizar lista', callback_data: 'admin:blacklist' }],
+      await backRow(),
+    ];
+    const list = rows.length ? rows.slice(0,30).map(row => '• ' + row.userId + (row.username ? ' (@' + row.username + ')' : '') + (row.reason ? ' — ' + row.reason : '')).join('\\n') : '(lista vacía)';
+    await answer(query);
+    await renderPanel('🚫 BLACKLIST GLOBAL\\n\\n' + list + (rows.length > 30 ? '\\n… y ' + (rows.length - 30) + ' más.' : '') + '\\n\\nLos bloqueos se aplican a los canales que administras donde el bot tenga permisos.', keyboard);
+    return;
+  }
+  if (section === 'blackinput') {
+    const action = String(parts[2] || '');
+    if (!['add','remove'].includes(action)) { await answer(query, 'Acción no válida.', true); return; }
+    await answer(query);
+    await api.sendMessage({ chat_id: chatId, text: '[CBINPUT:black' + action + ':0]\\n' + (action === 'add' ? '✍️ Envía el ID de Telegram o @username y, opcionalmente, el motivo. Ejemplo: 123456789 spam' : '✍️ Envía el ID de Telegram o @username que quieres desbloquear.'), reply_markup: { force_reply: true, selective: true } });
+    await renderPanel('La acción se ejecutará al responder al mensaje del bot.', [[{ text: '🔙 Volver', callback_data: 'admin:blacklist' }]]);
+    return;
+  }
   if (section === 'rules') {
     const rows = await managedChannels(userId);
     const keyboard = rows.map(row => [{ text: '⚙️ ' + String(row.title || row.chatId).slice(0, 38), callback_data: 'admin:rulechannel:' + row.chatId }]);
