@@ -88,8 +88,8 @@ async function completeManualPublication(post, channelId) {
     ?? templateRows.find(row => row.kind === 'default')
     ?? null;
 
-  // {vacio} is an explicit opt-out: do not alter the message or its keyboard.
-  if (String(template?.body ?? '').includes('{vacio}')) return;
+  // {vacio} is the highest-priority opt-out: no template, correction, hashtags, signature or buttons.
+  if (/\{vacio\}/i.test(String(template?.body ?? ''))) return;
 
   const rawOriginal = String(post.text ?? post.caption ?? '');
   const format = resolveFormat(template?.format ?? 'OFF', template?.body);
@@ -115,6 +115,7 @@ async function completeManualPublication(post, channelId) {
     descripcion: rawOriginal,
     enlace: link,
     hashtags: String(settings?.hashtags ?? '').trim(),
+    firma: Number(settings?.signatureEnabled) ? String(settings?.signatureText ?? '').trim() : '',
     fecha: date,
     canal: channelName,
   };
@@ -126,6 +127,7 @@ async function completeManualPublication(post, channelId) {
     values.titulo = escapeHtml(values.titulo);
     values.descripcion = escapeHtml(values.descripcion);
     values.hashtags = escapeHtml(values.hashtags);
+    values.firma = escapeHtml(values.firma);
     values.canal = escapeHtml(values.canal);
   }
 
@@ -133,6 +135,10 @@ async function completeManualPublication(post, channelId) {
   if (!output && settings?.missingDataText) output = applyTemplate(settings.missingDataText, values);
   if (settings?.hashtags && !String(template?.body ?? '').includes('{hashtags}')) {
     output = appendHashtags(output, settings.hashtags);
+  }
+  const signature = Number(settings?.signatureEnabled) ? String(settings?.signatureText ?? '').trim() : '';
+  if (signature && !/\{firma\}/i.test(String(template?.body ?? ''))) {
+    output = [String(output ?? '').trim(), format === 'HTML' ? escapeHtml(signature) : signature].filter(Boolean).join('\n\n');
   }
 
   let buttons = [];
