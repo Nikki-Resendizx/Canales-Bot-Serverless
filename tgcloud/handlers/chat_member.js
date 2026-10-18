@@ -23,7 +23,14 @@ export default async function (update) {
   const member = update?.new_chat_member;
   const user = member?.user;
   if (!chat?.id || !user?.id || user.is_bot) return;
-  if (!['member', 'restricted'].includes(member.status)) return;
+  const oldMember = update?.old_chat_member;
+  const oldStatus = oldMember?.status;
+  const isNowMember = ['member', 'administrator', 'creator'].includes(member.status) ||
+    (member.status === 'restricted' && Boolean(member.is_member));
+  const wasAlreadyMember = ['member', 'administrator', 'creator'].includes(oldStatus) ||
+    (oldStatus === 'restricted' && Boolean(oldMember?.is_member));
+  // Saludar y lanzar CAPTCHA solo en una entrada real, no al cambiar permisos.
+  if (!isNowMember || wasAlreadyMember) return;
 
   const displayName = [user.first_name, user.last_name].filter(Boolean).join(' ');
   await db.insert(knownUsers).values({
