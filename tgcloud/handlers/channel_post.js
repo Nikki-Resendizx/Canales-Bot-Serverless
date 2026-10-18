@@ -122,7 +122,7 @@ async function completeManualPublication(post, channelId) {
   const hasText = typeof post.text === 'string';
   const hasCaption = typeof post.caption === 'string';
   const isMedia = Boolean(post.photo || post.video || post.animation || post.document || post.audio || post.voice || post.video_note);
-  const canEditContent = !post.media_group_id || hasCaption || hasText;
+  const canEditContent = !post.video_note && (!post.media_group_id || hasCaption || hasText);
   const canAddButtons = !post.media_group_id || hasCaption || hasText;
   const replyMarkup = buttons.length && canAddButtons ? { inline_keyboard: buttons } : undefined;
 
