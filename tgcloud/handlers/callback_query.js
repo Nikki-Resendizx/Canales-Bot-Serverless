@@ -758,7 +758,7 @@ export default async function (query) {
       callback_data: 'admin:starspublish:' + row.chatId,
     }]);
     keyboard.push([{ text: await navText('back'), callback_data: 'admin:back' }]);
-    await renderPanel('⭐ PUBLICACIONES CON TELEGRAM STARS\\n\\nSelecciona un canal activo. Después responde con PRECIO | contenido de texto. El bot publicará una vista previa y entregará el texto solo tras confirmar el pago. Prueba el flujo antes de ofrecerlo al público.', keyboard);
+    await renderPanel('⭐ PUBLICACIONES CON TELEGRAM STARS\n\nSelecciona un canal activo. Después responde con PRECIO | contenido de texto. El bot publicará una vista previa y entregará el texto solo tras confirmar el pago. Prueba el flujo antes de ofrecerlo al público.', keyboard);
     return;
   }
   if (section === 'starspublish') {
@@ -773,7 +773,7 @@ export default async function (query) {
     await answer(query);
     await api.sendMessage({
       chat_id: chatId,
-      text: '[CBSTAR:' + channelId + ']\\n✍️ Responde con PRECIO | texto exclusivo. Ejemplo: 25 | Este es el contenido premium.',
+      text: '[CBSTAR:' + channelId + ']\n✍️ Responde con PRECIO | texto exclusivo. Ejemplo: 25 | Este es el contenido premium.',
       reply_markup: { force_reply: true, selective: true },
     });
     await renderPanel('La publicación de pago se creará para: ' + String(channel.title || channelId), [[{ text: '🔙 Volver a Stars', callback_data: 'admin:stars' }]]);
