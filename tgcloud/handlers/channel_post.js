@@ -88,15 +88,15 @@ async function completeManualPublication(post, channelId) {
     contenido: corrected,
     texto: corrected,
     titulo: corrected.split('\n')[0] ?? '',
-    descripcion: descriptionSource
-      ? descriptionSource.replaceAll('{texto}', corrected).replaceAll('{contenido}', corrected)
-      : corrected,
+    descripcion: corrected,
     enlace: link,
     hashtags: String(settings?.hashtags ?? '').trim(),
     fecha: date,
     canal: channelName,
   };
+  if (descriptionSource) values.descripcion = applyTemplate(descriptionSource, { ...values, descripcion: corrected });
   if (format === 'HTML') {
+    values.enlace = escapeHtml(values.enlace);
     values.contenido = escapeHtml(values.contenido);
     values.texto = escapeHtml(values.texto);
     values.titulo = escapeHtml(values.titulo);
