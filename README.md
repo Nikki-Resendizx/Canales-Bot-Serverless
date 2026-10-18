@@ -4,22 +4,24 @@ Migración independiente de CANALES-BOT para **ChannelPosts_RoBot**. El reposito
 
 ## Estado de la migración
 
-La base Serverless y el panel administrativo ampliado están desplegados desde GitHub Actions. La validación de sintaxis y la sincronización de webhook se han ejecutado correctamente en las últimas ejecuciones revisadas.
+El código y los módulos están en la rama `main`. GitHub Actions valida la sintaxis; el despliegue a Telegram Serverless solo se ejecuta cuando el secreto `TGCLOUD_TOKEN` está configurado. Si falta, el trabajo de despliegue se omite y no debe asumirse que el bot esté actualizado en Telegram.
 
 ### Funciones implementadas en el código
 
-- `/start`, `/help` y panel privado `/admin` con tres botones por fila; la navegación de botones edita el mismo mensaje del panel.
+- `/start`, `/help` y panel privado `/admin` con hasta tres botones por fila; la navegación de botones edita el mismo mensaje del panel.
+- Editor de textos de navegación desde botones: selecciona una etiqueta, responde con el nuevo texto o escribe `DEFAULT` para restaurarla.
 - Textos editables de navegación con `/navtexts` y `/navtext CLAVE texto`; se pueden restaurar con `/navtext CLAVE default`.
 - Gestión de canales: registrar por ID y detectar el ID de un canal reenviando una publicación de ese canal; listar y quitar canales.
-- Bienvenida editable por canal con variables `{mencion}`, `{nombre}`, `{username}` y `{userid}`.
+- Bienvenida editable por canal/grupo con variables `{mencion}`, `{nombre}`, `{username}`, `{userid}` y `{canal}`; los eventos de entrada se filtran para no volver a saludar por simples cambios de permisos.
 - CAPTCHA aritmético por canal. Una respuesta incorrecta bloquea permanentemente al usuario en ese grupo; el vencimiento se comprueba cuando llega una respuesta, no mediante un temporizador de fondo.
 - Blacklist global con resolución de `@username` cuando el bot ya ha observado a ese usuario, intento de baneo en todos los chats conectados y desbaneo global al retirarlo.
 - Rutas de publicación entre varios canales origen y un destino; se conserva el reenvío cuando Telegram entrega metadatos de mensaje reenviado.
-- Plantillas por canal: crear/editar, listar, borrar, formatos HTML/Markdown/MarkdownV2/OFF/RICH_MESSAGE y botones inline en JSON. RICH_MESSAGE usa `sendRichMessage` con JSON válido en `html`, `markdown` o `blocks`.
-- Editor por canal: corrección básica de espacios/puntuación y mayúscula inicial, hashtags, plantilla de descripción con `{texto}` y texto de respaldo si falta el contenido.
+- Plantillas por canal: crear/editar desde el panel, listar, formatos HTML/Markdown/MarkdownV2/OFF/RICH_MESSAGE y botones inline. Las variables admitidas son `{canal}`, `{descripcion}`, `{titulo}`, `{enlace}`, `{hashtags}`, `{fecha}`, `{contenido}`, `{texto}` y `{vacio}`. `{contenido}` conserva el texto original; `{texto}` puede reflejar la corrección activada; `{vacio}` desactiva cualquier modificación de esa publicación.
+- Edición de botones individuales desde el panel, además de edición de teclado completo. La sintaxis admite URL completas o `t.me/...`, `callback:`, `popup:`, `alert:`, `copy:` y `share:`, con estilos de botón cuando Telegram los admite.
+- Editor por canal: corrección básica de espacios/puntuación y mayúscula inicial, hashtags, plantilla de descripción insertable con `{descripcion}` y texto de respaldo si falta el contenido.
 - Panel y comandos de canales limitados a los canales asignados a cada administrador; el propietario conserva acceso global.
 - Publicaciones de texto y copia de un mensaje al canal mediante `/publish`.
-- Flujo inicial de publicaciones de pago con Telegram Stars: `/publish_paid`, factura XTR, validación pre-checkout y entrega de texto o copia del mensaje tras el pago confirmado.
+- Publicaciones de pago con Telegram Stars: flujo por comandos y creación de publicaciones de texto desde el panel, factura XTR, validación pre-checkout y entrega tras confirmar el pago.
 - Reportes de cambios de reacciones identificadas y reportes separados de conteos agregados. Los conteos agregados nunca se presentan como si identificaran usuarios. Los reportes de reacción usan por defecto `-1004456932813` y se pueden cambiar con `/setreport`.
 - Alertas de publicaciones nuevas en canales conectados al canal de avisos `-1004424261064`.
 - Estadísticas de canales, rutas, plantillas, blacklist, publicaciones, compras y reacciones.
@@ -61,9 +63,10 @@ La base Serverless y el panel administrativo ampliado están desplegados desde G
 
 ## Límites que aún requieren prueba funcional
 
-- La validación de GitHub comprueba sintaxis; no puede confirmar por sí sola los permisos reales de cada canal ni completar una compra de prueba.
+- La validación de GitHub comprueba sintaxis JavaScript; no confirma por sí sola los permisos reales, las migraciones remotas, el webhook, la edición de mensajes manuales ni una compra real de prueba. La última configuración debe probarse en Telegram.
 - Las publicaciones de pago deben probarse en Telegram con una compra de prueba de Stars antes de anunciarse públicamente. El flujo de reembolso no está implementado.
-- Las publicaciones multimedia se pueden copiar individualmente. La agrupación de un álbum como un único envío no está garantizada en esta versión Serverless.
+- La finalización automática puede editar texto/caption y teclado en el mensaje original. Los álbumes con varios elementos no se agrupan de forma garantizada al copiar por rutas; el contenido y los botones de un álbum sin caption pueden quedar limitados por las restricciones de edición de Telegram.
+- RICH_MESSAGE se edita en el mismo mensaje de texto usando `editMessageText` con `rich_message`. Para captions multimedia solo se intenta una representación `html`/`markdown`; los bloques RichMessage no son un formato de caption.
 - El CAPTCHA no dispone de temporizador de fondo; el vencimiento se procesa cuando llega la interacción del usuario.
 - Los botones aceptan campos adicionales como `icon_custom_emoji_id` o `style` en el JSON, pero la representación final depende de que la versión actual de Telegram Bot API los admita.
 
