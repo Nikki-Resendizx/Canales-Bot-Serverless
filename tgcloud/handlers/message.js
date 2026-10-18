@@ -727,7 +727,7 @@ export default async function (message) {
     }
     if (command === '/template_set') {
       const id = parseId(args[0]); const kind = String(args[1] || '').toLowerCase(); const format = String(args[2] || 'HTML').toUpperCase();
-      const body = argText.replace(/^\S+\s+\S+\s+\S+\s*/, '').trim();
+      const body = argText.replace(/^\S+\s+\S+\s+\S+\s+\S+\s*/, '').trim();
       if (!Number.isSafeInteger(id) || !['default', 'text', 'photo', 'video', 'album', 'link', 'forward'].includes(kind) || !body || !['HTML', 'MARKDOWN', 'MARKDOWNV2', 'OFF', 'RICH_MESSAGE'].includes(format)) return void await say(chatId, 'Uso: /template_set ID_CANAL default|text|photo|video|album|link|forward HTML|Markdown|MarkdownV2|OFF|RICH_MESSAGE texto. RICH_MESSAGE requiere JSON válido.');
       if (!(await canManageChannel(userId, id))) return void await say(chatId, '⛔ Ese canal no existe o no está asignado a tu administración.');
       const templateKey = `${id}:${kind}`;
@@ -746,7 +746,7 @@ export default async function (message) {
     }
     if (command === '/template_buttons') {
       const id = parseId(args[0]); const kind = String(args[1] || '').toLowerCase();
-      const rawButtons = argText.replace(/^\S+\s+\S+\s*/, '').trim();
+      const rawButtons = argText.replace(/^\S+\s+\S+\s+\S+\s*/, '').trim();
       if (!Number.isSafeInteger(id) || !kind || !rawButtons) return void await say(chatId, 'Uso: envía /template_buttons ID_CANAL TIPO y en el mismo mensaje añade las líneas de botones. Cada fila va en una línea; usa | para columnas. También acepta JSON.');
       if (!(await canManageChannel(userId, id))) return void await say(chatId, '⛔ Ese canal no existe o no está asignado a tu administración.');
       const existing = await db.select().from(templates).where(eq(templates.templateKey, `${id}:${kind}`)).get();
@@ -755,8 +755,7 @@ export default async function (message) {
       try {
         if (rawButtons.startsWith('[')) keyboard = JSON.parse(rawButtons);
         else {
-          const rules = await db.select().from(botTexts).where(eq(botTexts.textKey, 'rules')).get();
-          keyboard = parseButtonSyntax(rawButtons, rules?.body || '');
+          keyboard = parseButtonSyntax(rawButtons);
         }
       } catch (error) {
         return void await say(chatId, '⚠️ No pude leer los botones: ' + String(error?.message || error) + '\n\nEjemplo:\nVisitar canal - https://t.me/ejemplo\n#g Acceder - https://t.me/ejemplo');
@@ -785,12 +784,11 @@ export default async function (message) {
         keyboard[target.r].splice(target.c, 1);
         keyboard = keyboard.filter(row => row.length);
       } else {
-        const editText = argText.replace(/^\S+\s+\S+\s+\S+\s*/, '').trim();
+        const editText = argText.replace(/^\S+\s+\S+\s+\S+\s+\S+\s*/, '').trim();
         if (!editText) return void await say(chatId, 'Uso: /button_edit ID_CANAL TIPO N Texto - acción\nEjemplo: /button_edit -100123 default 1 Visitar - https://t.me/ejemplo');
         let newButton;
         try {
-          const rules = await db.select().from(botTexts).where(eq(botTexts.textKey, 'rules')).get();
-          const parsedKeyboard = parseButtonSyntax(editText, rules?.body || '');
+          const parsedKeyboard = parseButtonSyntax(editText);
           if (parsedKeyboard.length !== 1 || parsedKeyboard[0].length !== 1) throw new Error('Para editar, introduce exactamente un botón sin |.');
           newButton = parsedKeyboard[0][0];
         } catch (error) { return void await say(chatId, '⚠️ ' + String(error?.message || error)); }
