@@ -654,16 +654,36 @@ export default async function (query) {
     await renderPanel('Cuando envíes la plantilla, quedará guardada únicamente para este canal y tipo de publicación.', [[{ text: '🔙 Volver a plantillas', callback_data: 'admin:templatechannel:' + channelId }]]);
     return;
   }
+  if (section === 'templatedelete') {
+    const channelId = Number(parts[2]); const kind = String(parts[3] || '');
+    if (!Number.isSafeInteger(channelId) || !['default','text','photo','video','gif','audio','document','video_note','album','link','forward'].includes(kind) ||
+        !(await canManageChannel(userId, channelId))) {
+      await answer(query, 'No tienes permiso o la plantilla no es válida.', true); return;
+    }
+    await db.delete(templates).where(eq(templates.templateKey, channelId + ':' + kind)).run();
+    await answer(query, 'Plantilla eliminada.');
+    const rows = await db.select().from(templates).where(eq(templates.channelId, channelId)).all();
+    const keyboard = rows.map(t => [
+      { text: '✏️ ' + t.kind, callback_data: 'admin:templatekind:' + channelId + ':' + t.kind },
+      { text: '🗑️ ' + t.kind, callback_data: 'admin:templatedelete:' + channelId + ':' + t.kind },
+    ]);
+    keyboard.push([{ text: '🔙 Volver', callback_data: 'admin:templatechannel:' + channelId }]);
+    await renderPanel('📋 PLANTILLAS GUARDADAS\n\n' + (rows.length ? rows.map(t => '• ' + t.kind + ' (' + t.format + '): ' + t.body.slice(0, 100)).join('\n') : 'No hay plantillas configuradas.'), keyboard);
+    return;
+  }
   if (section === 'templatelist') {
     const channelId = Number(parts[2]);
     if (!Number.isSafeInteger(channelId) || !(await canManageChannel(userId, channelId))) {
       await answer(query, 'No tienes permiso para administrar ese canal.', true); return;
     }
     const rows = await db.select().from(templates).where(eq(templates.channelId, channelId)).all();
-    await answer(query);
-    await renderPanel('📋 PLANTILLAS GUARDADAS\n\n' + (rows.length ? rows.map(t => '• ' + t.kind + ' (' + t.format + '): ' + t.body.slice(0, 140)).join('\n') : 'No hay plantillas configuradas.') + '\n\nEliminar una: /template_delete ' + channelId + ' TIPO', [
-      [{ text: '🔙 Volver', callback_data: 'admin:templatechannel:' + channelId }],
+    const keyboard = rows.map(t => [
+      { text: '✏️ ' + t.kind, callback_data: 'admin:templatekind:' + channelId + ':' + t.kind },
+      { text: '🗑️ ' + t.kind, callback_data: 'admin:templatedelete:' + channelId + ':' + t.kind },
     ]);
+    keyboard.push([{ text: '🔙 Volver', callback_data: 'admin:templatechannel:' + channelId }]);
+    await answer(query);
+    await renderPanel('📋 PLANTILLAS GUARDADAS\n\n' + (rows.length ? rows.map(t => '• ' + t.kind + ' (' + t.format + '): ' + t.body.slice(0, 100)).join('\n') : 'No hay plantillas configuradas.'), keyboard);
     return;
   }
 
