@@ -10,6 +10,15 @@ const DEFAULT_REACTION_REPORT_CHAT_ID = -1004456932813;
 const now = () => Date.now();
 const parseId = value => /^-?\d+$/.test(String(value ?? '')) ? Number(value) : NaN;
 const escapeHtml = value => String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
+function validateRichTemplate(value) {
+  const parsed = JSON.parse(String(value ?? ''));
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed) ||
+      !(typeof parsed.html === 'string' || typeof parsed.markdown === 'string' || Array.isArray(parsed.blocks))) {
+    throw new Error('RICH_MESSAGE debe contener html, markdown o blocks.');
+  }
+  return parsed;
+}
+
 function correctText(value) {
   return String(value ?? '')
     .replace(/[ \t]+/g, ' ')
@@ -416,6 +425,10 @@ export default async function (message) {
           await say(chatId, '⚠️ El tipo o formato de plantilla no es válido.');
           return;
         }
+        if (format === 'RICH_MESSAGE') {
+          try { validateRichTemplate(text); }
+          catch (error) { await say(chatId, '⚠️ RICH_MESSAGE inválido: ' + String(error?.message || error)); return; }
+        }
         await db.insert(templates).values({
           templateKey: channelId + ':' + kind, channelId, kind, body: text,
           format, buttonsJson: '[]', updatedBy: userId, updatedAt: now(),
@@ -790,6 +803,10 @@ export default async function (message) {
       const body = argText.replace(/^\S+\s+\S+\s+\S+\s+\S+\s*/, '').trim();
       if (!Number.isSafeInteger(id) || !['default', 'text', 'photo', 'video', 'gif', 'audio', 'document', 'video_note', 'album', 'link', 'forward'].includes(kind) || !body || !['HTML', 'MARKDOWN', 'MARKDOWNV2', 'OFF', 'RICH_MESSAGE'].includes(format)) return void await say(chatId, 'Uso: /template_set ID_CANAL default|text|photo|video|gif|audio|document|video_note|album|link|forward HTML|Markdown|MarkdownV2|OFF|RICH_MESSAGE texto. RICH_MESSAGE requiere JSON válido.');
       if (!(await canManageChannel(userId, id))) return void await say(chatId, '⛔ Ese canal no existe o no está asignado a tu administración.');
+      if (format === 'RICH_MESSAGE') {
+        try { validateRichTemplate(body); }
+        catch (error) { return void await say(chatId, '⚠️ RICH_MESSAGE inválido: ' + String(error?.message || error)); }
+      }
       const templateKey = `${id}:${kind}`;
       await db.insert(templates).values({ templateKey, channelId: id, kind, body, format, buttonsJson: '[]', updatedBy: userId, updatedAt: now() })
         .onConflictDoUpdate({ target: templates.templateKey, set: { body, format, updatedBy: userId, updatedAt: now() } }).run();
