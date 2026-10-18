@@ -9,7 +9,7 @@ export default async function (update) {
   const chat = update?.chat;
   const member = update?.new_chat_member;
   const actorId = Number(update?.from?.id);
-  if (!chat?.id || chat.type !== 'channel' || !member?.user?.is_bot) return;
+  if (!chat?.id || !['channel', 'group', 'supergroup'].includes(chat.type) || !member?.user?.is_bot) return;
 
   if (member.status === 'administrator') {
     const chatId = Number(chat.id);
@@ -37,14 +37,14 @@ export default async function (update) {
       updatedAt: now()
     }).onConflictDoNothing().run();
 
-    console.log('Canal detectado y registrado automáticamente:', title, chatId);
+    console.log('Canal/grupo detectado y registrado automáticamente:', title, chatId);
     return;
   }
 
   if (member.status !== 'administrator') {
     try {
       await db.update(channels).set({ active: 0 }).where(eq(channels.chatId, Number(chat.id))).run();
-      console.log('Canal desactivado porque el bot no conserva permisos de administrador:', chat.id, member.status);
+      console.log('Canal/grupo desactivado porque el bot no conserva permisos de administrador:', chat.id, member.status);
     } catch (error) {
       console.log('No se pudo desactivar el canal:', String(error));
     }
