@@ -103,7 +103,7 @@ async function backRow() { return [{ text: await navText('back'), callback_data:
 function moduleText(section) {
   const modules = {
     publications: '📤 PUBLICACIONES\n\nLa función principal trabaja con las publicaciones que tú envías manualmente a cada canal conectado. El bot intenta completar ese mismo mensaje con la plantilla, los hashtags y los botones configurados para ese canal, sin crear una copia adicional.\n\nPublica directamente en Telegram dentro del canal conectado.',
-    formats: '🎨 FORMATOS Y VARIABLES\n\nEl editor de plantillas permite elegir HTML, Markdown, MarkdownV2, OFF o RICH_MESSAGE.\n\nVariables: {contenido}, {texto}, {titulo}, {descripcion}, {enlace}, {hashtags}, {fecha}, {canal}, {vacio}. Si usas {vacio}, no se modifica la publicación ni se añaden botones o hashtags. Para cambiar el formato, abre Plantillas, selecciona el canal y el tipo de publicación.',
+    formats: '🎨 FORMATOS Y VARIABLES\n\nEl editor de plantillas permite elegir AUTO, HTML, Markdown, MarkdownV2, OFF o RICH_MESSAGE.\n\nVariables: {contenido}, {texto}, {titulo}, {descripcion}, {enlace}, {hashtags}, {fecha}, {canal}, {vacio}. Si usas {vacio}, no se modifica la publicación ni se añaden botones o hashtags. Para cambiar el formato, abre Plantillas, selecciona el canal y el tipo de publicación.',
     settings: '⚙️ CONFIGURACIÓN GENERAL\n\nAñade el bot como administrador en cada canal y concede permisos para editar mensajes y publicar. Conecta el canal desde 📢 CANALES. Cada canal mantiene su propia configuración.\n\nLos botones del panel permiten cambiar las opciones disponibles; algunas operaciones externas dependen de los permisos concedidos por Telegram.',
     stars: '⭐ PUBLICACIONES DE PAGO\n\nEl flujo básico de Telegram Stars está implementado, pero su editor todavía no está integrado completamente en este panel visual. No publiques ofertas de pago hasta probar el recorrido de compra y entrega de contenido.',
   };
@@ -636,8 +636,9 @@ export default async function (query) {
     }
     await answer(query);
     await renderPanel('✏️ PLANTILLA: ' + labels[kind] + '\n\n1. Elige el formato.\n2. El bot te pedirá el texto y lo guardarás respondiendo al mensaje.\n\nVariables: {contenido}, {texto}, {titulo}, {descripcion}, {enlace}, {hashtags}, {fecha}, {canal}, {vacio}. Si usas {vacio}, el bot no modifica el mensaje ni añade botones o hashtags.', [
-      [{ text: 'HTML', callback_data: 'admin:templateinput:' + channelId + ':' + kind + ':HTML' }, { text: 'Markdown', callback_data: 'admin:templateinput:' + channelId + ':' + kind + ':MARKDOWN' }],
-      [{ text: 'MarkdownV2', callback_data: 'admin:templateinput:' + channelId + ':' + kind + ':MARKDOWNV2' }, { text: 'OFF', callback_data: 'admin:templateinput:' + channelId + ':' + kind + ':OFF' }],
+      [{ text: 'AUTO', callback_data: 'admin:templateinput:' + channelId + ':' + kind + ':AUTO' }, { text: 'HTML', callback_data: 'admin:templateinput:' + channelId + ':' + kind + ':HTML' }],
+      [{ text: 'Markdown', callback_data: 'admin:templateinput:' + channelId + ':' + kind + ':MARKDOWN' }, { text: 'MarkdownV2', callback_data: 'admin:templateinput:' + channelId + ':' + kind + ':MARKDOWNV2' }],
+      [{ text: 'OFF', callback_data: 'admin:templateinput:' + channelId + ':' + kind + ':OFF' }],
       [{ text: 'RICH_MESSAGE', callback_data: 'admin:templateinput:' + channelId + ':' + kind + ':RICH_MESSAGE' }],
       [{ text: '📋 Ver guardadas', callback_data: 'admin:templatelist:' + channelId }],
       [{ text: '🔙 Volver', callback_data: 'admin:templatechannel:' + channelId }],
@@ -646,7 +647,7 @@ export default async function (query) {
   }
   if (section === 'templateinput') {
     const channelId = Number(parts[2]); const kind = String(parts[3] || ''); const format = String(parts[4] || '').toUpperCase();
-    if (!Number.isSafeInteger(channelId) || !['default','text','photo','video','gif','audio','document','video_note','album','link','forward'].includes(kind) || !['HTML','MARKDOWN','MARKDOWNV2','OFF','RICH_MESSAGE'].includes(format) || !(await canManageChannel(userId, channelId))) {
+    if (!Number.isSafeInteger(channelId) || !['default','text','photo','video','gif','audio','document','video_note','album','link','forward'].includes(kind) || !['AUTO','HTML','MARKDOWN','MARKDOWNV2','OFF','RICH_MESSAGE'].includes(format) || !(await canManageChannel(userId, channelId))) {
       await answer(query, 'La selección no es válida o no tienes permiso.', true); return;
     }
     await answer(query);
