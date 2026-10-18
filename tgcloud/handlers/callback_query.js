@@ -683,12 +683,11 @@ export default async function (query) {
   if (section === 'navigationedit') {
     const key = String(parts[2] || '');
     if (!Object.hasOwn(NAV_DEFAULTS, key) || key === 'close') {
-      await answer(query, 'Etiqueta no válida.', true); return;
+      return;
     }
-    await answer(query);
     await api.sendMessage({
       chat_id: chatId,
-      text: '[CBNAV:' + key + ']\\n✍️ Responde con el nuevo texto para esta etiqueta. Escribe DEFAULT para restaurarla.',
+      text: '[CBNAV:' + key + ']\n✍️ Responde con el nuevo texto para esta etiqueta. Escribe DEFAULT para restaurarla.',
       reply_markup: { force_reply: true, selective: true },
     });
     await renderPanel('Editando la etiqueta: ' + key, [[{ text: '🔙 Volver', callback_data: 'admin:navigation' }]]);
