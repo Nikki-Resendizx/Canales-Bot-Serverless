@@ -63,28 +63,53 @@ async function completeManualPublication(post, channelId) {
   const template = templateRows.find(row => row.kind === kind)
     ?? templateRows.find(row => row.kind === 'default')
     ?? null;
-  const original = String(post.text ?? post.caption ?? '');
-  const link = getPublicationLink(post.chat, post.message_id);
+
+  // {vacio} is an explicit opt-out: do not alter the message or its keyboard.
+  if (String(template?.body ?? '').includes('{vacio}')) return;
+
+  const rawOriginal = String(post.text ?? post.caption ?? '');
+  const format = String(template?.format ?? 'OFF').toUpperCase();
+  const corrected = Number(settings?.textCorrectionEnabled) ? rawOriginal
+    .replace(/[ \\t]+/g, ' ')
+    .replace(/\\s+([,.;!?])/g, '$1')
+    .replace(/([,;!?])([^\\s])/g, '$1 $2')
+    .trim()
+    .replace(/^([a-záéíóúñ])/u, char => char.toLocaleUpperCase('es-MX'))
+    : rawOriginal;
+  const detectedLink = corrected.match(/https?:\\/\\/\\S+|t\\.me\\/\\S+/i)?.[0] ?? '';
+  const permalink = getPublicationLink(post.chat, post.message_id);
+  const link = detectedLink || permalink;
   const date = new Intl.DateTimeFormat('es-MX', {
     timeZone: 'America/Mexico_City', dateStyle: 'medium', timeStyle: 'short',
   }).format(new Date());
-
-  const format = String(template?.format ?? 'OFF').toUpperCase();
+  const channelName = String(post.chat.title ?? post.chat.username ?? channelId);
+  const descriptionSource = String(settings?.descriptionTemplate ?? '');
   const values = {
-    contenido: format === 'HTML' ? escapeHtml(original) : original,
-    texto: format === 'HTML' ? escapeHtml(original) : original,
-    titulo: format === 'HTML' ? escapeHtml(original.split('\n')[0] ?? '') : (original.split('\n')[0] ?? ''),
-    descripcion: format === 'HTML' ? escapeHtml(original) : original,
+    contenido: corrected,
+    texto: corrected,
+    titulo: corrected.split('\\n')[0] ?? '',
+    descripcion: descriptionSource
+      ? descriptionSource.replaceAll('{texto}', corrected).replaceAll('{contenido}', corrected)
+      : corrected,
     enlace: link,
-    hashtags: format === 'HTML' ? escapeHtml(String(settings?.hashtags ?? '').trim()) : String(settings?.hashtags ?? '').trim(),
+    hashtags: String(settings?.hashtags ?? '').trim(),
     fecha: date,
-    canal: format === 'HTML' ? escapeHtml(String(post.chat.title ?? post.chat.username ?? channelId)) : String(post.chat.title ?? post.chat.username ?? channelId),
+    canal: channelName,
   };
+  if (format === 'HTML') {
+    values.contenido = escapeHtml(values.contenido);
+    values.texto = escapeHtml(values.texto);
+    values.titulo = escapeHtml(values.titulo);
+    values.descripcion = escapeHtml(values.descripcion);
+    values.hashtags = escapeHtml(values.hashtags);
+    values.canal = escapeHtml(values.canal);
+  }
 
-  let output = original;
-  if (template?.body) output = applyTemplate(template.body, values);
+  let output = template?.body ? applyTemplate(template.body, values) : corrected;
   if (!output && settings?.missingDataText) output = applyTemplate(settings.missingDataText, values);
-  if (settings?.hashtags) output = appendHashtags(output, settings.hashtags);
+  if (settings?.hashtags && !String(template?.body ?? '').includes('{hashtags}')) {
+    output = appendHashtags(output, settings.hashtags);
+  }
 
   let buttons = [];
   try {
@@ -98,18 +123,53 @@ async function completeManualPublication(post, channelId) {
   const hasCaption = typeof post.caption === 'string';
   const isMedia = Boolean(post.photo || post.video || post.animation || post.document || post.audio || post.voice || post.video_note);
   const canEditContent = !post.media_group_id || hasCaption || hasText;
-  const contentChanged = canEditContent && output !== original && Boolean(output);
   const canAddButtons = !post.media_group_id || hasCaption || hasText;
   const replyMarkup = buttons.length && canAddButtons ? { inline_keyboard: buttons } : undefined;
-  const mode = parseMode(template?.format ?? 'OFF');
 
+  if (format === 'RICH_MESSAGE' && template?.body && canEditContent) {
+    try {
+      const richMessage = JSON.parse(template.body);
+      const replaceRich = value => {
+        if (typeof value === 'string') return applyTemplate(value, values);
+        if (Array.isArray(value)) return value.map(replaceRich);
+        if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, replaceRich(item)]));
+        return value;
+      };
+      const rich = replaceRich(richMessage);
+      if (!isMedia && rich && typeof rich === 'object' &&
+          (typeof rich.html === 'string' || typeof rich.markdown === 'string' || Array.isArray(rich.blocks))) {
+        await api.editMessageText({
+          chat_id: channelId, message_id: post.message_id,
+          rich_message: rich,
+          ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
+        });
+        return;
+      }
+      // Captions do not accept a full RichMessage block tree; use a supported text field only.
+      const richText = typeof rich?.html === 'string' ? rich.html : typeof rich?.markdown === 'string' ? rich.markdown : '';
+      if (isMedia && richText) {
+        await api.editMessageCaption({
+          chat_id: channelId, message_id: post.message_id, caption: richText,
+          ...(typeof rich?.html === 'string' ? { parse_mode: 'HTML' } : {}),
+          ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
+        });
+        return;
+      }
+      console.log('RICH_MESSAGE necesita html, markdown o blocks; en captions solo se admiten html/markdown', channelId, post.message_id);
+    } catch (error) {
+      console.log('No se pudo aplicar RICH_MESSAGE a la publicación manual', channelId, post.message_id, String(error));
+    }
+  }
+
+  const mode = format === 'RICH_MESSAGE' ? undefined : parseMode(format);
+  const contentChanged = canEditContent && output !== rawOriginal && Boolean(output);
   if (contentChanged) {
     const args = {
       chat_id: channelId,
       message_id: post.message_id,
       [isMedia ? 'caption' : 'text']: output,
       ...(mode ? { parse_mode: mode } : {}),
-      ...(!mode && original && output.startsWith(original)
+      ...(!mode && rawOriginal && output.startsWith(rawOriginal)
         ? (isMedia
           ? (Array.isArray(post.caption_entities) ? { caption_entities: post.caption_entities } : {})
           : (Array.isArray(post.entities) ? { entities: post.entities } : {}))
