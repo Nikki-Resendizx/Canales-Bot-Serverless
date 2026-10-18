@@ -289,7 +289,9 @@ export default async function (query) {
       [{ text: '📝 Plantillas de publicaciones', callback_data: 'admin:templatechannel:' + channelId }],
       [{ text: '#️⃣ Hashtags ' + (setting?.hashtags ? '🟢' : '⚪'), callback_data: 'admin:hashtagchannel:' + channelId }],
       [{ text: '🔘 Botones interactivos', callback_data: 'admin:buttonchannel:' + channelId }],
-      [{ text: '✍️ Corrección ' + (setting?.textCorrectionEnabled ? '🟢' : '⚪'), callback_data: 'admin:toggle:correction:' + channelId }],
+      [{ text: '✍️ Firma personalizada ' + (setting?.signatureEnabled ? '🟢' : '⚪'), callback_data: 'admin:signaturetoggle:' + channelId }],
+      [{ text: '🖊️ Editar firma', callback_data: 'admin:signatureedit:' + channelId }, { text: '👁️ Vista previa firma', callback_data: 'admin:signaturepreview:' + channelId }],
+      [{ text: '✍️ Corrección  + (setting?.textCorrectionEnabled ? '🟢' : '⚪'), callback_data: 'admin:toggle:correction:' + channelId }],
       [{ text: '👋 Bienvenida ' + (setting?.welcomeEnabled ? '🟢' : '⚪'), callback_data: 'admin:toggle:welcome:' + channelId }, { text: '🧩 CAPTCHA ' + (setting?.captchaEnabled ? '🟢' : '⚪'), callback_data: 'admin:toggle:captcha:' + channelId }],
       [{ text: '✏️ Editar bienvenida', callback_data: 'admin:welcomeedit:' + channelId }],
       [{ text: '🧪 Probar permisos del canal', callback_data: 'admin:channeltest:' + channelId }],
@@ -297,6 +299,41 @@ export default async function (query) {
     ]);
     return;
   }
+  if (section === 'signaturetoggle') {
+    const channelId = Number(parts[2]);
+    if (!Number.isSafeInteger(channelId) || !(await canManageChannel(userId, channelId))) { await answer(query, 'No tienes permiso para administrar ese canal.', true); return; }
+    const current = await db.select().from(channelSettings).where(eq(channelSettings.channelId, channelId)).get();
+    const enabled = Number(current?.signatureEnabled) ? 0 : 1;
+    await db.update(channelSettings).set({ signatureEnabled: enabled, updatedAt: Date.now() }).where(eq(channelSettings.channelId, channelId)).run();
+    await answer(query, enabled ? 'Firma activada.' : 'Firma desactivada.');
+    const channel = await db.select().from(channels).where(eq(channels.chatId, channelId)).get();
+    await renderPanel('✍️ FIRMA PERSONALIZADA\nCanal: ' + String(channel?.title || channelId) + '\nEstado: ' + (enabled ? 'ACTIVA' : 'DESACTIVADA') + '\nTexto: ' + (current?.signatureText || '(sin configurar)'), [
+      [{ text: '🖊️ Editar firma', callback_data: 'admin:signatureedit:' + channelId }, { text: '👁️ Vista previa', callback_data: 'admin:signaturepreview:' + channelId }],
+      [{ text: '🔙 Volver a configuración', callback_data: 'admin:channelsettings:' + channelId }],
+    ]);
+    return;
+  }
+  if (section === 'signatureedit') {
+    const channelId = Number(parts[2]);
+    if (!Number.isSafeInteger(channelId) || !(await canManageChannel(userId, channelId))) { await answer(query, 'No tienes permiso para administrar ese canal.', true); return; }
+    await answer(query);
+    await api.sendMessage({ chat_id: chatId, text: '[CBINPUT:signature:' + channelId + ']\n✍️ Responde con el texto de la firma de este canal. Puedes usar varias líneas y variables como {canal} y {fecha}.', reply_markup: { force_reply: true, selective: true } });
+    await renderPanel('La firma se guarda por canal. Puedes activarla o desactivarla cuando quieras; usa Vista previa para revisar un ejemplo.', [[{ text: '🔙 Volver a configuración', callback_data: 'admin:channelsettings:' + channelId }]]);
+    return;
+  }
+  if (section === 'signaturepreview') {
+    const channelId = Number(parts[2]);
+    if (!Number.isSafeInteger(channelId) || !(await canManageChannel(userId, channelId))) { await answer(query, 'No tienes permiso para administrar ese canal.', true); return; }
+    const setting = await db.select().from(channelSettings).where(eq(channelSettings.channelId, channelId)).get();
+    const channel = await db.select().from(channels).where(eq(channels.chatId, channelId)).get();
+    const sampleDate = new Intl.DateTimeFormat('es-MX', { timeZone: 'America/Mexico_City', dateStyle: 'medium', timeStyle: 'short' }).format(new Date());
+    const preview = String(setting?.signatureText || '').replace(/\{canal\}/gi, String(channel?.title || channelId)).replace(/\{fecha\}/gi, sampleDate);
+    await answer(query);
+    await api.sendMessage({ chat_id: chatId, text: '👁️ VISTA PREVIA DE FIRMA\nCanal: ' + String(channel?.title || channelId) + '\nEstado: ' + (Number(setting?.signatureEnabled) ? 'ACTIVA' : 'DESACTIVADA') + '\n\n' + (preview || '(No hay firma configurada)') });
+    await renderPanel('La vista previa es un ejemplo; la firma se añade solo cuando está activada y Telegram permite editar el mensaje.', [[{ text: '🖊️ Editar firma', callback_data: 'admin:signatureedit:' + channelId }], [{ text: '🔙 Volver a configuración', callback_data: 'admin:channelsettings:' + channelId }]]);
+    return;
+  }
+
   if (section === 'welcomeedit') {
     const channelId = Number(parts[2]);
     if (!Number.isSafeInteger(channelId) || !(await canManageChannel(userId, channelId))) {
@@ -642,9 +679,31 @@ export default async function (query) {
       [{ text: 'Markdown', callback_data: 'admin:templateinput:' + channelId + ':' + kind + ':MARKDOWN' }, { text: 'MarkdownV2', callback_data: 'admin:templateinput:' + channelId + ':' + kind + ':MARKDOWNV2' }],
       [{ text: 'OFF', callback_data: 'admin:templateinput:' + channelId + ':' + kind + ':OFF' }],
       [{ text: 'RICH_MESSAGE', callback_data: 'admin:templateinput:' + channelId + ':' + kind + ':RICH_MESSAGE' }],
+      [{ text: '👁️ Vista previa', callback_data: 'admin:templatepreview:' + channelId + ':' + kind }],
       [{ text: '📋 Ver guardadas', callback_data: 'admin:templatelist:' + channelId }],
       [{ text: '🔙 Volver', callback_data: 'admin:templatechannel:' + channelId }],
     ]);
+    return;
+  }
+  if (section === 'templatepreview') {
+    const channelId = Number(parts[2]); const kind = String(parts[3] || '');
+    if (!Number.isSafeInteger(channelId) || !['default','text','photo','video','gif','audio','document','video_note','album','link','forward'].includes(kind) || !(await canManageChannel(userId, channelId))) { await answer(query, 'No tienes permiso o el tipo no es válido.', true); return; }
+    const template = await db.select().from(templates).where(eq(templates.templateKey, channelId + ':' + kind)).get();
+    const setting = await db.select().from(channelSettings).where(eq(channelSettings.channelId, channelId)).get();
+    const channel = await db.select().from(channels).where(eq(channels.chatId, channelId)).get();
+    if (!template) { await answer(query, 'Primero guarda una plantilla para poder previsualizarla.', true); return; }
+    const date = new Intl.DateTimeFormat('es-MX', { timeZone: 'America/Mexico_City', dateStyle: 'medium', timeStyle: 'short' }).format(new Date());
+    const samples = { canal: String(channel?.title || channelId), descripcion: 'Descripción de ejemplo', titulo: 'Título de ejemplo', enlace: 'https://t.me/ejemplo', hashtags: String(setting?.hashtags || '#Ejemplo'), fecha: date, contenido: 'Este es un contenido de ejemplo.', texto: 'Este es un contenido de ejemplo.', firma: Number(setting?.signatureEnabled) ? String(setting?.signatureText || '') : '' };
+    let preview = String(template.body || '');
+    if (/\{vacio\}/i.test(preview)) preview = '⏭️ MODO {vacio}: la publicación original se conserva sin aplicar plantilla, hashtags, firma ni botones.';
+    else {
+      for (const [key, value] of Object.entries(samples)) preview = preview.replace(new RegExp('\\{' + key + '\\}', 'gi'), String(value));
+      if (Number(setting?.signatureEnabled) && setting?.signatureText && !/\{firma\}/i.test(String(template.body || ''))) preview += '\n\n' + setting.signatureText;
+      if (setting?.hashtags && !/\{hashtags\}/i.test(String(template.body || ''))) preview += '\n\n' + setting.hashtags;
+    }
+    await answer(query);
+    await api.sendMessage({ chat_id: chatId, text: '👁️ VISTA PREVIA · ' + kind + ' · ' + template.format + '\nCanal: ' + String(channel?.title || channelId) + '\n\n' + preview.slice(0, 3800) });
+    await renderPanel('Vista previa de la plantilla ' + kind + '. Es un ejemplo con valores ficticios; el resultado real depende del contenido recibido y de las limitaciones de Telegram.', [[{ text: '✏️ Editar plantilla', callback_data: 'admin:templatekind:' + channelId + ':' + kind }], [{ text: '🔙 Volver', callback_data: 'admin:templatechannel:' + channelId }]]);
     return;
   }
   if (section === 'templateinput') {
