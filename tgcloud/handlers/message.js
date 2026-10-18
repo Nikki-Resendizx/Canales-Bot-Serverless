@@ -112,14 +112,12 @@ function parseButtonSyntax(source, rulesUrl = '') {
       if (emoji) button.icon_custom_emoji_id = emoji[1];
       if (style) button.style = style;
       if (/^https?:\/\//i.test(action)) button.url = action;
+      else if (/^(?:t\.me|www\.t\.me)\//i.test(action)) button.url = 'https://' + action.replace(/^www\./i, '');
       else if (/^callback:/i.test(action)) button.callback_data = 'btn:callback:' + action.slice(9).trim();
       else if (/^(?:popup|alert):/i.test(action)) button.callback_data = 'btn:popup:' + action.slice(action.indexOf(':') + 1).trim();
       else if (/^copy:/i.test(action)) button.copy_text = { text: action.slice(5).trim() };
       else if (/^share:/i.test(action)) button.url = 'https://t.me/share/url?text=' + encodeURIComponent(action.slice(6).trim());
-      else if (/^rules$/i.test(action)) {
-        if (!/^https?:\/\//i.test(rulesUrl)) throw new Error('Configura primero las reglas como URL con /navtext rules https://tu-enlace');
-        button.url = rulesUrl;
-      } else throw new Error('Acción no válida: usa URL, callback:TEXTO, popup:TEXTO, alert:TEXTO, copy:TEXTO, share:TEXTO o rules.');
+      else throw new Error('Acción no válida: usa una URL, callback:TEXTO, popup:TEXTO, alert:TEXTO, copy:TEXTO o share:TEXTO.');
       if (button.callback_data && button.callback_data.length > 64) throw new Error('El callback supera el límite de 64 caracteres; acorta el texto.');
       if (!button.text) throw new Error('El texto del botón no puede estar vacío.');
       row.push(button);
@@ -295,7 +293,7 @@ export default async function (message) {
   }
   if (globalInputMatch && /^black/i.test(globalInputMatch[1]) && isPrivate && await isAdmin(userId) && text && !text.startsWith('/')) {
     const action = globalInputMatch[1].toLowerCase().replace(/^black/, '');
-    const [first, ...rest] = text.split(/\\s+/);
+    const [first, ...rest] = text.split(/\s+/);
     let targetId = parseId(first);
     let username = first.startsWith('@') ? first.slice(1).toLowerCase() : '';
     if (!Number.isSafeInteger(targetId) && username) {
@@ -429,7 +427,7 @@ export default async function (message) {
         if (content.type === 'copy' && Number.isSafeInteger(Number(content.sourceChatId)) && Number.isSafeInteger(Number(content.sourceMessageId))) {
           await api.copyMessage({ chat_id: userId, from_chat_id: Number(content.sourceChatId), message_id: Number(content.sourceMessageId) });
         } else if (content.type === 'text' && typeof content.text === 'string') {
-          await say(chatId, '💎 CONTENIDO DESBLOQUEADO\\n\\n' + content.text);
+          await say(chatId, '💎 CONTENIDO DESBLOQUEADO\n\n' + content.text);
         } else {
           await say(chatId, '✅ Esta publicación ya fue comprada. Contacta al administrador si no recibiste el contenido.');
         }
@@ -856,7 +854,7 @@ export default async function (message) {
           const applyVariables = value => Object.entries(values).reduce((result, [key, replacement]) => result.replaceAll(key, replacement), String(value ?? ''));
           let caption = template?.body ? applyVariables(template.body) : sourceCaption;
           if (settings.descriptionTemplate) caption = applyVariables(settings.descriptionTemplate.replaceAll('{texto}', caption).replaceAll('{contenido}', caption));
-          if (settings.hashtags && !caption.includes(settings.hashtags)) caption += (caption ? '\\n\\n' : '') + settings.hashtags;
+          if (settings.hashtags && !caption.includes(settings.hashtags)) caption += (caption ? '\n\n' : '') + settings.hashtags;
           if (caption) {
             copyOptions.caption = caption;
             if (format !== 'OFF') copyOptions.parse_mode = format === 'MARKDOWN' ? 'Markdown' : format === 'MARKDOWNV2' ? 'MarkdownV2' : 'HTML';
@@ -894,7 +892,7 @@ export default async function (message) {
           sent = await api.sendRichMessage({ chat_id: id, rich_message: richMessage, ...replyMarkup });
           payload = { rich_message: richMessage, format };
         } else {
-          const title = corrected.split(/\\r?\\n/)[0] || '';
+          const title = corrected.split(/\r?\n/)[0] || '';
           const linkMatch = corrected.match(/https?:\/\/\S+/i);
           const values = {
             '{contenido}': corrected, '{texto}': corrected, '{titulo}': title,
