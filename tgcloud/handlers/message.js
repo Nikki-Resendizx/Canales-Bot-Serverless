@@ -338,7 +338,7 @@ export default async function (message) {
 
   // Los formularios del panel se completan respondiendo al mensaje solicitado; no requieren comandos.
   const inputPrompt = String(message.reply_to_message?.text ?? '');
-  const inputMatch = inputPrompt.match(/\[CBINPUT:(template|hashtags|welcome|buttons|description|missingdata|report):(-?\d+)(?::([a-z]+)(?::([A-Z_]+))?)?\]/i);
+  const inputMatch = inputPrompt.match(/\[CBINPUT:(template|hashtags|welcome|buttons|buttonedit|description|missingdata|report):(-?\d+)(?::([a-z]+)(?::([A-Z_0-9]+))?)?\]/i);
   if (inputMatch && isPrivate && await isAdmin(userId) && text && !text.startsWith('/')) {
     const [, inputType, rawChannelId, rawKind, rawFormat] = inputMatch;
     const channelId = Number(rawChannelId);
@@ -372,6 +372,27 @@ export default async function (message) {
         if (text.length > 3500) { await say(chatId, '⚠️ El texto supera 3500 caracteres.'); return; }
         await db.update(channelSettings).set({ welcomeText: text, updatedAt: now() }).where(eq(channelSettings.channelId, channelId)).run();
         await say(chatId, '✅ Bienvenida guardada para el canal ' + channelId + '.');
+      } else if (inputType === 'buttonedit') {
+        const kind = String(rawKind || '').toLowerCase();
+        const index = Number(rawFormat);
+        if (!['default','text','photo','video','album','link','forward'].includes(kind) || !Number.isSafeInteger(index) || index < 1) {
+          await say(chatId, '⚠️ El botón o tipo de plantilla no es válido.'); return;
+        }
+        const parsed = parseButtonSyntax(text);
+        if (parsed.length !== 1 || parsed[0].length !== 1) {
+          await say(chatId, '⚠️ Envía solo un botón: Texto - URL.'); return;
+        }
+        const templateKey = channelId + ':' + kind;
+        const existing = await db.select().from(templates).where(eq(templates.templateKey, templateKey)).get();
+        let rows = [];
+        try { rows = JSON.parse(existing?.buttonsJson || '[]'); } catch {}
+        if (!Array.isArray(rows)) rows = [];
+        const flat = rows.flatMap((row, rowIndex) => Array.isArray(row) ? row.map((button, columnIndex) => ({ button, rowIndex, columnIndex })) : []);
+        const target = flat[index - 1];
+        if (!existing || !target) { await say(chatId, '⚠️ Ese botón ya no existe.'); return; }
+        rows[target.rowIndex][target.columnIndex] = parsed[0][0];
+        await db.update(templates).set({ buttonsJson: JSON.stringify(rows), updatedBy: userId, updatedAt: now() }).where(eq(templates.templateKey, templateKey)).run();
+        await say(chatId, '✅ Botón ' + index + ' actualizado en la plantilla ' + kind + '.');
       } else if (inputType === 'buttons') {
         const kind = String(rawKind || '').toLowerCase();
         if (!['default','text','photo','video','album','link','forward'].includes(kind)) {
