@@ -584,7 +584,8 @@ export default async function (query) {
     } else {
       const rows = await db.select().from(templates).where(eq(templates.channelId, channelId)).all();
       const kinds = [
-        ['text', '💬 Texto'], ['photo', '🖼️ Fotografía'], ['video', '🎬 Vídeo'],
+        ['default', '⭐ Predeterminada'], ['text', '💬 Texto'], ['photo', '🖼️ Fotografía'], ['video', '🎬 Vídeo'],
+        ['gif', '🎞️ GIF'], ['audio', '🎧 Audio/voz'], ['document', '📎 Archivos'], ['video_note', '🫧 Video burbuja'],
         ['album', '🖼️ Álbum'], ['link', '🔗 Enlace'], ['forward', '↪️ Reenviada'],
       ];
       const list = kinds.map(([kind,label]) => {
@@ -594,7 +595,7 @@ export default async function (query) {
       const keyboard = kinds.map(([kind,label]) => [{ text: label, callback_data: 'admin:templatekind:' + channelId + ':' + kind }]);
       keyboard.push([{ text: '📋 Ver todas las plantillas', callback_data: 'admin:templatelist:' + channelId }]);
       keyboard.push([{ text: '🔙 Volver a canales', callback_data: 'admin:templates' }]);
-      await renderPanel('📝 PLANTILLAS DEL CANAL\n\n' + String(channel.title || channelId) + ' (' + channelId + ')\n\n' + list + '\n\nVariables: {contenido}, {titulo}, {descripcion}, {enlace}, {hashtags}, {fecha}, {canal}.', keyboard);
+      await renderPanel('📝 PLANTILLAS DEL CANAL\n\n' + String(channel.title || channelId) + ' (' + channelId + ')\n\n' + list + '\n\nVariables: {canal}, {descripcion}, {titulo}, {enlace}, {hashtags}, {fecha}, {contenido}, {vacio} (también {texto}). {vacio} impide cualquier modificación.', keyboard);
     }
     return;
   }
