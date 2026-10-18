@@ -37,6 +37,23 @@ function escapeHtml(value) {
   return String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('\"', '&quot;');
 }
 
+function resolveFormat(format, body = '') {
+  const selected = String(format ?? 'OFF').toUpperCase();
+  if (selected !== 'AUTO') return selected;
+  const source = String(body ?? '');
+  try {
+    const parsed = JSON.parse(source);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) &&
+        (typeof parsed.html === 'string' || typeof parsed.markdown === 'string' || Array.isArray(parsed.blocks))) {
+      return 'RICH_MESSAGE';
+    }
+  } catch {}
+  if (/<\/?(?:b|i|u|s|strong|em|a|code|pre|tg-spoiler)\b/i.test(source)) return 'HTML';
+  if (source.includes('\\_') || source.includes('\\.') || source.includes('\\!') || source.includes('\\-')) return 'MARKDOWNV2';
+  if (/\*\*[^*]+\*\*|__[^_]+__|~~[^~]+~~|_[^_]+_|\*[^*]+\*/.test(source)) return 'MARKDOWN';
+  return 'OFF';
+}
+
 function parseMode(format) {
   const value = String(format ?? 'HTML').toUpperCase();
   if (value === 'HTML') return 'HTML';
@@ -72,7 +89,7 @@ async function completeManualPublication(post, channelId) {
   if (String(template?.body ?? '').includes('{vacio}')) return;
 
   const rawOriginal = String(post.text ?? post.caption ?? '');
-  const format = String(template?.format ?? 'OFF').toUpperCase();
+  const format = resolveFormat(template?.format ?? 'OFF', template?.body);
   const corrected = Number(settings?.textCorrectionEnabled) ? rawOriginal
     .replace(/[ \t]+/g, ' ')
     .replace(/\s+([,.;!?])/g, '$1')
