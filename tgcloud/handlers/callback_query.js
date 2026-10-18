@@ -285,10 +285,12 @@ export default async function (query) {
     if (!channel) { await answer(query, 'El canal ya no está registrado.', true); return; }
     const setting = await db.select().from(channelSettings).where(eq(channelSettings.channelId, channelId)).get();
     await answer(query);
-    await renderPanel('⚙️ CONFIGURACIÓN INDIVIDUAL\n\n' + String(channel.title || channelId) + ' (' + channelId + ')\nProcesamiento: ' + (channel.active ? 'ACTIVO' : 'PAUSADO') + '\nBienvenida: ' + (setting?.welcomeEnabled ? 'ON' : 'OFF') + '\nCAPTCHA: ' + (setting?.captchaEnabled ? 'ON' : 'OFF') + '\nCorrección de texto: ' + (setting?.textCorrectionEnabled ? 'ON' : 'OFF') + '\n\nCada opción se guarda por separado para este canal.', [
-      [{ text: '👋 Bienvenida ' + (setting?.welcomeEnabled ? '🟢' : '⚪'), callback_data: 'admin:toggle:welcome:' + channelId }],
-      [{ text: '🧩 CAPTCHA ' + (setting?.captchaEnabled ? '🟢' : '⚪'), callback_data: 'admin:toggle:captcha:' + channelId }],
+    await renderPanel('⚙️ CONFIGURACIÓN INDIVIDUAL\n\n' + String(channel.title || channelId) + ' (' + channelId + ')\nProcesamiento: ' + (channel.active ? 'ACTIVO' : 'PAUSADO') + '\nBienvenida: ' + (setting?.welcomeEnabled ? 'ON' : 'OFF') + '\nCAPTCHA: ' + (setting?.captchaEnabled ? 'ON' : 'OFF') + '\nCorrección de texto: ' + (setting?.textCorrectionEnabled ? 'ON' : 'OFF') + '\nHashtags: ' + (setting?.hashtags || '(sin configurar)') + '\n\nDesde aquí puedes administrar todo lo que afecta a las publicaciones manuales de este canal. Plantillas, hashtags y botones se guardan por canal y tipo de contenido.', [
+      [{ text: '📝 Plantillas de publicaciones', callback_data: 'admin:templatechannel:' + channelId }],
+      [{ text: '#️⃣ Hashtags ' + (setting?.hashtags ? '🟢' : '⚪'), callback_data: 'admin:hashtagchannel:' + channelId }],
+      [{ text: '🔘 Botones interactivos', callback_data: 'admin:buttonchannel:' + channelId }],
       [{ text: '✍️ Corrección ' + (setting?.textCorrectionEnabled ? '🟢' : '⚪'), callback_data: 'admin:toggle:correction:' + channelId }],
+      [{ text: '👋 Bienvenida ' + (setting?.welcomeEnabled ? '🟢' : '⚪'), callback_data: 'admin:toggle:welcome:' + channelId }, { text: '🧩 CAPTCHA ' + (setting?.captchaEnabled ? '🟢' : '⚪'), callback_data: 'admin:toggle:captcha:' + channelId }],
       [{ text: '✏️ Editar bienvenida', callback_data: 'admin:welcomeedit:' + channelId }],
       [{ text: '🧪 Probar permisos del canal', callback_data: 'admin:channeltest:' + channelId }],
       [{ text: '🔙 Volver a canales', callback_data: 'admin:channels' }],
