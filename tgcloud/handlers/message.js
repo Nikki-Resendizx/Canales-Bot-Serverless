@@ -818,7 +818,7 @@ export default async function (message) {
     if (command === '/template_set') {
       const id = parseId(args[0]); const kind = String(args[1] || '').toLowerCase(); const format = String(args[2] || 'HTML').toUpperCase();
       const body = argText.replace(/^\S+\s+\S+\s+\S+\s+\S+\s*/, '').trim();
-      if (!Number.isSafeInteger(id) || !['default', 'text', 'photo', 'video', 'gif', 'audio', 'document', 'video_note', 'album', 'link', 'forward'].includes(kind) || !body || !['AUTO', 'HTML', 'MARKDOWN', 'MARKDOWNV2', 'OFF', 'RICH_MESSAGE'].includes(format)) return void await say(chatId, 'Uso: /template_set ID_CANAL default|text|photo|video|gif|audio|document|video_note|album|link|forward HTML|Markdown|MarkdownV2|OFF|RICH_MESSAGE texto. RICH_MESSAGE requiere JSON válido.');
+      if (!Number.isSafeInteger(id) || !['default', 'text', 'photo', 'video', 'gif', 'audio', 'document', 'video_note', 'album', 'link', 'forward'].includes(kind) || !body || !['AUTO', 'HTML', 'MARKDOWN', 'MARKDOWNV2', 'OFF', 'RICH_MESSAGE'].includes(format)) return void await say(chatId, 'Uso: /template_set ID_CANAL default|text|photo|video|gif|audio|document|video_note|album|link|forward AUTO|HTML|Markdown|MarkdownV2|OFF|RICH_MESSAGE texto. RICH_MESSAGE requiere JSON válido.');
       if (!(await canManageChannel(userId, id))) return void await say(chatId, '⛔ Ese canal no existe o no está asignado a tu administración.');
       if (format === 'RICH_MESSAGE') {
         try { validateRichTemplate(body); }
