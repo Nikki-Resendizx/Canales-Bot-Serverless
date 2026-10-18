@@ -85,16 +85,16 @@ async function completeManualPublication(post, channelId) {
   const channelName = String(post.chat.title ?? post.chat.username ?? channelId);
   const descriptionSource = String(settings?.descriptionTemplate ?? '');
   const values = {
-    contenido: corrected,
+    contenido: rawOriginal,
     texto: corrected,
-    titulo: corrected.split('\n')[0] ?? '',
-    descripcion: corrected,
+    titulo: rawOriginal.split('\n')[0] ?? '',
+    descripcion: rawOriginal,
     enlace: link,
     hashtags: String(settings?.hashtags ?? '').trim(),
     fecha: date,
     canal: channelName,
   };
-  if (descriptionSource) values.descripcion = applyTemplate(descriptionSource, { ...values, descripcion: corrected });
+  if (descriptionSource) values.descripcion = applyTemplate(descriptionSource, { ...values, contenido: rawOriginal, texto: corrected, descripcion: rawOriginal });
   if (format === 'HTML') {
     values.enlace = escapeHtml(values.enlace);
     values.contenido = escapeHtml(values.contenido);
