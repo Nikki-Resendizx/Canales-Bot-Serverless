@@ -10,6 +10,23 @@ const DEFAULT_REACTION_REPORT_CHAT_ID = -1004456932813;
 const now = () => Date.now();
 const parseId = value => /^-?\d+$/.test(String(value ?? '')) ? Number(value) : NaN;
 const escapeHtml = value => String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
+function resolveFormat(format, body = '') {
+  const selected = String(format ?? 'OFF').toUpperCase();
+  if (selected !== 'AUTO') return selected;
+  const source = String(body ?? '');
+  try {
+    const parsed = JSON.parse(source);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) &&
+        (typeof parsed.html === 'string' || typeof parsed.markdown === 'string' || Array.isArray(parsed.blocks))) {
+      return 'RICH_MESSAGE';
+    }
+  } catch {}
+  if (/<\/?(?:b|i|u|s|strong|em|a|code|pre|tg-spoiler)\b/i.test(source)) return 'HTML';
+  if (source.includes('\\_') || source.includes('\\.') || source.includes('\\!') || source.includes('\\-')) return 'MARKDOWNV2';
+  if (/\*\*[^*]+\*\*|__[^_]+__|~~[^~]+~~|_[^_]+_|\*[^*]+\*/.test(source)) return 'MARKDOWN';
+  return 'OFF';
+}
+
 function validateRichTemplate(value) {
   const parsed = JSON.parse(String(value ?? ''));
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed) ||
@@ -176,7 +193,7 @@ const HELP = [
   '/stats — estadísticas',
   '/addadmin ID y /deladmin ID — solo propietario',
   '',
-  'Formatos: HTML, Markdown, MarkdownV2, OFF y RICH_MESSAGE (JSON válido).',
+  'Formatos: AUTO, HTML, Markdown, MarkdownV2, OFF y RICH_MESSAGE (JSON válido).',
   'Variables de bienvenida: {mencion}, {nombre}, {username}, {userid}, {canal}.',
   'El bot debe tener permisos de administrador en cada canal/grupo.',
 ].join('\n');
@@ -421,7 +438,7 @@ export default async function (message) {
         const kind = String(rawKind || '').toLowerCase();
         const format = String(rawFormat || 'HTML').toUpperCase();
         if (!['default','text','photo','video','gif','audio','document','video_note','album','link','forward'].includes(kind) ||
-            !['HTML','MARKDOWN','MARKDOWNV2','OFF','RICH_MESSAGE'].includes(format)) {
+            !['AUTO','HTML','MARKDOWN','MARKDOWNV2','OFF','RICH_MESSAGE'].includes(format)) {
           await say(chatId, '⚠️ El tipo o formato de plantilla no es válido.');
           return;
         }
@@ -801,7 +818,7 @@ export default async function (message) {
     if (command === '/template_set') {
       const id = parseId(args[0]); const kind = String(args[1] || '').toLowerCase(); const format = String(args[2] || 'HTML').toUpperCase();
       const body = argText.replace(/^\S+\s+\S+\s+\S+\s+\S+\s*/, '').trim();
-      if (!Number.isSafeInteger(id) || !['default', 'text', 'photo', 'video', 'gif', 'audio', 'document', 'video_note', 'album', 'link', 'forward'].includes(kind) || !body || !['HTML', 'MARKDOWN', 'MARKDOWNV2', 'OFF', 'RICH_MESSAGE'].includes(format)) return void await say(chatId, 'Uso: /template_set ID_CANAL default|text|photo|video|gif|audio|document|video_note|album|link|forward HTML|Markdown|MarkdownV2|OFF|RICH_MESSAGE texto. RICH_MESSAGE requiere JSON válido.');
+      if (!Number.isSafeInteger(id) || !['default', 'text', 'photo', 'video', 'gif', 'audio', 'document', 'video_note', 'album', 'link', 'forward'].includes(kind) || !body || !['AUTO', 'HTML', 'MARKDOWN', 'MARKDOWNV2', 'OFF', 'RICH_MESSAGE'].includes(format)) return void await say(chatId, 'Uso: /template_set ID_CANAL default|text|photo|video|gif|audio|document|video_note|album|link|forward HTML|Markdown|MarkdownV2|OFF|RICH_MESSAGE texto. RICH_MESSAGE requiere JSON válido.');
       if (!(await canManageChannel(userId, id))) return void await say(chatId, '⛔ Ese canal no existe o no está asignado a tu administración.');
       if (format === 'RICH_MESSAGE') {
         try { validateRichTemplate(body); }
@@ -932,7 +949,7 @@ export default async function (message) {
         const keyboard = JSON.parse(template?.buttonsJson || '[]');
         if (Array.isArray(keyboard) && keyboard.length) replyMarkup = { reply_markup: { inline_keyboard: keyboard } };
       } catch { /* publicar sin botones si el JSON está dañado */ }
-      let sent; let payload; const format = String(template?.format || 'HTML').toUpperCase();
+      let sent; let payload; const format = resolveFormat(template?.format || 'HTML', template?.body);
       if (!body && message.reply_to_message?.message_id) {
         const source = message.reply_to_message;
         const copyOptions = { chat_id: id, from_chat_id: chatId, message_id: source.message_id, ...replyMarkup };
