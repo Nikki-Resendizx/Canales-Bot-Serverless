@@ -424,7 +424,7 @@ export default async function (message) {
 
   // Los formularios del panel se completan respondiendo al mensaje solicitado; no requieren comandos.
   const inputPrompt = String(message.reply_to_message?.text ?? '');
-  const inputMatch = inputPrompt.match(/\[CBINPUT:(template|hashtags|welcome|buttons|buttonedit|description|missingdata|report):(-?\d+)(?::([a-z_]+)(?::([A-Z_0-9]+))?)?\]/i);
+  const inputMatch = inputPrompt.match(/\[CBINPUT:(template|hashtags|welcome|buttons|buttonedit|description|missingdata|report|signature):(-?\d+)(?::([a-z_]+)(?::([A-Z_0-9]+))?)?\]/i);
   if (inputMatch && isPrivate && await isAdmin(userId) && text && !text.startsWith('/')) {
     const [, inputType, rawChannelId, rawKind, rawFormat] = inputMatch;
     const channelId = Number(rawChannelId);
@@ -504,6 +504,10 @@ export default async function (message) {
         const column = inputType === 'description' ? 'descriptionTemplate' : 'missingDataText';
         await db.update(channelSettings).set({ [column]: text, updatedAt: now() }).where(eq(channelSettings.channelId, channelId)).run();
         await say(chatId, '✅ ' + (inputType === 'description' ? 'Plantilla de descripción' : 'Texto de respaldo') + ' guardado para el canal ' + channelId + '.');
+      } else if (inputType === 'signature') {
+        if (text.length > 1000) { await say(chatId, '⚠️ La firma supera 1000 caracteres.'); return; }
+        await db.update(channelSettings).set({ signatureText: text, updatedAt: now() }).where(eq(channelSettings.channelId, channelId)).run();
+        await say(chatId, '✅ Firma personalizada guardada para el canal ' + channelId + '.');
       } else if (inputType === 'report') {
         const reportId = parseId(text);
         if (!Number.isSafeInteger(reportId) || reportId === 0) { await say(chatId, '⚠️ Envía un ID numérico válido de canal o grupo.'); return; }
