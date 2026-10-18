@@ -171,8 +171,8 @@ async function completeManualPublication(post, channelId) {
         const richKey = typeof rich.html === 'string' ? 'html' : typeof rich.markdown === 'string' ? 'markdown' : '';
         if (richKey) {
           let richText = rich[richKey];
-          if (settings?.hashtags && !/\\{hashtags\\}/i.test(String(template?.body ?? ''))) richText = appendHashtags(richText, settings.hashtags);
-          if (signature && !/\\{firma\\}/i.test(String(template?.body ?? ''))) richText = [String(richText).trim(), richKey === 'html' ? escapeHtml(signature) : signature].filter(Boolean).join('\\n\\n');
+          if (settings?.hashtags && !/\{hashtags\}/i.test(String(template?.body ?? ''))) richText = appendHashtags(richText, settings.hashtags);
+          if (signature && !/\{firma\}/i.test(String(template?.body ?? ''))) richText = [String(richText).trim(), richKey === 'html' ? escapeHtml(signature) : signature].filter(Boolean).join('\n\n');
           rich[richKey] = richText;
         }
       }
