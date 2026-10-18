@@ -8,9 +8,13 @@ const REACTION_REPORT_CHAT_ID = -1004456932813;
 
 function publicationKind(post) {
   if (post.media_group_id) return 'album';
-  if (post.photo) return 'photo';
-  if (post.video || post.animation) return 'video';
   if (post.forward_origin || post.forward_from || post.forward_from_chat || post.forward_sender_name) return 'forward';
+  if (post.photo) return 'photo';
+  if (post.animation) return 'gif';
+  if (post.video_note) return 'video_note';
+  if (post.video) return 'video';
+  if (post.audio || post.voice) return 'audio';
+  if (post.document) return 'document';
   if (post.text && /https?:\/\/|t\.me\//i.test(post.text)) return 'link';
   return 'text';
 }
