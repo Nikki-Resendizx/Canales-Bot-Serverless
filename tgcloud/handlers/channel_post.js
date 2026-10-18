@@ -70,13 +70,13 @@ async function completeManualPublication(post, channelId) {
   const rawOriginal = String(post.text ?? post.caption ?? '');
   const format = String(template?.format ?? 'OFF').toUpperCase();
   const corrected = Number(settings?.textCorrectionEnabled) ? rawOriginal
-    .replace(/[ \\t]+/g, ' ')
-    .replace(/\\s+([,.;!?])/g, '$1')
-    .replace(/([,;!?])([^\\s])/g, '$1 $2')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\s+([,.;!?])/g, '$1')
+    .replace(/([,;!?])([^\s])/g, '$1 $2')
     .trim()
     .replace(/^([a-záéíóúñ])/u, char => char.toLocaleUpperCase('es-MX'))
     : rawOriginal;
-  const detectedLink = corrected.match(/https?:\\/\\/\\S+|t\\.me\\/\\S+/i)?.[0] ?? '';
+  const detectedLink = corrected.match(/https?:\/\/\S+|t\.me\/\S+/i)?.[0] ?? '';
   const permalink = getPublicationLink(post.chat, post.message_id);
   const link = detectedLink || permalink;
   const date = new Intl.DateTimeFormat('es-MX', {
@@ -87,7 +87,7 @@ async function completeManualPublication(post, channelId) {
   const values = {
     contenido: corrected,
     texto: corrected,
-    titulo: corrected.split('\\n')[0] ?? '',
+    titulo: corrected.split('\n')[0] ?? '',
     descripcion: descriptionSource
       ? descriptionSource.replaceAll('{texto}', corrected).replaceAll('{contenido}', corrected)
       : corrected,
@@ -160,8 +160,16 @@ async function completeManualPublication(post, channelId) {
       console.log('No se pudo aplicar RICH_MESSAGE a la publicación manual', channelId, post.message_id, String(error));
     }
   }
+  if (format === 'RICH_MESSAGE') {
+    // Never fall through and replace the post with the raw JSON if rich editing fails.
+    if (replyMarkup) {
+      try { await api.editMessageReplyMarkup({ chat_id: channelId, message_id: post.message_id, reply_markup: replyMarkup }); }
+      catch (error) { console.log('No se pudieron añadir botones tras un fallo de RICH_MESSAGE', channelId, post.message_id, String(error)); }
+    }
+    return;
+  }
 
-  const mode = format === 'RICH_MESSAGE' ? undefined : parseMode(format);
+  const mode = parseMode(format);
   const contentChanged = canEditContent && output !== rawOriginal && Boolean(output);
   if (contentChanged) {
     const args = {
