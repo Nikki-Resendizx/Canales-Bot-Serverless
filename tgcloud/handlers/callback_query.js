@@ -103,7 +103,7 @@ async function backRow() { return [{ text: await navText('back'), callback_data:
 function moduleText(section) {
   const modules = {
     publications: '📤 PUBLICACIONES\n\nLa función principal trabaja con las publicaciones que tú envías manualmente a cada canal conectado. El bot intenta completar ese mismo mensaje con la plantilla, los hashtags y los botones configurados para ese canal, sin crear una copia adicional.\n\nPublica directamente en Telegram dentro del canal conectado.',
-    formats: '🎨 FORMATOS Y VARIABLES\n\nEl editor de plantillas permite elegir HTML, Markdown, MarkdownV2, OFF o RICH_MESSAGE.\n\nVariables: {contenido}, {texto}, {titulo}, {descripcion}, {enlace}, {hashtags}, {fecha}, {canal}. Para cambiar el formato, abre Plantillas, selecciona el canal y el tipo de publicación.',
+    formats: '🎨 FORMATOS Y VARIABLES\n\nEl editor de plantillas permite elegir HTML, Markdown, MarkdownV2, OFF o RICH_MESSAGE.\n\nVariables: {contenido}, {texto}, {titulo}, {descripcion}, {enlace}, {hashtags}, {fecha}, {canal}, {vacio}. Si usas {vacio}, no se modifica la publicación ni se añaden botones o hashtags. Para cambiar el formato, abre Plantillas, selecciona el canal y el tipo de publicación.',
     settings: '⚙️ CONFIGURACIÓN GENERAL\n\nAñade el bot como administrador en cada canal y concede permisos para editar mensajes y publicar. Conecta el canal desde 📢 CANALES. Cada canal mantiene su propia configuración.\n\nLos botones del panel permiten cambiar las opciones disponibles; algunas operaciones externas dependen de los permisos concedidos por Telegram.',
     stars: '⭐ PUBLICACIONES DE PAGO\n\nEl flujo básico de Telegram Stars está implementado, pero su editor todavía no está integrado completamente en este panel visual. No publiques ofertas de pago hasta probar el recorrido de compra y entrega de contenido.',
   };
@@ -400,7 +400,7 @@ export default async function (query) {
     await answer(query);
     await api.sendMessage({
       chat_id: chatId,
-      text: '[CBINPUT:buttonedit:' + channelId + ':' + kind + ':' + index + ']\\n✍️ Responde con la nueva definición de un solo botón. Formato: Texto - URL o Texto - popup:Mensaje.',
+      text: '[CBINPUT:buttonedit:' + channelId + ':' + kind + ':' + index + ']\n✍️ Responde con la nueva definición de un solo botón. Formato: Texto - URL o Texto - popup:Mensaje.',
       reply_markup: { force_reply: true, selective: true },
     });
     await renderPanel('Editando el botón ' + index + ' de la plantilla ' + kind + '.', [[{ text: '🔙 Volver', callback_data: 'admin:buttonkind:' + channelId + ':' + kind }]]);
