@@ -291,7 +291,7 @@ export default async function (query) {
       [{ text: '🔘 Botones interactivos', callback_data: 'admin:buttonchannel:' + channelId }],
       [{ text: '✍️ Firma personalizada ' + (setting?.signatureEnabled ? '🟢' : '⚪'), callback_data: 'admin:signaturetoggle:' + channelId }],
       [{ text: '🖊️ Editar firma', callback_data: 'admin:signatureedit:' + channelId }, { text: '👁️ Vista previa firma', callback_data: 'admin:signaturepreview:' + channelId }],
-      [{ text: '✍️ Corrección  + (setting?.textCorrectionEnabled ? '🟢' : '⚪'), callback_data: 'admin:toggle:correction:' + channelId }],
+      [{ text: '✍️ Corrección ' + (setting?.textCorrectionEnabled ? '🟢' : '⚪'), callback_data: 'admin:toggle:correction:' + channelId }],
       [{ text: '👋 Bienvenida ' + (setting?.welcomeEnabled ? '🟢' : '⚪'), callback_data: 'admin:toggle:welcome:' + channelId }, { text: '🧩 CAPTCHA ' + (setting?.captchaEnabled ? '🟢' : '⚪'), callback_data: 'admin:toggle:captcha:' + channelId }],
       [{ text: '✏️ Editar bienvenida', callback_data: 'admin:welcomeedit:' + channelId }],
       [{ text: '🧪 Probar permisos del canal', callback_data: 'admin:channeltest:' + channelId }],
