@@ -344,9 +344,14 @@ export default async function (query) {
     try { keyboardData = JSON.parse(template?.buttonsJson || '[]'); } catch {}
     const flat = keyboardData.flat().filter(Boolean);
     const detail = flat.length ? flat.map((button,i) => (i + 1) + '. ' + button.text + ' [' + (button.style || 'normal') + '] — ' + (button.url ? button.url : button.callback_data ? 'acción interna' : button.copy_text?.text ? 'copiar texto' : 'acción especial')).join('\n') : '(sin botones configurados)';
+    const individualRows = flat.map((button, index) => [
+      { text: '✏️ ' + (index + 1), callback_data: 'admin:buttonedit:' + channelId + ':' + kind + ':' + (index + 1) },
+      { text: '🗑️ ' + (index + 1), callback_data: 'admin:buttondelete:' + channelId + ':' + kind + ':' + (index + 1) },
+    ]);
     await answer(query);
-    await renderPanel('🔘 BOTONES DE LA PLANTILLA\nCanal: ' + channelId + '\nTipo: ' + kind + '\n\n' + detail + '\n\nPulsa editar y responde al mensaje del bot con una línea por fila. Separa botones de la misma fila con |. Ejemplo: Visitar canal - https://t.me/ejemplo\n#g Acceder - https://t.me/ejemplo\n\nEstilos: #p azul, #g verde, #r rojo. Acciones: URL, callback:TEXTO, popup:TEXTO, copy:TEXTO, share:TEXTO, rules.', [
-      [{ text: '✏️ Editar botones', callback_data: 'admin:buttoninput:' + channelId + ':' + kind }],
+    await renderPanel('🔘 BOTONES DE LA PLANTILLA\nCanal: ' + channelId + '\nTipo: ' + kind + '\n\n' + detail + '\n\nPulsa editar y responde al mensaje del bot con una línea por fila. Separa botones de la misma fila con |. Ejemplo: Visitar canal - https://t.me/ejemplo\n#g Acceder - https://t.me/ejemplo\n\nEstilos: #p azul, #g verde, #r rojo. Acciones: URL, callback:TEXTO, popup:TEXTO, alert:TEXTO, copy:TEXTO, share:TEXTO. Usa los botones numerados para editar o eliminar individualmente.', [
+      ...individualRows,
+      [{ text: '➕ Crear/reemplazar teclado completo', callback_data: 'admin:buttoninput:' + channelId + ':' + kind }],
       [{ text: '🗑️ Quitar todos', callback_data: 'admin:buttonclear:' + channelId + ':' + kind }],
       [{ text: '🔙 Volver', callback_data: 'admin:buttonchannel:' + channelId }],
     ]);
@@ -360,6 +365,45 @@ export default async function (query) {
     await answer(query);
     await api.sendMessage({ chat_id: chatId, text: '[CBINPUT:buttons:' + channelId + ':' + kind + ']\n✍️ Responde a este mensaje con los botones. Una fila por línea; usa | para varias columnas. Ejemplo:\nVisitar canal - https://t.me/ejemplo | #g Acceder - https://t.me/ejemplo', reply_markup: { force_reply: true, selective: true } });
     await renderPanel('Los botones se guardarán solo en esta plantilla.', [[{ text: '🔙 Volver', callback_data: 'admin:buttonkind:' + channelId + ':' + kind }]]);
+    return;
+  }
+  if (section === 'buttondelete' || section === 'buttonedit') {
+    const channelId = Number(parts[2]); const kind = String(parts[3] || ''); const index = Number(parts[4]);
+    if (!Number.isSafeInteger(channelId) || !Number.isSafeInteger(index) || index < 1 ||
+        !['default','text','photo','video','album','link','forward'].includes(kind) ||
+        !(await canManageChannel(userId, channelId))) {
+      await answer(query, 'No tienes permiso o el botón no es válido.', true); return;
+    }
+    const templateKey = channelId + ':' + kind;
+    const template = await db.select().from(templates).where(eq(templates.templateKey, templateKey)).get();
+    let rows = [];
+    try { rows = JSON.parse(template?.buttonsJson || '[]'); } catch {}
+    if (!Array.isArray(rows)) rows = [];
+    const flat = rows.flatMap((row, rowIndex) => Array.isArray(row) ? row.map((button, columnIndex) => ({ button, rowIndex, columnIndex })) : []);
+    const target = flat[index - 1];
+    if (!target || !template) { await answer(query, 'Ese botón ya no existe.', true); return; }
+    if (section === 'buttondelete') {
+      rows[target.rowIndex].splice(target.columnIndex, 1);
+      rows = rows.filter(row => Array.isArray(row) && row.length);
+      await db.update(templates).set({ buttonsJson: JSON.stringify(rows), updatedBy: userId, updatedAt: Date.now() }).where(eq(templates.templateKey, templateKey)).run();
+      await answer(query, 'Botón eliminado.');
+      const flatAfter = rows.flat();
+      const keyboard = flatAfter.map((button, i) => [
+        { text: '✏️ ' + (i + 1), callback_data: 'admin:buttonedit:' + channelId + ':' + kind + ':' + (i + 1) },
+        { text: '🗑️ ' + (i + 1), callback_data: 'admin:buttondelete:' + channelId + ':' + kind + ':' + (i + 1) },
+      ]);
+      keyboard.push([{ text: '➕ Editar teclado completo', callback_data: 'admin:buttoninput:' + channelId + ':' + kind }]);
+      keyboard.push([{ text: '🔙 Volver', callback_data: 'admin:buttonchannel:' + channelId }]);
+      await renderPanel('🔘 Botón eliminado. Botones restantes: ' + flatAfter.length, keyboard);
+      return;
+    }
+    await answer(query);
+    await api.sendMessage({
+      chat_id: chatId,
+      text: '[CBINPUT:buttonedit:' + channelId + ':' + kind + ':' + index + ']\\n✍️ Responde con la nueva definición de un solo botón. Formato: Texto - URL o Texto - popup:Mensaje.',
+      reply_markup: { force_reply: true, selective: true },
+    });
+    await renderPanel('Editando el botón ' + index + ' de la plantilla ' + kind + '.', [[{ text: '🔙 Volver', callback_data: 'admin:buttonkind:' + channelId + ':' + kind }]]);
     return;
   }
   if (section === 'buttonclear') {
@@ -584,13 +628,13 @@ export default async function (query) {
 
   if (section === 'templatekind') {
     const channelId = Number(parts[2]); const kind = String(parts[3] || '');
-    const labels = { text:'💬 Mensajes de texto', photo:'🖼️ Fotografías', video:'🎬 Vídeos', album:'🖼️ Álbumes', link:'🔗 Enlaces', forward:'↪️ Publicaciones reenviadas' };
+    const labels = { default:'⭐ Plantilla predeterminada', text:'💬 Mensajes de texto', photo:'🖼️ Fotografías', video:'🎬 Vídeos', album:'🖼️ Álbumes', link:'🔗 Enlaces', forward:'↪️ Publicaciones reenviadas' };
     if (!Number.isSafeInteger(channelId) || !Object.hasOwn(labels, kind) || !(await canManageChannel(userId, channelId))) {
       await answer(query, 'No tienes permiso o el tipo de plantilla no es válido.', true);
       return;
     }
     await answer(query);
-    await renderPanel('✏️ PLANTILLA: ' + labels[kind] + '\n\n1. Elige el formato.\n2. El bot te pedirá el texto y lo guardarás respondiendo al mensaje.\n\nVariables: {contenido}, {texto}, {titulo}, {descripcion}, {enlace}, {hashtags}, {fecha}, {canal}.', [
+    await renderPanel('✏️ PLANTILLA: ' + labels[kind] + '\n\n1. Elige el formato.\n2. El bot te pedirá el texto y lo guardarás respondiendo al mensaje.\n\nVariables: {contenido}, {texto}, {titulo}, {descripcion}, {enlace}, {hashtags}, {fecha}, {canal}, {vacio}. Si usas {vacio}, el bot no modifica el mensaje ni añade botones o hashtags.', [
       [{ text: 'HTML', callback_data: 'admin:templateinput:' + channelId + ':' + kind + ':HTML' }, { text: 'Markdown', callback_data: 'admin:templateinput:' + channelId + ':' + kind + ':MARKDOWN' }],
       [{ text: 'MarkdownV2', callback_data: 'admin:templateinput:' + channelId + ':' + kind + ':MARKDOWNV2' }, { text: 'OFF', callback_data: 'admin:templateinput:' + channelId + ':' + kind + ':OFF' }],
       [{ text: 'RICH_MESSAGE', callback_data: 'admin:templateinput:' + channelId + ':' + kind + ':RICH_MESSAGE' }],
