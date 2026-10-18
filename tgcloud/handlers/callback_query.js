@@ -668,7 +668,30 @@ export default async function (query) {
 
   await answer(query);
   if (section === 'navigation') {
-    await renderPanel('🧭 TEXTOS DE NAVEGACIÓN\n\nUsa /navtexts para consultar las claves. Edita con /navtext CLAVE nuevo texto. Para restaurar: /navtext CLAVE default.\n\nClaves: panel_title, panel_description, channels, welcome, captcha, hashtags, blacklist, routes, templates, publications, buttons, formats, rules, testmode, reactions, stars, admins, stats, settings, navigation, back.', [[{ text: await navText('back'), callback_data: 'admin:back' }]]);
+    const keys = Object.keys(NAV_DEFAULTS).filter(key => !['close'].includes(key));
+    const keyboard = [];
+    for (let i = 0; i < keys.length; i += 3) {
+      keyboard.push(await Promise.all(keys.slice(i, i + 3).map(async key => ({
+        text: await navText(key),
+        callback_data: 'admin:navigationedit:' + key,
+      }))));
+    }
+    keyboard.push([{ text: '🔙 Volver', callback_data: 'admin:back' }]);
+    await renderPanel('🧭 TEXTOS DEL PANEL\n\nPulsa la etiqueta que quieres cambiar. Responde al mensaje de edición con el nuevo texto. Escribe DEFAULT para restaurar el texto original.', keyboard);
+    return;
+  }
+  if (section === 'navigationedit') {
+    const key = String(parts[2] || '');
+    if (!Object.hasOwn(NAV_DEFAULTS, key) || key === 'close') {
+      await answer(query, 'Etiqueta no válida.', true); return;
+    }
+    await answer(query);
+    await api.sendMessage({
+      chat_id: chatId,
+      text: '[CBNAV:' + key + ']\\n✍️ Responde con el nuevo texto para esta etiqueta. Escribe DEFAULT para restaurarla.',
+      reply_markup: { force_reply: true, selective: true },
+    });
+    await renderPanel('Editando la etiqueta: ' + key, [[{ text: '🔙 Volver', callback_data: 'admin:navigation' }]]);
     return;
   }
   if (section === 'testmode') {
