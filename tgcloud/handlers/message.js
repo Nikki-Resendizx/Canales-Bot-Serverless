@@ -151,7 +151,7 @@ const HELP = [
   '/route_remove ORIGEN DESTINO — borrar ruta',
   '/routes — listar rutas',
   '/template_set ID_CANAL TIPO FORMATO texto — crear/editar plantilla',
-  'Tipos de plantilla: default, text, photo, video, album, link y forward.',
+  'Tipos de plantilla: default, text, photo, video, gif, audio, document, video_note, album, link y forward.',
   'Variables de plantilla: {canal}, {descripcion}, {titulo}, {enlace}, {hashtags}, {fecha}, {contenido}, {vacio} (también {texto}). {vacio} evita cualquier modificación automática de la publicación.',
   '/template_list ID_CANAL — listar plantillas',
   '/template_buttons ID_CANAL TIPO — configurar botones por sintaxis de líneas o JSON',
@@ -398,7 +398,7 @@ export default async function (message) {
 
   // Los formularios del panel se completan respondiendo al mensaje solicitado; no requieren comandos.
   const inputPrompt = String(message.reply_to_message?.text ?? '');
-  const inputMatch = inputPrompt.match(/\[CBINPUT:(template|hashtags|welcome|buttons|buttonedit|description|missingdata|report):(-?\d+)(?::([a-z]+)(?::([A-Z_0-9]+))?)?\]/i);
+  const inputMatch = inputPrompt.match(/\[CBINPUT:(template|hashtags|welcome|buttons|buttonedit|description|missingdata|report):(-?\d+)(?::([a-z_]+)(?::([A-Z_0-9]+))?)?\]/i);
   if (inputMatch && isPrivate && await isAdmin(userId) && text && !text.startsWith('/')) {
     const [, inputType, rawChannelId, rawKind, rawFormat] = inputMatch;
     const channelId = Number(rawChannelId);
@@ -411,7 +411,7 @@ export default async function (message) {
       if (inputType === 'template') {
         const kind = String(rawKind || '').toLowerCase();
         const format = String(rawFormat || 'HTML').toUpperCase();
-        if (!['default','text','photo','video','album','link','forward'].includes(kind) ||
+        if (!['default','text','photo','video','gif','audio','document','video_note','album','link','forward'].includes(kind) ||
             !['HTML','MARKDOWN','MARKDOWNV2','OFF','RICH_MESSAGE'].includes(format)) {
           await say(chatId, '⚠️ El tipo o formato de plantilla no es válido.');
           return;
@@ -435,7 +435,7 @@ export default async function (message) {
       } else if (inputType === 'buttonedit') {
         const kind = String(rawKind || '').toLowerCase();
         const index = Number(rawFormat);
-        if (!['default','text','photo','video','album','link','forward'].includes(kind) || !Number.isSafeInteger(index) || index < 1) {
+        if (!['default','text','photo','video','gif','audio','document','video_note','album','link','forward'].includes(kind) || !Number.isSafeInteger(index) || index < 1) {
           await say(chatId, '⚠️ El botón o tipo de plantilla no es válido.'); return;
         }
         const parsed = parseButtonSyntax(text);
@@ -455,7 +455,7 @@ export default async function (message) {
         await say(chatId, '✅ Botón ' + index + ' actualizado en la plantilla ' + kind + '.');
       } else if (inputType === 'buttons') {
         const kind = String(rawKind || '').toLowerCase();
-        if (!['default','text','photo','video','album','link','forward'].includes(kind)) {
+        if (!['default','text','photo','video','gif','audio','document','video_note','album','link','forward'].includes(kind)) {
           await say(chatId, '⚠️ El tipo de plantilla no es válido.'); return;
         }
         const keyboard = parseButtonSyntax(text);
@@ -788,7 +788,7 @@ export default async function (message) {
     if (command === '/template_set') {
       const id = parseId(args[0]); const kind = String(args[1] || '').toLowerCase(); const format = String(args[2] || 'HTML').toUpperCase();
       const body = argText.replace(/^\S+\s+\S+\s+\S+\s+\S+\s*/, '').trim();
-      if (!Number.isSafeInteger(id) || !['default', 'text', 'photo', 'video', 'album', 'link', 'forward'].includes(kind) || !body || !['HTML', 'MARKDOWN', 'MARKDOWNV2', 'OFF', 'RICH_MESSAGE'].includes(format)) return void await say(chatId, 'Uso: /template_set ID_CANAL default|text|photo|video|album|link|forward HTML|Markdown|MarkdownV2|OFF|RICH_MESSAGE texto. RICH_MESSAGE requiere JSON válido.');
+      if (!Number.isSafeInteger(id) || !['default', 'text', 'photo', 'video', 'gif', 'audio', 'document', 'video_note', 'album', 'link', 'forward'].includes(kind) || !body || !['HTML', 'MARKDOWN', 'MARKDOWNV2', 'OFF', 'RICH_MESSAGE'].includes(format)) return void await say(chatId, 'Uso: /template_set ID_CANAL default|text|photo|video|album|link|forward HTML|Markdown|MarkdownV2|OFF|RICH_MESSAGE texto. RICH_MESSAGE requiere JSON válido.');
       if (!(await canManageChannel(userId, id))) return void await say(chatId, '⛔ Ese canal no existe o no está asignado a tu administración.');
       const templateKey = `${id}:${kind}`;
       await db.insert(templates).values({ templateKey, channelId: id, kind, body, format, buttonsJson: '[]', updatedBy: userId, updatedAt: now() })
@@ -903,7 +903,7 @@ export default async function (message) {
       if (!row || !row.active || !(await canManageChannel(userId, id))) return void await say(chatId, '⛔ Ese canal no está activo o no está asignado a tu administración.');
       const reply = message.reply_to_message;
       const kind = reply
-        ? (reply.media_group_id ? 'album' : (reply.photo ? 'photo' : reply.video ? 'video' : (reply.forward_origin || reply.forward_from || reply.forward_from_chat || reply.forward_sender_name) ? 'forward' : 'text'))
+        ? (reply.media_group_id ? 'album' : (reply.forward_origin || reply.forward_from || reply.forward_from_chat || reply.forward_sender_name) ? 'forward' : reply.photo ? 'photo' : reply.animation ? 'gif' : reply.video_note ? 'video_note' : reply.video ? 'video' : (reply.audio || reply.voice) ? 'audio' : reply.document ? 'document' : 'text')
         : (body.includes('http://') || body.includes('https://') ? 'link' : 'text');
       const specificTemplate = await db.select().from(templates).where(eq(templates.templateKey, `${id}:${kind}`)).get();
       const defaultTemplate = await db.select().from(templates).where(eq(templates.templateKey, `${id}:default`)).get();
