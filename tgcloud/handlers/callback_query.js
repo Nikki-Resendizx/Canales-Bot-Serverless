@@ -102,10 +102,10 @@ function channelManagementButtons(rows) {
 async function backRow() { return [{ text: await navText('back'), callback_data: 'admin:back' }]; }
 function moduleText(section) {
   const modules = {
-    publications: '📤 PUBLICACIONES\\n\\nLa función principal trabaja con las publicaciones que tú envías manualmente a cada canal conectado. El bot intenta completar ese mismo mensaje con la plantilla, los hashtags y los botones configurados para ese canal, sin crear una copia adicional.\\n\\nPublica directamente en Telegram dentro del canal conectado.',
-    formats: '🎨 FORMATOS Y VARIABLES\\n\\nEl editor de plantillas permite elegir HTML, Markdown, MarkdownV2, OFF o RICH_MESSAGE.\\n\\nVariables: {contenido}, {texto}, {titulo}, {descripcion}, {enlace}, {hashtags}, {fecha}, {canal}. Para cambiar el formato, abre Plantillas, selecciona el canal y el tipo de publicación.',
-    settings: '⚙️ CONFIGURACIÓN GENERAL\\n\\nAñade el bot como administrador en cada canal y concede permisos para editar mensajes y publicar. Conecta el canal desde 📢 CANALES. Cada canal mantiene su propia configuración.\\n\\nLos botones del panel permiten cambiar las opciones disponibles; algunas operaciones externas dependen de los permisos concedidos por Telegram.',
-    stars: '⭐ PUBLICACIONES DE PAGO\\n\\nEl flujo básico de Telegram Stars está implementado, pero su editor todavía no está integrado completamente en este panel visual. No publiques ofertas de pago hasta probar el recorrido de compra y entrega de contenido.',
+    publications: '📤 PUBLICACIONES\n\nLa función principal trabaja con las publicaciones que tú envías manualmente a cada canal conectado. El bot intenta completar ese mismo mensaje con la plantilla, los hashtags y los botones configurados para ese canal, sin crear una copia adicional.\n\nPublica directamente en Telegram dentro del canal conectado.',
+    formats: '🎨 FORMATOS Y VARIABLES\n\nEl editor de plantillas permite elegir HTML, Markdown, MarkdownV2, OFF o RICH_MESSAGE.\n\nVariables: {contenido}, {texto}, {titulo}, {descripcion}, {enlace}, {hashtags}, {fecha}, {canal}. Para cambiar el formato, abre Plantillas, selecciona el canal y el tipo de publicación.',
+    settings: '⚙️ CONFIGURACIÓN GENERAL\n\nAñade el bot como administrador en cada canal y concede permisos para editar mensajes y publicar. Conecta el canal desde 📢 CANALES. Cada canal mantiene su propia configuración.\n\nLos botones del panel permiten cambiar las opciones disponibles; algunas operaciones externas dependen de los permisos concedidos por Telegram.',
+    stars: '⭐ PUBLICACIONES DE PAGO\n\nEl flujo básico de Telegram Stars está implementado, pero su editor todavía no está integrado completamente en este panel visual. No publiques ofertas de pago hasta probar el recorrido de compra y entrega de contenido.',
   };
   return modules[section] || '';
 }
@@ -378,7 +378,7 @@ export default async function (query) {
     const keyboard = rows.map(row => [{ text: '🔔 ' + String(row.title || row.chatId).slice(0,38), callback_data: 'admin:reactionchannel:' + row.chatId }]);
     keyboard.push(await backRow());
     await answer(query);
-    await renderPanel('🔔 REPORTES DE REACCIONES\\n\\nSelecciona un canal para configurar dónde se envían los avisos.', keyboard);
+    await renderPanel('🔔 REPORTES DE REACCIONES\n\nSelecciona un canal para configurar dónde se envían los avisos.', keyboard);
     return;
   }
   if (section === 'reactionchannel') {
@@ -386,7 +386,7 @@ export default async function (query) {
     if (!Number.isSafeInteger(channelId) || !(await canManageChannel(userId, channelId))) { await answer(query, 'No tienes permiso para ese canal.', true); return; }
     const setting = await db.select().from(channelSettings).where(eq(channelSettings.channelId, channelId)).get();
     await answer(query);
-    await renderPanel('🔔 REPORTES DE REACCIONES\\nCanal: ' + channelId + '\\nDestino actual: ' + (setting?.reactionReportChatId || 'predeterminado') + '\\n\\nEl destino debe ser un canal donde el bot pueda publicar.', [
+    await renderPanel('🔔 REPORTES DE REACCIONES\nCanal: ' + channelId + '\nDestino actual: ' + (setting?.reactionReportChatId || 'predeterminado') + '\n\nEl destino debe ser un canal donde el bot pueda publicar.', [
       [{ text: '✏️ Cambiar destino', callback_data: 'admin:reactioninput:' + channelId }],
       [{ text: '🔙 Volver', callback_data: 'admin:reactions' }],
     ]);
@@ -396,7 +396,7 @@ export default async function (query) {
     const channelId = Number(parts[2]);
     if (!Number.isSafeInteger(channelId) || !(await canManageChannel(userId, channelId))) { await answer(query, 'No tienes permiso para ese canal.', true); return; }
     await answer(query);
-    await api.sendMessage({ chat_id: chatId, text: '[CBINPUT:report:' + channelId + ']\\n✍️ Responde con el ID numérico del canal o grupo que recibirá los reportes.', reply_markup: { force_reply: true, selective: true } });
+    await api.sendMessage({ chat_id: chatId, text: '[CBINPUT:report:' + channelId + ']\n✍️ Responde con el ID numérico del canal o grupo que recibirá los reportes.', reply_markup: { force_reply: true, selective: true } });
     await renderPanel('Envía el ID como respuesta al mensaje del bot.', [[{ text: '🔙 Volver', callback_data: 'admin:reactionchannel:' + channelId }]]);
     return;
   }
@@ -409,7 +409,7 @@ export default async function (query) {
     keyboard.unshift([{ text: '➕ Crear ruta', callback_data: 'admin:routeadd' }]);
     keyboard.push(await backRow());
     await answer(query);
-    await renderPanel('🔀 DISTRIBUCIÓN ENTRE CANALES\\n\\n' + (routeRows.length ? 'Pulsa una ruta para eliminarla.' : 'Aún no hay rutas configuradas.') + '\\n\\nLas rutas copian las publicaciones del canal de origen al destino.', keyboard);
+    await renderPanel('🔀 DISTRIBUCIÓN ENTRE CANALES\n\n' + (routeRows.length ? 'Pulsa una ruta para eliminarla.' : 'Aún no hay rutas configuradas.') + '\n\nLas rutas copian las publicaciones del canal de origen al destino.', keyboard);
     return;
   }
   if (section === 'routeadd') {
@@ -417,7 +417,7 @@ export default async function (query) {
     const keyboard = rows.map(row => [{ text: '📤 ' + String(row.title || row.chatId).slice(0,38), callback_data: 'admin:routesource:' + row.chatId }]);
     keyboard.push(await backRow());
     await answer(query);
-    await renderPanel('➕ CREAR RUTA\\n\\nSelecciona el canal de origen.', keyboard);
+    await renderPanel('➕ CREAR RUTA\n\nSelecciona el canal de origen.', keyboard);
     return;
   }
   if (section === 'routesource') {
@@ -663,7 +663,7 @@ export default async function (query) {
       [{ text: '➖ Quitar administrador', callback_data: 'admin:admininput:remove' }],
       await backRow(),
     ];
-    await renderPanel('👮 ADMINISTRADORES\\n\\n' + (rows.length ? rows.map(a => '• ' + a.userId + ' (' + a.role + ')').join('\\n') : 'Sin administradores adicionales.'), keyboard);
+    await renderPanel('👮 ADMINISTRADORES\n\n' + (rows.length ? rows.map(a => '• ' + a.userId + ' (' + a.role + ')').join('\n') : 'Sin administradores adicionales.'), keyboard);
     return;
   }
   if (section === 'admininput') {
@@ -671,7 +671,7 @@ export default async function (query) {
     const action = String(parts[2] || '');
     if (!['add','remove'].includes(action)) { await answer(query, 'Acción no válida.', true); return; }
     await answer(query);
-    await api.sendMessage({ chat_id: chatId, text: '[CBGLOBAL:admin' + action + ']\\n✍️ Responde con el ID numérico de Telegram del usuario.', reply_markup: { force_reply: true, selective: true } });
+    await api.sendMessage({ chat_id: chatId, text: '[CBGLOBAL:admin' + action + ']\n✍️ Responde con el ID numérico de Telegram del usuario.', reply_markup: { force_reply: true, selective: true } });
     await renderPanel('El cambio se aplicará al responder al mensaje del bot.', [[{ text: '🔙 Volver', callback_data: 'admin:admins' }]]);
     return;
   }
@@ -737,7 +737,7 @@ export default async function (query) {
     return;
   }
   if (section === 'help') {
-    await renderPanel('📚 AYUDA\\n\\nCANALES-BOT se administra desde los botones. Abre una sección, elige el canal y sigue las instrucciones que aparecen. Cuando una opción necesite texto, el bot abrirá un mensaje para responder; no hace falta escribir comandos.', [[{ text: await navText('back'), callback_data: 'admin:back' }]]);
+    await renderPanel('📚 AYUDA\n\nCANALES-BOT se administra desde los botones. Abre una sección, elige el canal y sigue las instrucciones que aparecen. Cuando una opción necesite texto, el bot abrirá un mensaje para responder; no hace falta escribir comandos.', [[{ text: await navText('back'), callback_data: 'admin:back' }]]);
     return;
   }
   await renderPanel('Sección no reconocida.', [[{ text: await navText('back'), callback_data: 'admin:back' }]]);
