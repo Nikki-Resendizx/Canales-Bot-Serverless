@@ -356,6 +356,46 @@ export default async function (message) {
     return;
   }
 
+  const starsPrompt = String(message.reply_to_message?.text ?? '');
+  const starsMatch = starsPrompt.match(/\\[CBSTAR:(-?\\d+)\\]/);
+  if (starsMatch && isPrivate && await isAdmin(userId) && text && !text.startsWith('/')) {
+    const channelId = Number(starsMatch[1]);
+    if (!Number.isSafeInteger(channelId) || !(await canManageChannel(userId, channelId))) {
+      await say(chatId, '⛔ No tienes permiso para publicar en ese canal.');
+      return;
+    }
+    const channel = await db.select().from(channels).where(eq(channels.chatId, channelId)).get();
+    if (!channel || !Number(channel.active)) { await say(chatId, '⚠️ El canal no está activo.'); return; }
+    const separator = text.indexOf('|');
+    const price = Number(separator >= 0 ? text.slice(0, separator).trim() : '');
+    const body = separator >= 0 ? text.slice(separator + 1).trim() : '';
+    if (!Number.isInteger(price) || price < 1 || price > 100000 || !body) {
+      await say(chatId, '⚠️ Formato incorrecto. Envía PRECIO | texto exclusivo. Precio: 1–100000 Stars.');
+      return;
+    }
+    try {
+      const publicationKey = 'p_' + now().toString(36) + '_' + Math.abs(channelId).toString(36);
+      const botInfo = await api.getMe();
+      const botUsername = String(botInfo?.username ?? '').replace(/^@/, '');
+      if (!botUsername) { await say(chatId, '⚠️ No pude obtener el username del bot.'); return; }
+      const teaser = await api.sendMessage({
+        chat_id: channelId,
+        text: '💎 PUBLICACIÓN EXCLUSIVA\\n\\nPrecio: ⭐ ' + price + '\\nPulsa el botón para desbloquear el contenido con Telegram Stars.',
+        reply_markup: { inline_keyboard: [[{ text: '⭐ Desbloquear · ' + price, url: 'https://t.me/' + botUsername + '?start=buy_' + publicationKey }]] },
+      });
+      await db.insert(publications).values({
+        publicationKey, channelId, sourceMessageId: Number(teaser.message_id),
+        status: 'paid', starsPrice: price, payloadJson: JSON.stringify({ type: 'text', text: body }),
+        createdBy: userId, createdAt: now(), updatedAt: now(),
+      }).run();
+      await say(chatId, '✅ Publicación de pago creada en ' + String(channel.title || channelId) + '. Precio: ⭐ ' + price + '. Prueba la compra desde una cuenta distinta antes de anunciarla.');
+    } catch (error) {
+      console.log('No se pudo crear la publicación de pago desde el panel', String(error));
+      await say(chatId, '⚠️ No se pudo crear la publicación. Comprueba permisos, base de datos y configuración de Telegram Stars.');
+    }
+    return;
+  }
+
   // Los formularios del panel se completan respondiendo al mensaje solicitado; no requieren comandos.
   const inputPrompt = String(message.reply_to_message?.text ?? '');
   const inputMatch = inputPrompt.match(/\[CBINPUT:(template|hashtags|welcome|buttons|buttonedit|description|missingdata|report):(-?\d+)(?::([a-z]+)(?::([A-Z_0-9]+))?)?\]/i);
