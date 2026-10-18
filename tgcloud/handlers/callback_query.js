@@ -322,7 +322,7 @@ export default async function (query) {
     }
     const channel = await db.select().from(channels).where(eq(channels.chatId, channelId)).get();
     const rows = await db.select().from(templates).where(eq(templates.channelId, channelId)).all();
-    const kinds = [['default','⭐ Predeterminada'],['text','💬 Texto'],['photo','🖼️ Fotos'],['video','🎬 Vídeos'],['album','🗂️ Álbumes'],['link','🔗 Enlaces'],['forward','↪️ Reenviadas']];
+    const kinds = [['default','⭐ Predeterminada'],['text','💬 Texto'],['photo','🖼️ Fotos'],['video','🎬 Vídeos'],['gif','🎞️ GIF'],['audio','🎧 Audio/voz'],['document','📎 Archivos'],['video_note','🫧 Video burbuja'],['album','🗂️ Álbumes'],['link','🔗 Enlaces'],['forward','↪️ Reenviadas']];
     const keyboard = kinds.map(([kind,label]) => {
       const template = rows.find(row => row.kind === kind);
       let count = 0;
@@ -336,7 +336,7 @@ export default async function (query) {
   }
   if (section === 'buttonkind') {
     const channelId = Number(parts[2]); const kind = String(parts[3] || '');
-    if (!Number.isSafeInteger(channelId) || !['default','text','photo','video','album','link','forward'].includes(kind) || !(await canManageChannel(userId, channelId))) {
+    if (!Number.isSafeInteger(channelId) || !['default','text','photo','video','gif','audio','document','video_note','album','link','forward'].includes(kind) || !(await canManageChannel(userId, channelId))) {
       await answer(query, 'No tienes permiso o el tipo no es válido.', true); return;
     }
     const template = await db.select().from(templates).where(eq(templates.templateKey, channelId + ':' + kind)).get();
@@ -359,7 +359,7 @@ export default async function (query) {
   }
   if (section === 'buttoninput') {
     const channelId = Number(parts[2]); const kind = String(parts[3] || '');
-    if (!Number.isSafeInteger(channelId) || !['default','text','photo','video','album','link','forward'].includes(kind) || !(await canManageChannel(userId, channelId))) {
+    if (!Number.isSafeInteger(channelId) || !['default','text','photo','video','gif','audio','document','video_note','album','link','forward'].includes(kind) || !(await canManageChannel(userId, channelId))) {
       await answer(query, 'No tienes permiso o el tipo no es válido.', true); return;
     }
     await answer(query);
@@ -370,7 +370,7 @@ export default async function (query) {
   if (section === 'buttondelete' || section === 'buttonedit') {
     const channelId = Number(parts[2]); const kind = String(parts[3] || ''); const index = Number(parts[4]);
     if (!Number.isSafeInteger(channelId) || !Number.isSafeInteger(index) || index < 1 ||
-        !['default','text','photo','video','album','link','forward'].includes(kind) ||
+        !['default','text','photo','video','gif','audio','document','video_note','album','link','forward'].includes(kind) ||
         !(await canManageChannel(userId, channelId))) {
       await answer(query, 'No tienes permiso o el botón no es válido.', true); return;
     }
@@ -408,7 +408,7 @@ export default async function (query) {
   }
   if (section === 'buttonclear') {
     const channelId = Number(parts[2]); const kind = String(parts[3] || '');
-    if (!Number.isSafeInteger(channelId) || !['default','text','photo','video','album','link','forward'].includes(kind) || !(await canManageChannel(userId, channelId))) {
+    if (!Number.isSafeInteger(channelId) || !['default','text','photo','video','gif','audio','document','video_note','album','link','forward'].includes(kind) || !(await canManageChannel(userId, channelId))) {
       await answer(query, 'No tienes permiso o el tipo no es válido.', true); return;
     }
     const template = await db.select().from(templates).where(eq(templates.templateKey, channelId + ':' + kind)).get();
@@ -628,7 +628,7 @@ export default async function (query) {
 
   if (section === 'templatekind') {
     const channelId = Number(parts[2]); const kind = String(parts[3] || '');
-    const labels = { default:'⭐ Plantilla predeterminada', text:'💬 Mensajes de texto', photo:'🖼️ Fotografías', video:'🎬 Vídeos', album:'🖼️ Álbumes', link:'🔗 Enlaces', forward:'↪️ Publicaciones reenviadas' };
+    const labels = { default:'⭐ Plantilla predeterminada', text:'💬 Mensajes de texto', photo:'🖼️ Fotografías', video:'🎬 Vídeos', gif:'🎞️ GIF', audio:'🎧 Audio/voz', document:'📎 Archivos', video_note:'🫧 Video burbuja', album:'🖼️ Álbumes', link:'🔗 Enlaces', forward:'↪️ Publicaciones reenviadas' };
     if (!Number.isSafeInteger(channelId) || !Object.hasOwn(labels, kind) || !(await canManageChannel(userId, channelId))) {
       await answer(query, 'No tienes permiso o el tipo de plantilla no es válido.', true);
       return;
@@ -645,7 +645,7 @@ export default async function (query) {
   }
   if (section === 'templateinput') {
     const channelId = Number(parts[2]); const kind = String(parts[3] || ''); const format = String(parts[4] || '').toUpperCase();
-    if (!Number.isSafeInteger(channelId) || !['default','text','photo','video','album','link','forward'].includes(kind) || !['HTML','MARKDOWN','MARKDOWNV2','OFF','RICH_MESSAGE'].includes(format) || !(await canManageChannel(userId, channelId))) {
+    if (!Number.isSafeInteger(channelId) || !['default','text','photo','video','gif','audio','document','video_note','album','link','forward'].includes(kind) || !['HTML','MARKDOWN','MARKDOWNV2','OFF','RICH_MESSAGE'].includes(format) || !(await canManageChannel(userId, channelId))) {
       await answer(query, 'La selección no es válida o no tienes permiso.', true); return;
     }
     await answer(query);
