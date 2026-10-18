@@ -674,7 +674,7 @@ export default async function (query) {
       return;
     }
     await answer(query);
-    await renderPanel('✏️ PLANTILLA: ' + labels[kind] + '\n\n1. Elige el formato.\n2. El bot te pedirá el texto y lo guardarás respondiendo al mensaje.\n\nVariables: {contenido}, {texto}, {titulo}, {descripcion}, {enlace}, {hashtags}, {fecha}, {canal}, {vacio}. Si usas {vacio}, el bot no modifica el mensaje ni añade botones o hashtags.', [
+    await renderPanel('✏️ PLANTILLA: ' + labels[kind] + '\n\n1. Elige el formato.\n2. El bot te pedirá el texto y lo guardarás respondiendo al mensaje.\n\nVariables: {contenido}, {texto}, {titulo}, {descripcion}, {enlace}, {hashtags}, {fecha}, {canal}, {firma}, {vacio}. Si usas {vacio}, el bot conserva el mensaje original sin cambios, hashtags, firma ni botones.', [
       [{ text: 'AUTO', callback_data: 'admin:templateinput:' + channelId + ':' + kind + ':AUTO' }, { text: 'HTML', callback_data: 'admin:templateinput:' + channelId + ':' + kind + ':HTML' }],
       [{ text: 'Markdown', callback_data: 'admin:templateinput:' + channelId + ':' + kind + ':MARKDOWN' }, { text: 'MarkdownV2', callback_data: 'admin:templateinput:' + channelId + ':' + kind + ':MARKDOWNV2' }],
       [{ text: 'OFF', callback_data: 'admin:templateinput:' + channelId + ':' + kind + ':OFF' }],
@@ -712,7 +712,7 @@ export default async function (query) {
       await answer(query, 'La selección no es válida o no tienes permiso.', true); return;
     }
     await answer(query);
-    await api.sendMessage({ chat_id: chatId, text: '[CBINPUT:template:' + channelId + ':' + kind + ':' + format + ']\n✍️ Envía el texto completo de la plantilla como respuesta a este mensaje. Puedes incluir varias líneas.\n\nVariables: {contenido}, {texto}, {titulo}, {descripcion}, {enlace}, {hashtags}, {fecha}, {canal}.', reply_markup: { force_reply: true, selective: true } });
+    await api.sendMessage({ chat_id: chatId, text: '[CBINPUT:template:' + channelId + ':' + kind + ':' + format + ']\n✍️ Envía el texto completo de la plantilla como respuesta a este mensaje. Puedes incluir varias líneas.\n\nVariables: {contenido}, {texto}, {titulo}, {descripcion}, {enlace}, {hashtags}, {fecha}, {canal}, {firma}, {vacio}.', reply_markup: { force_reply: true, selective: true } });
     await renderPanel('Cuando envíes la plantilla, quedará guardada únicamente para este canal y tipo de publicación.', [[{ text: '🔙 Volver a plantillas', callback_data: 'admin:templatechannel:' + channelId }]]);
     return;
   }
