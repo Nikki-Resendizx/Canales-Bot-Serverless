@@ -166,6 +166,16 @@ async function completeManualPublication(post, channelId) {
         return value;
       };
       const rich = replaceRich(richMessage);
+      // Apply automatic channel extras to RichMessage text fields too, unless the template places them explicitly.
+      if (rich && typeof rich === 'object') {
+        const richKey = typeof rich.html === 'string' ? 'html' : typeof rich.markdown === 'string' ? 'markdown' : '';
+        if (richKey) {
+          let richText = rich[richKey];
+          if (settings?.hashtags && !/\\{hashtags\\}/i.test(String(template?.body ?? ''))) richText = appendHashtags(richText, settings.hashtags);
+          if (signature && !/\\{firma\\}/i.test(String(template?.body ?? ''))) richText = [String(richText).trim(), richKey === 'html' ? escapeHtml(signature) : signature].filter(Boolean).join('\\n\\n');
+          rich[richKey] = richText;
+        }
+      }
       if (!isMedia && rich && typeof rich === 'object' &&
           (typeof rich.html === 'string' || typeof rich.markdown === 'string' || Array.isArray(rich.blocks))) {
         await api.editMessageText({
