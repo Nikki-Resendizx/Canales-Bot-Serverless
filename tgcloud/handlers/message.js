@@ -924,16 +924,17 @@ export default async function (message) {
           const sourceCaption = String(source.caption || '');
           const linkMatch = sourceCaption.match(/https?:\/\/\S+/i);
           const title = sourceCaption.split(/\r?\n/)[0] || '';
+          const captionText = Number(settings.textCorrectionEnabled) ? correctText(sourceCaption) : sourceCaption;
           const values = {
-            '{contenido}': sourceCaption, '{texto}': sourceCaption, '{titulo}': title,
-            '{descripcion}': sourceCaption, '{enlace}': linkMatch ? linkMatch[0] : '',
+            '{contenido}': sourceCaption, '{texto}': captionText, '{titulo}': title,
+            '{descripcion}': settings.descriptionTemplate ? settings.descriptionTemplate.replaceAll('{contenido}', sourceCaption).replaceAll('{texto}', captionText) : sourceCaption,
+            '{enlace}': linkMatch ? linkMatch[0] : '',
             '{hashtags}': settings.hashtags || '', '{fecha}': new Date().toLocaleDateString('es-MX', { timeZone: 'America/Mexico_City' }),
             '{canal}': String(row.title || id),
           };
           const applyVariables = value => Object.entries(values).reduce((result, [key, replacement]) => result.replaceAll(key, replacement), String(value ?? ''));
           let caption = template?.body ? applyVariables(template.body) : sourceCaption;
-          if (settings.descriptionTemplate) caption = applyVariables(settings.descriptionTemplate.replaceAll('{texto}', caption).replaceAll('{contenido}', caption));
-          if (settings.hashtags && !caption.includes(settings.hashtags)) caption += (caption ? '\n\n' : '') + settings.hashtags;
+          if (settings.hashtags && !String(template?.body ?? '').includes('{hashtags}') && !caption.includes(settings.hashtags)) caption += (caption ? '\n\n' : '') + settings.hashtags;
           if (caption) {
             copyOptions.caption = caption;
             if (format !== 'OFF') copyOptions.parse_mode = format === 'MARKDOWN' ? 'Markdown' : format === 'MARKDOWNV2' ? 'MarkdownV2' : 'HTML';
@@ -951,8 +952,16 @@ export default async function (message) {
           } catch {
             return void await say(chatId, 'La plantilla RICH_MESSAGE debe ser JSON válido. Usa, por ejemplo: {"markdown":"**{texto}**"}');
           }
+          const richValues = {
+            '{contenido}': body, '{texto}': corrected, '{titulo}': body.split(/\r?\n/)[0] || '',
+            '{descripcion}': settings.descriptionTemplate ? settings.descriptionTemplate.replaceAll('{contenido}', body).replaceAll('{texto}', corrected) : body,
+            '{enlace}': body.match(/https?:\/\/\S+|t\.me\/\S+/i)?.[0] || '',
+            '{hashtags}': settings.hashtags || '',
+            '{fecha}': new Date().toLocaleDateString('es-MX', { timeZone: 'America/Mexico_City' }),
+            '{canal}': String(row.title || id),
+          };
           const replaceText = value => {
-            if (typeof value === 'string') return value.replaceAll('{texto}', corrected);
+            if (typeof value === 'string') return Object.entries(richValues).reduce((result, [key, replacement]) => result.replaceAll(key, replacement), value);
             if (Array.isArray(value)) return value.map(replaceText);
             if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, replaceText(item)]));
             return value;
@@ -960,11 +969,9 @@ export default async function (message) {
           richMessage = replaceText(richMessage);
           const field = ['markdown', 'html'].find(key => typeof richMessage[key] === 'string');
           if (field) {
-            if (settings.descriptionTemplate) richMessage[field] = settings.descriptionTemplate.replaceAll('{texto}', richMessage[field]);
-            if (settings.hashtags) richMessage[field] += '\n\n' + settings.hashtags;
+            if (settings.hashtags && !String(template?.body ?? '').includes('{hashtags}') && !richMessage[field].includes(settings.hashtags)) richMessage[field] += '\n\n' + settings.hashtags;
           } else if (Array.isArray(richMessage.blocks)) {
-            if (settings.descriptionTemplate) richMessage.blocks.push({ type: 'paragraph', text: settings.descriptionTemplate.replaceAll('{texto}', corrected) });
-            if (settings.hashtags) richMessage.blocks.push({ type: 'paragraph', text: settings.hashtags });
+            if (settings.hashtags && !String(template?.body ?? '').includes('{hashtags}')) richMessage.blocks.push({ type: 'paragraph', text: settings.hashtags });
           } else {
             return void await say(chatId, 'RICH_MESSAGE necesita una propiedad markdown, html o blocks.');
           }
@@ -974,15 +981,14 @@ export default async function (message) {
           const title = corrected.split(/\r?\n/)[0] || '';
           const linkMatch = corrected.match(/https?:\/\/\S+/i);
           const values = {
-            '{contenido}': corrected, '{texto}': corrected, '{titulo}': title,
-            '{descripcion}': corrected, '{enlace}': linkMatch ? linkMatch[0] : '',
+            '{contenido}': body, '{texto}': corrected, '{titulo}': body.split(/\r?\n/)[0] || title,
+            '{descripcion}': settings.descriptionTemplate ? settings.descriptionTemplate.replaceAll('{contenido}', body).replaceAll('{texto}', corrected) : body, '{enlace}': linkMatch ? linkMatch[0] : '',
             '{hashtags}': settings.hashtags || '', '{fecha}': new Date().toLocaleDateString('es-MX', { timeZone: 'America/Mexico_City' }),
             '{canal}': String(row.title || id),
           };
           const applyVariables = value => Object.entries(values).reduce((result, [key, replacement]) => result.replaceAll(key, replacement), String(value ?? ''));
           let rendered = template?.body ? applyVariables(template.body) : corrected;
-          if (settings.descriptionTemplate) rendered = applyVariables(settings.descriptionTemplate.replaceAll('{texto}', rendered).replaceAll('{contenido}', rendered));
-          if (settings.hashtags && !rendered.includes(settings.hashtags)) rendered += '\n\n' + settings.hashtags;
+          if (settings.hashtags && !String(template?.body ?? '').includes('{hashtags}') && !rendered.includes(settings.hashtags)) rendered += '\n\n' + settings.hashtags;
           const extra = format === 'OFF' ? {} : { parse_mode: format === 'MARKDOWN' ? 'Markdown' : format === 'MARKDOWNV2' ? 'MarkdownV2' : 'HTML' };
           sent = await api.sendMessage({ chat_id: id, text: rendered, ...extra, ...replyMarkup });
           payload = { text: rendered, format };
