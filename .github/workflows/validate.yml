@@ -9,6 +9,11 @@ on:
 permissions:
   contents: read
 
+# Evita que varios pushes seguidos compitan por el webhook de Telegram.
+concurrency:
+  group: canales-bot-serverless-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   syntax:
     name: Validate JavaScript modules
@@ -59,7 +64,20 @@ jobs:
       - name: Apply safe database schema changes
         if: env.TGCLOUD_TOKEN != ''
         run: npx tgcloud migrate --safe
-      - name: Synchronize Telegram webhook
-        # Mantener el webhook sincronizado aunque falle una migración de la base de datos.
+      - name: Synchronize Telegram webhook with rate-limit retries
+        # Mantener el webhook sincronizado aunque falle una migración y respetar 429 de Telegram.
         if: always() && env.TGCLOUD_TOKEN != ''
-        run: npx tgcloud webhook sync
+        shell: bash
+        run: |
+          for attempt in 1 2 3; do
+            echo "Webhook sync attempt $attempt of 3"
+            if npx tgcloud webhook sync; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "Webhook sync failed or was rate-limited; waiting before retry."
+              sleep 2
+            fi
+          done
+          echo "Could not synchronize the webhook after 3 attempts."
+          exit 1
