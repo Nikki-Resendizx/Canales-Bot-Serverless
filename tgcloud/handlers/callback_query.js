@@ -58,6 +58,14 @@ async function managedChannels(userId) {
   const rows = await db.select().from(channels).all();
   return Number(userId) === OWNER_ID ? rows : rows.filter(row => Number(row.addedBy) === Number(userId));
 }
+async function ensureChannelSettings(channelId) {
+  let row = await db.select().from(channelSettings).where(eq(channelSettings.channelId, Number(channelId))).get();
+  if (!row) {
+    await db.insert(channelSettings).values({ channelId: Number(channelId), updatedAt: Date.now() }).onConflictDoNothing().run();
+    row = await db.select().from(channelSettings).where(eq(channelSettings.channelId, Number(channelId))).get();
+  }
+  return row;
+}
 async function answer(query, text = '', alert = false) {
   await api.answerCallbackQuery({
     callback_query_id: query.id,
@@ -232,6 +240,7 @@ export default async function (query) {
     if (!Number.isSafeInteger(channelId) || !(await canManageChannel(userId, channelId))) {
       await answer(query, 'No tienes permiso para administrar ese canal.', true); return;
     }
+    await db.delete(templates).where(eq(templates.channelId, channelId)).run();
     await db.delete(channels).where(eq(channels.chatId, channelId)).run();
     await db.delete(channelSettings).where(eq(channelSettings.channelId, channelId)).run();
     await db.delete(channelRoutes).where(eq(channelRoutes.sourceChatId, channelId)).run();
@@ -284,7 +293,7 @@ export default async function (query) {
     }
     const channel = await db.select().from(channels).where(eq(channels.chatId, channelId)).get();
     if (!channel) { await answer(query, 'El canal ya no está registrado.', true); return; }
-    const setting = await db.select().from(channelSettings).where(eq(channelSettings.channelId, channelId)).get();
+    const setting = await ensureChannelSettings(channelId);
     await answer(query);
     await renderPanel('⚙️ CONFIGURACIÓN INDIVIDUAL\n\n' + String(channel.title || channelId) + ' (' + channelId + ')\nProcesamiento: ' + (channel.active ? 'ACTIVO' : 'PAUSADO') + '\nBienvenida: ' + (setting?.welcomeEnabled ? 'ON' : 'OFF') + '\nCAPTCHA: ' + (setting?.captchaEnabled ? 'ON' : 'OFF') + '\nCorrección de texto: ' + (setting?.textCorrectionEnabled ? 'ON' : 'OFF') + '\nHashtags: ' + (setting?.hashtags || '(sin configurar)') + '\n\nDesde aquí puedes administrar todo lo que afecta a las publicaciones manuales de este canal. Plantillas, hashtags y botones se guardan por canal y tipo de contenido.', [
       [{ text: '📝 Plantillas de publicaciones', callback_data: 'admin:templatechannel:' + channelId }],
