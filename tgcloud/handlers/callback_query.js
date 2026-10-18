@@ -111,6 +111,7 @@ function moduleText(section) {
 }
 
 export default async function (query) {
+  try {
   if (!query?.id) return;
   const data = String(query.data ?? '');
   const userId = Number(query.from?.id);
@@ -921,4 +922,17 @@ export default async function (query) {
     return;
   }
   await renderPanel('Sección no reconocida.', [[{ text: await navText('back'), callback_data: 'admin:back' }]]);
+  } catch (error) {
+    console.log('Error al procesar callback de administración:', String(error), error?.stack || '');
+    // Evita que Telegram deje el botón girando indefinidamente cuando falla una consulta o una edición.
+    try {
+      await api.answerCallbackQuery({
+        callback_query_id: query?.id,
+        text: 'No se pudo ejecutar esta opción. Intenta de nuevo; el error quedó registrado.',
+        show_alert: true,
+      });
+    } catch (answerError) {
+      console.log('No se pudo responder al callback:', String(answerError));
+    }
+  }
 }
