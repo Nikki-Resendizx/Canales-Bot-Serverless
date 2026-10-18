@@ -71,13 +71,13 @@ async function navText(key) {
 }
 async function buildMainMenu() {
   const keys = [
-    ['channels', 'templates'],
-    ['hashtags', 'buttons'],
-    ['rules', 'testmode'],
-    ['welcome', 'captcha'],
-    ['blacklist', 'admins'],
-    ['publications', 'stats'],
-    ['settings'],
+    ['channels', 'templates', 'hashtags'],
+    ['buttons', 'formats', 'rules'],
+    ['welcome', 'captcha', 'blacklist'],
+    ['routes', 'reactions', 'publications'],
+    ['stars', 'stats', 'admins'],
+    ['testmode', 'settings', 'navigation'],
+    ['close'],
   ];
   const menu = [];
   for (const row of keys) {
