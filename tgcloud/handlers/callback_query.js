@@ -771,7 +771,6 @@ export default async function (query) {
     if (!channel || !Number(channel.active)) {
       await answer(query, 'El canal no está activo.', true); return;
     }
-    await answer(query);
     await api.sendMessage({
       chat_id: chatId,
       text: '[CBSTAR:' + channelId + ']\n✍️ Responde con PRECIO | texto exclusivo. Ejemplo: 25 | Este es el contenido premium.',
