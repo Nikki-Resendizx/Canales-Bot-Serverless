@@ -337,7 +337,7 @@ export default async function (message) {
   }
 
   const navInputPrompt = String(message.reply_to_message?.text ?? '');
-  const navInputMatch = navInputPrompt.match(/\\[CBNAV:([a-z_]+)\\]/i);
+  const navInputMatch = navInputPrompt.match(/\[CBNAV:([a-z_]+)\]/i);
   if (navInputMatch && isPrivate && await isAdmin(userId) && text && !text.startsWith('/')) {
     const key = navInputMatch[1];
     if (!Object.hasOwn(NAV_DEFAULTS, key) || key === 'close') {
@@ -357,7 +357,7 @@ export default async function (message) {
   }
 
   const starsPrompt = String(message.reply_to_message?.text ?? '');
-  const starsMatch = starsPrompt.match(/\\[CBSTAR:(-?\\d+)\\]/);
+  const starsMatch = starsPrompt.match(/\[CBSTAR:(-?\d+)\]/);
   if (starsMatch && isPrivate && await isAdmin(userId) && text && !text.startsWith('/')) {
     const channelId = Number(starsMatch[1]);
     if (!Number.isSafeInteger(channelId) || !(await canManageChannel(userId, channelId))) {
@@ -380,7 +380,7 @@ export default async function (message) {
       if (!botUsername) { await say(chatId, '⚠️ No pude obtener el username del bot.'); return; }
       const teaser = await api.sendMessage({
         chat_id: channelId,
-        text: '💎 PUBLICACIÓN EXCLUSIVA\\n\\nPrecio: ⭐ ' + price + '\\nPulsa el botón para desbloquear el contenido con Telegram Stars.',
+        text: '💎 PUBLICACIÓN EXCLUSIVA\n\nPrecio: ⭐ ' + price + '\nPulsa el botón para desbloquear el contenido con Telegram Stars.',
         reply_markup: { inline_keyboard: [[{ text: '⭐ Desbloquear · ' + price, url: 'https://t.me/' + botUsername + '?start=buy_' + publicationKey }]] },
       });
       await db.insert(publications).values({
