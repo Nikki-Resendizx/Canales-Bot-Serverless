@@ -189,8 +189,8 @@ export default async function (query) {
       await answer(query, 'Configuración no válida.', true);
       return;
     }
-    const row = await db.select().from(channelSettings).where(eq(channelSettings.channelId, channelId)).get();
-    if (!row) { await answer(query, 'Primero registra el canal con /addchannel ID título.', true); return; }
+    const row = await ensureChannelSettings(channelId);
+    if (!row) { await answer(query, 'No se pudo inicializar la configuración del canal. Intenta de nuevo.', true); return; }
     if (!(await canManageChannel(userId, channelId))) { await answer(query, 'No tienes permiso para administrar ese canal.', true); return; }
     const column = kind === 'welcome' ? 'welcomeEnabled' : kind === 'captcha' ? 'captchaEnabled' : 'textCorrectionEnabled';
     const enabled = Number(row[column]) ? 0 : 1;
@@ -312,8 +312,9 @@ export default async function (query) {
   if (section === 'signaturetoggle') {
     const channelId = Number(parts[2]);
     if (!Number.isSafeInteger(channelId) || !(await canManageChannel(userId, channelId))) { await answer(query, 'No tienes permiso para administrar ese canal.', true); return; }
-    const current = await db.select().from(channelSettings).where(eq(channelSettings.channelId, channelId)).get();
-    const enabled = Number(current?.signatureEnabled) ? 0 : 1;
+    const current = await ensureChannelSettings(channelId);
+    if (!current) { await answer(query, 'No se pudo inicializar la configuración del canal.', true); return; }
+    const enabled = Number(current.signatureEnabled) ? 0 : 1;
     await db.update(channelSettings).set({ signatureEnabled: enabled, updatedAt: Date.now() }).where(eq(channelSettings.channelId, channelId)).run();
     await answer(query, enabled ? 'Firma activada.' : 'Firma desactivada.');
     const channel = await db.select().from(channels).where(eq(channels.chatId, channelId)).get();
