@@ -57,7 +57,7 @@ const NAV_DEFAULTS = {
   publications: '💰 PUBLICACIONES', buttons: '🔘 BOTONES', formats: '🎨 FORMATOS',
   reactions: '🔔 REACCIONES', stars: '⭐ PREMIUM / ESTRELLAS', admins: '👥 ADMINISTRADORES',
   stats: '📊 ESTADÍSTICAS', settings: '⚙️ CONFIGURACIÓN', close: '❌ CERRAR', navigation: '🧭 NAVEGACIÓN',
-  back: '🔙 VOLVER', rules: '',
+  back: '🔙 VOLVER',
 };
 async function navText(key) {
   // El menú principal debe poder abrirse incluso si la migración de bot_texts aún no terminó.
@@ -332,6 +332,26 @@ export default async function (message) {
         } catch (error) { console.log('No se pudo aplicar desbaneo desde el panel', channel.chatId, String(error)); }
       }
       await say(chatId, '✅ Usuario eliminado de la blacklist. Desbaneos solicitados en ' + count + '/' + rows.length + ' canales administrados.');
+    }
+    return;
+  }
+
+  const navInputPrompt = String(message.reply_to_message?.text ?? '');
+  const navInputMatch = navInputPrompt.match(/\\[CBNAV:([a-z_]+)\\]/i);
+  if (navInputMatch && isPrivate && await isAdmin(userId) && text && !text.startsWith('/')) {
+    const key = navInputMatch[1];
+    if (!Object.hasOwn(NAV_DEFAULTS, key) || key === 'close') {
+      await say(chatId, '⚠️ La etiqueta de navegación no es válida.');
+      return;
+    }
+    if (text.trim().toLowerCase() === 'default') {
+      await db.delete(botTexts).where(eq(botTexts.textKey, key)).run();
+      await say(chatId, '✅ Se restauró la etiqueta original: ' + key + '.');
+    } else {
+      if (text.length > 100) { await say(chatId, '⚠️ La etiqueta no puede superar 100 caracteres.'); return; }
+      await db.insert(botTexts).values({ textKey: key, body: text, updatedBy: userId, updatedAt: now() })
+        .onConflictDoUpdate({ target: botTexts.textKey, set: { body: text, updatedBy: userId, updatedAt: now() } }).run();
+      await say(chatId, '✅ Etiqueta de navegación actualizada: ' + key + '.');
     }
     return;
   }
