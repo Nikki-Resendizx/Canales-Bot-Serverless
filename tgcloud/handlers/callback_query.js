@@ -684,6 +684,7 @@ export default async function (query) {
   if (section === 'navigationedit') {
     const key = String(parts[2] || '');
     if (!Object.hasOwn(NAV_DEFAULTS, key) || key === 'close') {
+      await renderPanel('⚠️ Etiqueta de navegación no válida.', [[{ text: await navText('back'), callback_data: 'admin:back' }]]);
       return;
     }
     await api.sendMessage({
@@ -734,10 +735,15 @@ export default async function (query) {
     return;
   }
   if (section === 'admininput') {
-    if (userId !== OWNER_ID) { await answer(query, 'Solo el propietario puede gestionar administradores.', true); return; }
+    if (userId !== OWNER_ID) {
+      await renderPanel('⛔ Solo el propietario puede gestionar administradores.', [[{ text: await navText('back'), callback_data: 'admin:back' }]]);
+      return;
+    }
     const action = String(parts[2] || '');
-    if (!['add','remove'].includes(action)) { await answer(query, 'Acción no válida.', true); return; }
-    await answer(query);
+    if (!['add','remove'].includes(action)) {
+      await renderPanel('⚠️ Acción no válida.', [[{ text: await navText('back'), callback_data: 'admin:admins' }]]);
+      return;
+    }
     await api.sendMessage({ chat_id: chatId, text: '[CBGLOBAL:admin' + action + ']\n✍️ Responde con el ID numérico de Telegram del usuario.', reply_markup: { force_reply: true, selective: true } });
     await renderPanel('El cambio se aplicará al responder al mensaje del bot.', [[{ text: '🔙 Volver', callback_data: 'admin:admins' }]]);
     return;
@@ -765,11 +771,13 @@ export default async function (query) {
   if (section === 'starspublish') {
     const channelId = Number(parts[2]);
     if (!Number.isSafeInteger(channelId) || !(await canManageChannel(userId, channelId))) {
-      await answer(query, 'No tienes permiso para publicar en ese canal.', true); return;
+      await renderPanel('⛔ No tienes permiso para publicar en ese canal.', [[{ text: await navText('back'), callback_data: 'admin:stars' }]]);
+      return;
     }
     const channel = await db.select().from(channels).where(eq(channels.chatId, channelId)).get();
     if (!channel || !Number(channel.active)) {
-      await answer(query, 'El canal no está activo.', true); return;
+      await renderPanel('⚠️ El canal no está activo.', [[{ text: await navText('back'), callback_data: 'admin:stars' }]]);
+      return;
     }
     await api.sendMessage({
       chat_id: chatId,
