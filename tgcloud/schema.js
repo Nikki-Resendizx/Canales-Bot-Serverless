@@ -26,6 +26,8 @@ export const channelSettings = table('channel_settings', {
   hashtags: text('hashtags').notNull().default(''),
   descriptionTemplate: text('description_template').notNull().default(''),
   missingDataText: text('missing_data_text').notNull().default(''),
+  signatureEnabled: integer('signature_enabled').notNull().default(0),
+  signatureText: text('signature_text').notNull().default(''),
   reactionReportChatId: integer('reaction_report_chat_id'),
   updatedAt: integer('updated_at').notNull(),
 });
