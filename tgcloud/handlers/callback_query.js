@@ -499,7 +499,7 @@ export default async function (query) {
     const names = new Map(channelRows.map(row => [Number(row.chatId), String(row.title || row.chatId)]));
     const keyboard = routeRows
       .filter(route => names.has(Number(route.sourceChatId)) && names.has(Number(route.destinationChatId)))
-      .map(route => [{ text: '🗑️ ' + names.get(Number(route.sourceChatId)).slice(0,16) + ' → ' + names.get(Number(route.destinationChatId)).slice(0,16), callback_data: 'admin:routedelete:' + route.sourceChatId + ':' + route.destinationChatId }]);
+      .map(route => [{ text: '⚙️ ' + names.get(Number(route.sourceChatId)).slice(0,16) + ' → ' + names.get(Number(route.destinationChatId)).slice(0,16) + ' · ' + (route.mode === 'copy' ? 'Copiar' : route.mode === 'forward' ? 'Reenviar' : 'Auto'), callback_data: 'admin:routedetail:' + route.sourceChatId + ':' + route.destinationChatId }]);
     keyboard.unshift([{ text: '➕ Crear ruta', callback_data: 'admin:routeadd' }]);
     keyboard.push(await backRow());
     await answer(query);
@@ -531,9 +531,47 @@ export default async function (query) {
       await answer(query, 'La ruta no es válida o no tienes permiso.', true); return;
     }
     const routeKey = sourceId + ':' + destinationId;
-    await db.insert(channelRoutes).values({ routeKey, sourceChatId: sourceId, destinationChatId: destinationId, createdBy: userId, createdAt: Date.now() }).onConflictDoNothing().run();
+    await db.insert(channelRoutes).values({ routeKey, sourceChatId: sourceId, destinationChatId: destinationId, mode: 'auto', createdBy: userId, createdAt: Date.now() }).onConflictDoNothing().run();
     await answer(query, 'Ruta guardada.');
     await renderPanel('✅ Ruta creada: ' + sourceId + ' → ' + destinationId, [[{ text: '🔀 Ver rutas', callback_data: 'admin:routes' }], [await navText('back')].map(label => ({ text: label, callback_data: 'admin:back' }))]);
+    return;
+  }
+  if (section === 'routedetail') {
+    const sourceId = Number(parts[2]); const destinationId = Number(parts[3]);
+    if (!Number.isSafeInteger(sourceId) || !Number.isSafeInteger(destinationId) ||
+        !(await canManageChannel(userId, sourceId)) || !(await canManageChannel(userId, destinationId))) {
+      await answer(query, 'No tienes permiso para administrar esa ruta.', true); return;
+    }
+    const route = await db.select().from(channelRoutes).where(eq(channelRoutes.routeKey, sourceId + ':' + destinationId)).get();
+    if (!route) { await answer(query, 'La ruta ya no existe.', true); await renderPanel('La ruta ya no existe.', [[{ text: '🔀 Ver distribuciones', callback_data: 'admin:routes' }]]); return; }
+    const mode = ['copy','forward'].includes(route.mode) ? route.mode : 'auto';
+    const modeLabel = mode === 'copy' ? '📄 Copiar (sin encabezado de reenvío)' : mode === 'forward' ? '↪️ Reenviar (con encabezado de canal)' : '🔄 Automático (conserva el comportamiento actual)';
+    await answer(query);
+    await renderPanel('🔀 CONFIGURAR DISTRIBUCIÓN\n\nOrigen: ' + sourceId + '\nDestino: ' + destinationId + '\nModo actual: ' + modeLabel + '\n\nElige cómo se distribuirán las publicaciones nuevas.', [
+      [{ text: (mode === 'auto' ? '✅ ' : '') + '🔄 Automático', callback_data: 'admin:routemode:' + sourceId + ':' + destinationId + ':auto' }],
+      [{ text: (mode === 'copy' ? '✅ ' : '') + '📄 Copiar publicación', callback_data: 'admin:routemode:' + sourceId + ':' + destinationId + ':copy' }],
+      [{ text: (mode === 'forward' ? '✅ ' : '') + '↪️ Reenviar publicación', callback_data: 'admin:routemode:' + sourceId + ':' + destinationId + ':forward' }],
+      [{ text: '🗑️ Eliminar distribución', callback_data: 'admin:routedelete:' + sourceId + ':' + destinationId }],
+      [{ text: '🔙 Volver a distribuciones', callback_data: 'admin:routes' }],
+    ]);
+    return;
+  }
+  if (section === 'routemode') {
+    const sourceId = Number(parts[2]); const destinationId = Number(parts[3]); const mode = String(parts[4] || '');
+    if (!Number.isSafeInteger(sourceId) || !Number.isSafeInteger(destinationId) ||
+        !['auto','copy','forward'].includes(mode) ||
+        !(await canManageChannel(userId, sourceId)) || !(await canManageChannel(userId, destinationId))) {
+      await answer(query, 'La ruta, el modo o los permisos no son válidos.', true); return;
+    }
+    const routeKey = sourceId + ':' + destinationId;
+    const route = await db.select().from(channelRoutes).where(eq(channelRoutes.routeKey, routeKey)).get();
+    if (!route) { await answer(query, 'La ruta ya no existe.', true); return; }
+    await db.update(channelRoutes).set({ mode }).where(eq(channelRoutes.routeKey, routeKey)).run();
+    await answer(query, 'Modo de distribución actualizado.');
+    await renderPanel('✅ Modo de distribución actualizado.\n\n' + sourceId + ' → ' + destinationId + '\nModo: ' + (mode === 'copy' ? 'Copiar sin encabezado de reenvío' : mode === 'forward' ? 'Reenviar con encabezado de canal' : 'Automático'), [
+      [{ text: '⚙️ Configurar distribución', callback_data: 'admin:routedetail:' + sourceId + ':' + destinationId }],
+      [{ text: '🔀 Ver distribuciones', callback_data: 'admin:routes' }],
+    ]);
     return;
   }
   if (section === 'routedelete') {
