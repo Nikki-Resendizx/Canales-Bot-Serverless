@@ -53,6 +53,7 @@ export const channelRoutes = table('channel_routes', {
   routeKey: text('route_key').primaryKey(),
   sourceChatId: integer('source_chat_id').notNull(),
   destinationChatId: integer('destination_chat_id').notNull(),
+  mode: text('mode').notNull().default('auto'),
   createdBy: integer('created_by').notNull(),
   createdAt: integer('created_at').notNull(),
 });
