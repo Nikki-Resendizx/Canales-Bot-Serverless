@@ -508,7 +508,8 @@ export default async function (query) {
       await renderPanel('🔀 DISTRIBUCIÓN ENTRE CANALES\n\n' + (routeRows.length ? 'Pulsa una ruta para configurar el modo o eliminarla.' : 'Aún no hay rutas configuradas.') + '\n\nCada ruta permite copiar, reenviar o usar el modo automático.', keyboard);
     } catch (error) {
       console.log('Error al abrir DISTRIBUCIÓN:', String(error), error?.stack || '');
-      const diagnostic = String(error?.message || error || 'Error desconocido').replace(/[\\r\\n]+/g, ' ').slice(0, 240);\n      await sendPanel(chatId, '⚠️ No se pudo cargar DISTRIBUCIÓN.\n\nDiagnóstico: ' + diagnostic + '\n\nEnvía este texto para identificar la causa.', [[{ text: '🔄 Reintentar', callback_data: 'admin:routes' }], [{ text: '🔙 Volver al panel', callback_data: 'admin:back' }]], message?.message_id);
+      const diagnostic = String(error?.message || error || 'Error desconocido').replace(/[\r\n]+/g, ' ').slice(0, 240);
+      await sendPanel(chatId, '⚠️ No se pudo cargar DISTRIBUCIÓN.\n\nDiagnóstico: ' + diagnostic + '\n\nEnvía este texto para identificar la causa.', [[{ text: '🔄 Reintentar', callback_data: 'admin:routes' }], [{ text: '🔙 Volver al panel', callback_data: 'admin:back' }]], message?.message_id);
     }
     return;
   }
