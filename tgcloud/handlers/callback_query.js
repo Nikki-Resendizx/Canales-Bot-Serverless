@@ -495,15 +495,21 @@ export default async function (query) {
     return;
   }
   if (section === 'routes') {
-    const [routeRows, channelRows] = await Promise.all([db.select().from(channelRoutes).all(), managedChannels(userId)]);
-    const names = new Map(channelRows.map(row => [Number(row.chatId), String(row.title || row.chatId)]));
-    const keyboard = routeRows
-      .filter(route => names.has(Number(route.sourceChatId)) && names.has(Number(route.destinationChatId)))
-      .map(route => [{ text: '⚙️ ' + names.get(Number(route.sourceChatId)).slice(0,16) + ' → ' + names.get(Number(route.destinationChatId)).slice(0,16) + ' · ' + (route.mode === 'copy' ? 'Copiar' : route.mode === 'forward' ? 'Reenviar' : 'Auto'), callback_data: 'admin:routedetail:' + route.sourceChatId + ':' + route.destinationChatId }]);
-    keyboard.unshift([{ text: '➕ Crear ruta', callback_data: 'admin:routeadd' }]);
-    keyboard.push(await backRow());
+    // Confirmar el callback antes de consultar la base de datos para evitar botones que parezcan congelados.
     await answer(query);
-    await renderPanel('🔀 DISTRIBUCIÓN ENTRE CANALES\n\n' + (routeRows.length ? 'Pulsa una ruta para configurar el modo o eliminarla.' : 'Aún no hay rutas configuradas.') + '\n\nCada ruta permite copiar, reenviar o usar el modo automático.', keyboard);
+    try {
+      const [routeRows, channelRows] = await Promise.all([db.select().from(channelRoutes).all(), managedChannels(userId)]);
+      const names = new Map(channelRows.map(row => [Number(row.chatId), String(row.title || row.chatId)]));
+      const keyboard = routeRows
+        .filter(route => names.has(Number(route.sourceChatId)) && names.has(Number(route.destinationChatId)))
+        .map(route => [{ text: '⚙️ ' + names.get(Number(route.sourceChatId)).slice(0,16) + ' → ' + names.get(Number(route.destinationChatId)).slice(0,16) + ' · ' + (route.mode === 'copy' ? 'Copiar' : route.mode === 'forward' ? 'Reenviar' : 'Auto'), callback_data: 'admin:routedetail:' + route.sourceChatId + ':' + route.destinationChatId }]);
+      keyboard.unshift([{ text: '➕ Crear ruta', callback_data: 'admin:routeadd' }]);
+      keyboard.push(await backRow());
+      await renderPanel('🔀 DISTRIBUCIÓN ENTRE CANALES\n\n' + (routeRows.length ? 'Pulsa una ruta para configurar el modo o eliminarla.' : 'Aún no hay rutas configuradas.') + '\n\nCada ruta permite copiar, reenviar o usar el modo automático.', keyboard);
+    } catch (error) {
+      console.log('Error al abrir DISTRIBUCIÓN:', String(error), error?.stack || '');
+      await sendPanel(chatId, '⚠️ No se pudo cargar DISTRIBUCIÓN. El error quedó registrado; vuelve a intentarlo en unos segundos.', [[{ text: '🔄 Reintentar', callback_data: 'admin:routes' }], [{ text: '🔙 Volver al panel', callback_data: 'admin:back' }]], message?.message_id);
+    }
     return;
   }
   if (section === 'routeadd') {
