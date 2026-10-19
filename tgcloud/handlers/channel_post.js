@@ -318,7 +318,10 @@ export default async function (post) {
     if (Number(route.destinationChatId) === sourceId) continue;
     if (!destination || !Number(destination.active)) continue;
     try {
-      if (post.forward_origin || post.forward_from || post.forward_from_chat || post.forward_sender_name) {
+      const mode = ['copy', 'forward'].includes(route.mode) ? route.mode : 'auto';
+      const shouldForward = mode === 'forward' ||
+        (mode === 'auto' && Boolean(post.forward_origin || post.forward_from || post.forward_from_chat || post.forward_sender_name));
+      if (shouldForward) {
         await api.forwardMessage({
           chat_id: route.destinationChatId,
           from_chat_id: post.chat.id,
