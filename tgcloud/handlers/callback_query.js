@@ -503,7 +503,7 @@ export default async function (query) {
     keyboard.unshift([{ text: '➕ Crear ruta', callback_data: 'admin:routeadd' }]);
     keyboard.push(await backRow());
     await answer(query);
-    await renderPanel('🔀 DISTRIBUCIÓN ENTRE CANALES\n\n' + (routeRows.length ? 'Pulsa una ruta para eliminarla.' : 'Aún no hay rutas configuradas.') + '\n\nLas rutas copian las publicaciones del canal de origen al destino.', keyboard);
+    await renderPanel('🔀 DISTRIBUCIÓN ENTRE CANALES\n\n' + (routeRows.length ? 'Pulsa una ruta para configurar el modo o eliminarla.' : 'Aún no hay rutas configuradas.') + '\n\nCada ruta permite copiar, reenviar o usar el modo automático.', keyboard);
     return;
   }
   if (section === 'routeadd') {
