@@ -655,12 +655,19 @@ export default async function (query) {
       createdAt: Date.now(),
     }).onConflictDoNothing().run();
 
-    await answer(query, 'Ruta guardada.');
+    await answer(query, 'Ruta guardada. Elige el modo de envío.');
+    // Presentar la elección inmediatamente evita que una ruta recién creada
+    // quede sin configurar el comportamiento de envío/reenvío.
     await renderPanel(
-      '✅ Ruta guardada.\nOrigen: ' + sourceId + '\nDestino: ' + destinationId,
+      '✅ RUTA CREADA\\n\\nOrigen: ' + sourceId
+        + '\\nDestino: ' + destinationId
+        + '\\n\\nSelecciona cómo se enviarán las publicaciones nuevas.',
       [
+        [{ text: '🔄 Automático', callback_data: 'admin:routemode:' + sourceId + ':' + destinationId + ':auto' }],
+        [{ text: '📄 Copiar publicación', callback_data: 'admin:routemode:' + sourceId + ':' + destinationId + ':copy' }],
+        [{ text: '↪️ Reenviar publicación', callback_data: 'admin:routemode:' + sourceId + ':' + destinationId + ':forward' }],
+        [{ text: '⚙️ Más opciones / eliminar', callback_data: 'admin:routedetail:' + sourceId + ':' + destinationId }],
         [{ text: '🔀 Ver distribuciones', callback_data: 'admin:routes' }],
-        [{ text: '🔙 Volver al panel', callback_data: 'admin:back' }],
       ],
     );
     return;
