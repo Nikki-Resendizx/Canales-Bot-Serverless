@@ -39,9 +39,11 @@ jobs:
         with:
           node-version: 22
       - run: npm install
-      - name: Skip deployment until the Telegram CLI token is configured
+      - name: Require Telegram Serverless deployment credentials
         if: env.TGCLOUD_TOKEN == ''
-        run: echo "Deployment skipped. Add the TGCLOUD_TOKEN repository secret after enabling Serverless for the intended bot in @BotFather."
+        run: |
+          echo "::error::TGCLOUD_TOKEN is missing. GitHub Actions cannot deploy this bot until the Telegram Serverless CLI token is saved in repository Secrets."
+          exit 1
       - name: Sync and deploy validated modules safely
         if: env.TGCLOUD_TOKEN != ''
         shell: bash
