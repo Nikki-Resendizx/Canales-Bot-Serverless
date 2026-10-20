@@ -76,14 +76,26 @@ function sanitizeInlineKeyboard(keyboard) {
   if (!Array.isArray(keyboard)) return [];
   return keyboard
     .filter(Array.isArray)
-    .map(row => row.filter(button => button && typeof button === 'object' && !Array.isArray(button))
+    .map(row => row
+      .filter(button => button && typeof button === 'object' && !Array.isArray(button))
       .map(button => {
-        const clean = { ...button, text: String(button.text ?? '') };
-        if (clean.callback_data != null) clean.callback_data = String(clean.callback_data);
-        if (clean.url != null) clean.url = String(clean.url);
+        // Construir un objeto nuevo y mínimo con campos permitidos por Telegram.
+        const text = typeof button.text === 'string'
+          ? button.text
+          : button.text == null ? '' : String(button.text);
+        const clean = { text };
+        if (button.callback_data != null) clean.callback_data = String(button.callback_data);
+        else if (button.url != null) clean.url = String(button.url);
+        else if (button.web_app && typeof button.web_app.url === 'string') clean.web_app = { url: button.web_app.url };
+        else if (button.switch_inline_query != null) clean.switch_inline_query = String(button.switch_inline_query);
+        else if (button.switch_inline_query_current_chat != null) clean.switch_inline_query_current_chat = String(button.switch_inline_query_current_chat);
+        else if (button.copy_text && typeof button.copy_text.text === 'string') clean.copy_text = { text: button.copy_text.text };
+        else if (button.callback_game) clean.callback_game = {};
+        else if (button.pay === true) clean.pay = true;
+        else if (button.login_url && typeof button.login_url.url === 'string') clean.login_url = { url: button.login_url.url };
         return clean;
       })
-      .filter(button => button.text.trim() && (
+      .filter(button => typeof button.text === 'string' && button.text.trim() && (
         typeof button.callback_data === 'string' ||
         typeof button.url === 'string' ||
         button.web_app || button.login_url || button.switch_inline_query != null ||
@@ -106,7 +118,17 @@ async function sendPanel(chatId, text, keyboard = null, messageId = null) {
       console.log('No se pudo editar el panel; se enviará un mensaje nuevo', reason);
     }
   }
-  await api.sendMessage({ chat_id: chatId, text: String(text ?? ''), reply_markup: { inline_keyboard: safeKeyboard } });
+  try {
+    await api.sendMessage({ chat_id: chatId, text: String(text ?? ''), reply_markup: { inline_keyboard: safeKeyboard } });
+  } catch (error) {
+    console.log('Falló sendMessage con teclado inline:', String(error), JSON.stringify(safeKeyboard));
+    if (!safeKeyboard.length) throw error;
+    // Si el adaptador rechaza el teclado, al menos mostrar la pantalla sin botones.
+    await api.sendMessage({
+      chat_id: chatId,
+      text: String(text ?? '') + '\n\n⚠️ Telegram rechazó los botones de esta pantalla. El error quedó registrado.',
+    });
+  }
 }
 function channelButtons(rows, kind) {
   return rows.map((row) => [{
@@ -557,14 +579,9 @@ export default async function (query) {
 
       keyboard.push([{ text: '🔙 VOLVER', callback_data: 'admin:back' }]);
 
-      // Telegram exige una matriz de filas y objetos con text/callback_data de tipo string.
-      const inlineKeyboard = JSON.parse(JSON.stringify(keyboard)).map(row =>
-        row.map(button => ({
-          text: String(button.text),
-          callback_data: String(button.callback_data),
-        })),
-      );
-      if (!inlineKeyboard.every(row => Array.isArray(row) &&
+      // Validar el teclado con el mismo sanitizador estricto usado al enviarlo.
+      const inlineKeyboard = sanitizeInlineKeyboard(keyboard);
+      if (!inlineKeyboard.length || !inlineKeyboard.every(row => Array.isArray(row) &&
           row.every(button => typeof button.text === 'string' &&
             typeof button.callback_data === 'string'))) {
         throw new Error('El teclado de DISTRIBUCIÓN no superó la validación de botones.');
@@ -581,15 +598,27 @@ export default async function (query) {
       const diagnostic = String(error?.message || error || 'Error desconocido')
         .replace(/[\r\n]+/g, ' ')
         .slice(0, 240);
-      await sendPanel(
-        chatId,
-        '⚠️ No se pudo cargar DISTRIBUCIÓN.\n\nDiagnóstico: ' + diagnostic,
-        [
-          [{ text: '🔄 Reintentar', callback_data: 'admin:routes' }],
-          [{ text: '🔙 Volver al panel', callback_data: 'admin:back' }],
-        ],
-        message?.message_id,
-      );
+      // Enviar el diagnóstico sin teclado para no repetir el fallo original.
+      try {
+        if (message?.message_id) {
+          await api.editMessageText({
+            chat_id: chatId,
+            message_id: message.message_id,
+            text: '⚠️ No se pudo cargar DISTRIBUCIÓN.\\n\\nDiagnóstico: ' + diagnostic,
+          });
+        } else {
+          await api.sendMessage({
+            chat_id: chatId,
+            text: '⚠️ No se pudo cargar DISTRIBUCIÓN.\\n\\nDiagnóstico: ' + diagnostic,
+          });
+        }
+      } catch (diagnosticError) {
+        console.log('No se pudo mostrar el diagnóstico de DISTRIBUCIÓN:', String(diagnosticError));
+        await api.sendMessage({
+          chat_id: chatId,
+          text: '⚠️ No se pudo cargar DISTRIBUCIÓN. Diagnóstico: ' + diagnostic,
+        });
+      }
     }
     return;
   }
