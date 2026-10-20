@@ -494,116 +494,260 @@ export default async function (query) {
     await renderPanel('Envía el ID como respuesta al mensaje del bot.', [[{ text: '🔙 Volver', callback_data: 'admin:reactionchannel:' + channelId }]]);
     return;
   }
+  // DISTRIBUCIÓN: cada pantalla usa un teclado nuevo, validado y serializable.
   if (section === 'routes') {
-    // Confirmar el callback antes de consultar la base de datos para evitar botones que parezcan congelados.
     await answer(query);
     try {
-      const [routeRows, channelRows] = await Promise.all([db.select().from(channelRoutes).all(), managedChannels(userId)]);
-      const names = new Map(channelRows.map(row => [Number(row.chatId), String(row.title || row.chatId)]));
-      const keyboard = routeRows
-        .filter(route => names.has(Number(route.sourceChatId)) && names.has(Number(route.destinationChatId)))
-        .map(route => [{ text: '⚙️ ' + names.get(Number(route.sourceChatId)).slice(0,16) + ' → ' + names.get(Number(route.destinationChatId)).slice(0,16) + ' · ' + (route.mode === 'copy' ? 'Copiar' : route.mode === 'forward' ? 'Reenviar' : 'Auto'), callback_data: 'admin:routedetail:' + route.sourceChatId + ':' + route.destinationChatId }]);
-      keyboard.unshift([{ text: '➕ Crear ruta', callback_data: 'admin:routeadd' }]);
-      keyboard.push(await backRow());
-      // Construir objetos nuevos, sin conservar propiedades procedentes de la base de datos.
-      const safeKeyboard = [
-        [{ text: '➕ Crear ruta', callback_data: 'admin:routeadd' }],
-        ...routeRows
-          .filter(route => names.has(Number(route.sourceChatId)) && names.has(Number(route.destinationChatId)))
-          .map(route => [{
-            text: String('⚙️ ' + names.get(Number(route.sourceChatId)).slice(0, 16) + ' → ' + names.get(Number(route.destinationChatId)).slice(0, 16) + ' · ' + (route.mode === 'copy' ? 'Copiar' : route.mode === 'forward' ? 'Reenviar' : 'Auto')),
-            callback_data: String('admin:routedetail:' + Number(route.sourceChatId) + ':' + Number(route.destinationChatId)),
-          }]),
-        [{ text: '🔙 VOLVER', callback_data: 'admin:back' }],
-      ];
-      console.log('DISTRIBUCIÓN keyboard check', JSON.stringify(safeKeyboard.map(row => row.map(button => ({ textType: typeof button.text, callbackType: typeof button.callback_data, text: button.text })))));
-      await renderPanel('🔀 DISTRIBUCIÓN ENTRE CANALES\n\n' + (routeRows.length ? 'Pulsa una ruta para configurar el modo o eliminarla.' : 'Aún no hay rutas configuradas.') + '\n\nCada ruta permite copiar, reenviar o usar el modo automático.', safeKeyboard);
+      const [routeRows, channelRows] = await Promise.all([
+        db.select().from(channelRoutes).all(),
+        managedChannels(userId),
+      ]);
+      const channelNames = new Map(
+        channelRows.map(channel => [
+          Number(channel.chatId),
+          String(channel.title || channel.chatId),
+        ]),
+      );
+      const keyboard = [[
+        { text: '➕ Crear ruta', callback_data: 'admin:routeadd' },
+      ]];
+
+      for (const route of routeRows) {
+        const sourceId = Number(route.sourceChatId);
+        const destinationId = Number(route.destinationChatId);
+        if (!Number.isSafeInteger(sourceId) || !Number.isSafeInteger(destinationId)) continue;
+        if (!channelNames.has(sourceId) || !channelNames.has(destinationId)) continue;
+
+        const modeLabel = route.mode === 'copy'
+          ? 'Copiar'
+          : route.mode === 'forward'
+            ? 'Reenviar'
+            : 'Auto';
+        const label = '⚙️ ' + channelNames.get(sourceId).slice(0, 16)
+          + ' → ' + channelNames.get(destinationId).slice(0, 16)
+          + ' · ' + modeLabel;
+
+        keyboard.push([{
+          text: String(label),
+          callback_data: 'admin:routedetail:' + sourceId + ':' + destinationId,
+        }]);
+      }
+
+      keyboard.push([{ text: '🔙 VOLVER', callback_data: 'admin:back' }]);
+
+      // Telegram exige una matriz de filas y objetos con text/callback_data de tipo string.
+      const inlineKeyboard = JSON.parse(JSON.stringify(keyboard)).map(row =>
+        row.map(button => ({
+          text: String(button.text),
+          callback_data: String(button.callback_data),
+        })),
+      );
+      if (!inlineKeyboard.every(row => Array.isArray(row) &&
+          row.every(button => typeof button.text === 'string' &&
+            typeof button.callback_data === 'string'))) {
+        throw new Error('El teclado de DISTRIBUCIÓN no superó la validación de botones.');
+      }
+
+      await renderPanel(
+        '🔀 DISTRIBUCIÓN ENTRE CANALES\\n\\n'
+          + (routeRows.length ? 'Pulsa una ruta para configurar el modo o eliminarla.' : 'Aún no hay rutas configuradas.')
+          + '\\n\\nCada ruta permite copiar, reenviar o usar el modo automático.',
+        inlineKeyboard,
+      );
     } catch (error) {
       console.log('Error al abrir DISTRIBUCIÓN:', String(error), error?.stack || '');
-      const diagnostic = String(error?.message || error || 'Error desconocido').replace(/[\r\n]+/g, ' ').slice(0, 240);
-      await sendPanel(chatId, '⚠️ No se pudo cargar DISTRIBUCIÓN.\n\nDiagnóstico: ' + diagnostic + '\n\nEnvía este texto para identificar la causa.', [[{ text: '🔄 Reintentar', callback_data: 'admin:routes' }], [{ text: '🔙 Volver al panel', callback_data: 'admin:back' }]], message?.message_id);
+      const diagnostic = String(error?.message || error || 'Error desconocido')
+        .replace(/[\\r\\n]+/g, ' ')
+        .slice(0, 240);
+      await sendPanel(
+        chatId,
+        '⚠️ No se pudo cargar DISTRIBUCIÓN.\\n\\nDiagnóstico: ' + diagnostic,
+        [
+          [{ text: '🔄 Reintentar', callback_data: 'admin:routes' }],
+          [{ text: '🔙 Volver al panel', callback_data: 'admin:back' }],
+        ],
+        message?.message_id,
+      );
     }
     return;
   }
+
   if (section === 'routeadd') {
     const rows = await managedChannels(userId);
-    const keyboard = rows.map(row => [{ text: '📤 ' + String(row.title || row.chatId).slice(0,38), callback_data: 'admin:routesource:' + row.chatId }]);
-    keyboard.push(await backRow());
-    await answer(query);
-    await renderPanel('➕ CREAR RUTA\n\nSelecciona el canal de origen.', keyboard);
-    return;
-  }
-  if (section === 'routesource') {
-    const sourceId = Number(parts[2]);
-    if (!Number.isSafeInteger(sourceId) || !(await canManageChannel(userId, sourceId))) { await answer(query, 'No tienes permiso para ese canal.', true); return; }
-    const rows = (await managedChannels(userId)).filter(row => Number(row.chatId) !== sourceId);
-    const keyboard = rows.map(row => [{ text: '📥 ' + String(row.title || row.chatId).slice(0,38), callback_data: 'admin:routedest:' + sourceId + ':' + row.chatId }]);
+    const keyboard = rows.map(channel => [{
+      text: '📤 ' + String(channel.title || channel.chatId).slice(0, 38),
+      callback_data: 'admin:routesource:' + Number(channel.chatId),
+    }]);
     keyboard.push([{ text: '🔙 Volver', callback_data: 'admin:routes' }]);
     await answer(query);
-    await renderPanel('Selecciona el canal de destino para el origen ' + sourceId + '.', keyboard);
+    await renderPanel(
+      rows.length
+        ? '➕ CREAR RUTA\\n\\nSelecciona el canal de origen.'
+        : '⚠️ Primero debes registrar un canal para poder crear una ruta.',
+      keyboard,
+    );
     return;
   }
-  if (section === 'routedest') {
-    const sourceId = Number(parts[2]); const destinationId = Number(parts[3]);
-    if (!Number.isSafeInteger(sourceId) || !Number.isSafeInteger(destinationId) || sourceId === destinationId ||
-        !(await canManageChannel(userId, sourceId)) || !(await canManageChannel(userId, destinationId))) {
-      await answer(query, 'La ruta no es válida o no tienes permiso.', true); return;
+
+  if (section === 'routesource') {
+    const sourceId = Number(parts[2]);
+    if (!Number.isSafeInteger(sourceId) || !(await canManageChannel(userId, sourceId))) {
+      await answer(query, 'No tienes permiso para administrar ese canal.', true);
+      return;
     }
-    const routeKey = sourceId + ':' + destinationId;
-    await db.insert(channelRoutes).values({ routeKey, sourceChatId: sourceId, destinationChatId: destinationId, mode: 'auto', createdBy: userId, createdAt: Date.now() }).onConflictDoNothing().run();
-    await answer(query, 'Ruta guardada.');
-    await renderPanel('✅ Ruta creada: ' + sourceId + ' → ' + destinationId, [[{ text: '🔀 Ver rutas', callback_data: 'admin:routes' }], [await navText('back')].map(label => ({ text: label, callback_data: 'admin:back' }))]);
-    return;
-  }
-  if (section === 'routedetail') {
-    const sourceId = Number(parts[2]); const destinationId = Number(parts[3]);
-    if (!Number.isSafeInteger(sourceId) || !Number.isSafeInteger(destinationId) ||
-        !(await canManageChannel(userId, sourceId)) || !(await canManageChannel(userId, destinationId))) {
-      await answer(query, 'No tienes permiso para administrar esa ruta.', true); return;
-    }
-    const route = await db.select().from(channelRoutes).where(eq(channelRoutes.routeKey, sourceId + ':' + destinationId)).get();
-    if (!route) { await answer(query, 'La ruta ya no existe.', true); await renderPanel('La ruta ya no existe.', [[{ text: '🔀 Ver distribuciones', callback_data: 'admin:routes' }]]); return; }
-    const mode = ['copy','forward'].includes(route.mode) ? route.mode : 'auto';
-    const modeLabel = mode === 'copy' ? '📄 Copiar (sin encabezado de reenvío)' : mode === 'forward' ? '↪️ Reenviar (con encabezado de canal)' : '🔄 Automático (conserva el comportamiento actual)';
+    const rows = (await managedChannels(userId))
+      .filter(channel => Number(channel.chatId) !== sourceId);
+    const keyboard = rows.map(channel => [{
+      text: '📥 ' + String(channel.title || channel.chatId).slice(0, 38),
+      callback_data: 'admin:routedest:' + sourceId + ':' + Number(channel.chatId),
+    }]);
+    keyboard.push([{ text: '🔙 Volver', callback_data: 'admin:routes' }]);
     await answer(query);
-    await renderPanel('🔀 CONFIGURAR DISTRIBUCIÓN\n\nOrigen: ' + sourceId + '\nDestino: ' + destinationId + '\nModo actual: ' + modeLabel + '\n\nElige cómo se distribuirán las publicaciones nuevas.', [
-      [{ text: (mode === 'auto' ? '✅ ' : '') + '🔄 Automático', callback_data: 'admin:routemode:' + sourceId + ':' + destinationId + ':auto' }],
-      [{ text: (mode === 'copy' ? '✅ ' : '') + '📄 Copiar publicación', callback_data: 'admin:routemode:' + sourceId + ':' + destinationId + ':copy' }],
-      [{ text: (mode === 'forward' ? '✅ ' : '') + '↪️ Reenviar publicación', callback_data: 'admin:routemode:' + sourceId + ':' + destinationId + ':forward' }],
-      [{ text: '🗑️ Eliminar distribución', callback_data: 'admin:routedelete:' + sourceId + ':' + destinationId }],
-      [{ text: '🔙 Volver a distribuciones', callback_data: 'admin:routes' }],
-    ]);
+    await renderPanel(
+      rows.length
+        ? 'Selecciona el canal de destino para el origen ' + sourceId + '.'
+        : 'No hay otro canal registrado para usar como destino.',
+      keyboard,
+    );
     return;
   }
-  if (section === 'routemode') {
-    const sourceId = Number(parts[2]); const destinationId = Number(parts[3]); const mode = String(parts[4] || '');
-    if (!Number.isSafeInteger(sourceId) || !Number.isSafeInteger(destinationId) ||
-        !['auto','copy','forward'].includes(mode) ||
-        !(await canManageChannel(userId, sourceId)) || !(await canManageChannel(userId, destinationId))) {
-      await answer(query, 'La ruta, el modo o los permisos no son válidos.', true); return;
+
+  if (section === 'routedest') {
+    const sourceId = Number(parts[2]);
+    const destinationId = Number(parts[3]);
+    if (!Number.isSafeInteger(sourceId) || !Number.isSafeInteger(destinationId)
+        || sourceId === destinationId
+        || !(await canManageChannel(userId, sourceId))
+        || !(await canManageChannel(userId, destinationId))) {
+      await answer(query, 'La ruta no es válida o no tienes permiso.', true);
+      return;
     }
+
     const routeKey = sourceId + ':' + destinationId;
-    const route = await db.select().from(channelRoutes).where(eq(channelRoutes.routeKey, routeKey)).get();
-    if (!route) { await answer(query, 'La ruta ya no existe.', true); return; }
-    await db.update(channelRoutes).set({ mode }).where(eq(channelRoutes.routeKey, routeKey)).run();
+    await db.insert(channelRoutes).values({
+      routeKey,
+      sourceChatId: sourceId,
+      destinationChatId: destinationId,
+      mode: 'auto',
+      createdBy: userId,
+      createdAt: Date.now(),
+    }).onConflictDoNothing().run();
+
+    await answer(query, 'Ruta guardada.');
+    await renderPanel(
+      '✅ Ruta guardada.\\nOrigen: ' + sourceId + '\\nDestino: ' + destinationId,
+      [
+        [{ text: '🔀 Ver distribuciones', callback_data: 'admin:routes' }],
+        [{ text: '🔙 Volver al panel', callback_data: 'admin:back' }],
+      ],
+    );
+    return;
+  }
+
+  if (section === 'routedetail') {
+    const sourceId = Number(parts[2]);
+    const destinationId = Number(parts[3]);
+    if (!Number.isSafeInteger(sourceId) || !Number.isSafeInteger(destinationId)
+        || !(await canManageChannel(userId, sourceId))
+        || !(await canManageChannel(userId, destinationId))) {
+      await answer(query, 'No tienes permiso para administrar esa ruta.', true);
+      return;
+    }
+
+    const route = await db.select().from(channelRoutes)
+      .where(eq(channelRoutes.routeKey, sourceId + ':' + destinationId))
+      .get();
+    if (!route) {
+      await answer(query, 'La ruta ya no existe.', true);
+      await renderPanel('La ruta ya no existe.', [
+        [{ text: '🔀 Ver distribuciones', callback_data: 'admin:routes' }],
+      ]);
+      return;
+    }
+
+    const mode = ['copy', 'forward'].includes(route.mode) ? route.mode : 'auto';
+    const modeLabel = mode === 'copy'
+      ? '📄 Copiar (sin encabezado de reenvío)'
+      : mode === 'forward'
+        ? '↪️ Reenviar (con encabezado de canal)'
+        : '🔄 Automático (comportamiento predeterminado)';
+
+    await answer(query);
+    await renderPanel(
+      '🔀 CONFIGURAR DISTRIBUCIÓN\\n\\nOrigen: ' + sourceId
+        + '\\nDestino: ' + destinationId
+        + '\\nModo actual: ' + modeLabel
+        + '\\n\\nElige cómo se distribuirán las publicaciones nuevas.',
+      [
+        [{ text: (mode === 'auto' ? '✅ ' : '') + '🔄 Automático', callback_data: 'admin:routemode:' + sourceId + ':' + destinationId + ':auto' }],
+        [{ text: (mode === 'copy' ? '✅ ' : '') + '📄 Copiar publicación', callback_data: 'admin:routemode:' + sourceId + ':' + destinationId + ':copy' }],
+        [{ text: (mode === 'forward' ? '✅ ' : '') + '↪️ Reenviar publicación', callback_data: 'admin:routemode:' + sourceId + ':' + destinationId + ':forward' }],
+        [{ text: '🗑️ Eliminar distribución', callback_data: 'admin:routedelete:' + sourceId + ':' + destinationId }],
+        [{ text: '🔙 Volver a distribuciones', callback_data: 'admin:routes' }],
+      ],
+    );
+    return;
+  }
+
+  if (section === 'routemode') {
+    const sourceId = Number(parts[2]);
+    const destinationId = Number(parts[3]);
+    const mode = String(parts[4] || '');
+    if (!Number.isSafeInteger(sourceId) || !Number.isSafeInteger(destinationId)
+        || !['auto', 'copy', 'forward'].includes(mode)
+        || !(await canManageChannel(userId, sourceId))
+        || !(await canManageChannel(userId, destinationId))) {
+      await answer(query, 'La ruta, el modo o los permisos no son válidos.', true);
+      return;
+    }
+
+    const routeKey = sourceId + ':' + destinationId;
+    const route = await db.select().from(channelRoutes)
+      .where(eq(channelRoutes.routeKey, routeKey))
+      .get();
+    if (!route) {
+      await answer(query, 'La ruta ya no existe.', true);
+      return;
+    }
+
+    await db.update(channelRoutes).set({ mode })
+      .where(eq(channelRoutes.routeKey, routeKey)).run();
     await answer(query, 'Modo de distribución actualizado.');
-    await renderPanel('✅ Modo de distribución actualizado.\n\n' + sourceId + ' → ' + destinationId + '\nModo: ' + (mode === 'copy' ? 'Copiar sin encabezado de reenvío' : mode === 'forward' ? 'Reenviar con encabezado de canal' : 'Automático'), [
-      [{ text: '⚙️ Configurar distribución', callback_data: 'admin:routedetail:' + sourceId + ':' + destinationId }],
+    await renderPanel(
+      '✅ Modo actualizado.\\n\\n' + sourceId + ' → ' + destinationId
+        + '\\nModo: ' + (mode === 'copy'
+          ? 'Copiar sin encabezado de reenvío'
+          : mode === 'forward'
+            ? 'Reenviar con encabezado de canal'
+            : 'Automático'),
+      [
+        [{ text: '⚙️ Configurar distribución', callback_data: 'admin:routedetail:' + sourceId + ':' + destinationId }],
+        [{ text: '🔀 Ver distribuciones', callback_data: 'admin:routes' }],
+      ],
+    );
+    return;
+  }
+
+  if (section === 'routedelete') {
+    const sourceId = Number(parts[2]);
+    const destinationId = Number(parts[3]);
+    if (!Number.isSafeInteger(sourceId) || !Number.isSafeInteger(destinationId)
+        || !(await canManageChannel(userId, sourceId))
+        || !(await canManageChannel(userId, destinationId))) {
+      await answer(query, 'No tienes permiso para eliminar esa ruta.', true);
+      return;
+    }
+
+    await db.delete(channelRoutes)
+      .where(eq(channelRoutes.routeKey, sourceId + ':' + destinationId)).run();
+    await answer(query, 'Ruta eliminada.');
+    await renderPanel('🗑️ Distribución eliminada.', [
       [{ text: '🔀 Ver distribuciones', callback_data: 'admin:routes' }],
+      [{ text: '🔙 Volver al panel', callback_data: 'admin:back' }],
     ]);
     return;
   }
-  if (section === 'routedelete') {
-    const sourceId = Number(parts[2]); const destinationId = Number(parts[3]);
-    if (!Number.isSafeInteger(sourceId) || !Number.isSafeInteger(destinationId) ||
-        !(await canManageChannel(userId, sourceId)) || !(await canManageChannel(userId, destinationId))) {
-      await answer(query, 'No tienes permiso para eliminar esa ruta.', true); return;
-    }
-    await db.delete(channelRoutes).where(eq(channelRoutes.routeKey, sourceId + ':' + destinationId)).run();
-    await answer(query, 'Ruta eliminada.');
-    await renderPanel('🗑️ Ruta eliminada.', [[{ text: '🔀 Ver rutas', callback_data: 'admin:routes' }], [{ text: '🔙 Volver', callback_data: 'admin:back' }]]);
-    return;
-  }
+
   if (section === 'blacklist') {
     const rows = await db.select().from(globalBans).all();
     const keyboard = [
