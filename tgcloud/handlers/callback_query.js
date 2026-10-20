@@ -659,9 +659,9 @@ export default async function (query) {
     // Presentar la elección inmediatamente evita que una ruta recién creada
     // quede sin configurar el comportamiento de envío/reenvío.
     await renderPanel(
-      '✅ RUTA CREADA\\n\\nOrigen: ' + sourceId
-        + '\\nDestino: ' + destinationId
-        + '\\n\\nSelecciona cómo se enviarán las publicaciones nuevas.',
+      '✅ RUTA CREADA\n\nOrigen: ' + sourceId
+        + '\nDestino: ' + destinationId
+        + '\n\nSelecciona cómo se enviarán las publicaciones nuevas.',
       [
         [{ text: '🔄 Automático', callback_data: 'admin:routemode:' + sourceId + ':' + destinationId + ':auto' }],
         [{ text: '📄 Copiar publicación', callback_data: 'admin:routemode:' + sourceId + ':' + destinationId + ':copy' }],
