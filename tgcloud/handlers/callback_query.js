@@ -505,8 +505,18 @@ export default async function (query) {
         .map(route => [{ text: '⚙️ ' + names.get(Number(route.sourceChatId)).slice(0,16) + ' → ' + names.get(Number(route.destinationChatId)).slice(0,16) + ' · ' + (route.mode === 'copy' ? 'Copiar' : route.mode === 'forward' ? 'Reenviar' : 'Auto'), callback_data: 'admin:routedetail:' + route.sourceChatId + ':' + route.destinationChatId }]);
       keyboard.unshift([{ text: '➕ Crear ruta', callback_data: 'admin:routeadd' }]);
       keyboard.push(await backRow());
-      // Normalizar cada etiqueta antes de enviarla a Telegram: la API exige text de tipo string.
-      const safeKeyboard = keyboard.map(row => row.map(button => ({ ...button, text: String(button?.text ?? ' '), callback_data: String(button?.callback_data ?? 'admin:routes') })));
+      // Construir objetos nuevos, sin conservar propiedades procedentes de la base de datos.
+      const safeKeyboard = [
+        [{ text: '➕ Crear ruta', callback_data: 'admin:routeadd' }],
+        ...routeRows
+          .filter(route => names.has(Number(route.sourceChatId)) && names.has(Number(route.destinationChatId)))
+          .map(route => [{
+            text: String('⚙️ ' + names.get(Number(route.sourceChatId)).slice(0, 16) + ' → ' + names.get(Number(route.destinationChatId)).slice(0, 16) + ' · ' + (route.mode === 'copy' ? 'Copiar' : route.mode === 'forward' ? 'Reenviar' : 'Auto')),
+            callback_data: String('admin:routedetail:' + Number(route.sourceChatId) + ':' + Number(route.destinationChatId)),
+          }]),
+        [{ text: '🔙 VOLVER', callback_data: 'admin:back' }],
+      ];
+      console.log('DISTRIBUCIÓN keyboard check', JSON.stringify(safeKeyboard.map(row => row.map(button => ({ textType: typeof button.text, callbackType: typeof button.callback_data, text: button.text })))));
       await renderPanel('🔀 DISTRIBUCIÓN ENTRE CANALES\n\n' + (routeRows.length ? 'Pulsa una ruta para configurar el modo o eliminarla.' : 'Aún no hay rutas configuradas.') + '\n\nCada ruta permite copiar, reenviar o usar el modo automático.', safeKeyboard);
     } catch (error) {
       console.log('Error al abrir DISTRIBUCIÓN:', String(error), error?.stack || '');
