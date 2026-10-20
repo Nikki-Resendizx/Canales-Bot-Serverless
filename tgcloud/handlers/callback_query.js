@@ -549,19 +549,19 @@ export default async function (query) {
       }
 
       await renderPanel(
-        '🔀 DISTRIBUCIÓN ENTRE CANALES\\n\\n'
+        '🔀 DISTRIBUCIÓN ENTRE CANALES\n\n'
           + (routeRows.length ? 'Pulsa una ruta para configurar el modo o eliminarla.' : 'Aún no hay rutas configuradas.')
-          + '\\n\\nCada ruta permite copiar, reenviar o usar el modo automático.',
+          + '\n\nCada ruta permite copiar, reenviar o usar el modo automático.',
         inlineKeyboard,
       );
     } catch (error) {
       console.log('Error al abrir DISTRIBUCIÓN:', String(error), error?.stack || '');
       const diagnostic = String(error?.message || error || 'Error desconocido')
-        .replace(/[\\r\\n]+/g, ' ')
+        .replace(/[\r\n]+/g, ' ')
         .slice(0, 240);
       await sendPanel(
         chatId,
-        '⚠️ No se pudo cargar DISTRIBUCIÓN.\\n\\nDiagnóstico: ' + diagnostic,
+        '⚠️ No se pudo cargar DISTRIBUCIÓN.\n\nDiagnóstico: ' + diagnostic,
         [
           [{ text: '🔄 Reintentar', callback_data: 'admin:routes' }],
           [{ text: '🔙 Volver al panel', callback_data: 'admin:back' }],
@@ -582,7 +582,7 @@ export default async function (query) {
     await answer(query);
     await renderPanel(
       rows.length
-        ? '➕ CREAR RUTA\\n\\nSelecciona el canal de origen.'
+        ? '➕ CREAR RUTA\n\nSelecciona el canal de origen.'
         : '⚠️ Primero debes registrar un canal para poder crear una ruta.',
       keyboard,
     );
@@ -635,7 +635,7 @@ export default async function (query) {
 
     await answer(query, 'Ruta guardada.');
     await renderPanel(
-      '✅ Ruta guardada.\\nOrigen: ' + sourceId + '\\nDestino: ' + destinationId,
+      '✅ Ruta guardada.\nOrigen: ' + sourceId + '\nDestino: ' + destinationId,
       [
         [{ text: '🔀 Ver distribuciones', callback_data: 'admin:routes' }],
         [{ text: '🔙 Volver al panel', callback_data: 'admin:back' }],
@@ -674,10 +674,10 @@ export default async function (query) {
 
     await answer(query);
     await renderPanel(
-      '🔀 CONFIGURAR DISTRIBUCIÓN\\n\\nOrigen: ' + sourceId
-        + '\\nDestino: ' + destinationId
-        + '\\nModo actual: ' + modeLabel
-        + '\\n\\nElige cómo se distribuirán las publicaciones nuevas.',
+      '🔀 CONFIGURAR DISTRIBUCIÓN\n\nOrigen: ' + sourceId
+        + '\nDestino: ' + destinationId
+        + '\nModo actual: ' + modeLabel
+        + '\n\nElige cómo se distribuirán las publicaciones nuevas.',
       [
         [{ text: (mode === 'auto' ? '✅ ' : '') + '🔄 Automático', callback_data: 'admin:routemode:' + sourceId + ':' + destinationId + ':auto' }],
         [{ text: (mode === 'copy' ? '✅ ' : '') + '📄 Copiar publicación', callback_data: 'admin:routemode:' + sourceId + ':' + destinationId + ':copy' }],
@@ -714,8 +714,8 @@ export default async function (query) {
       .where(eq(channelRoutes.routeKey, routeKey)).run();
     await answer(query, 'Modo de distribución actualizado.');
     await renderPanel(
-      '✅ Modo actualizado.\\n\\n' + sourceId + ' → ' + destinationId
-        + '\\nModo: ' + (mode === 'copy'
+      '✅ Modo actualizado.\n\n' + sourceId + ' → ' + destinationId
+        + '\nModo: ' + (mode === 'copy'
           ? 'Copiar sin encabezado de reenvío'
           : mode === 'forward'
             ? 'Reenviar con encabezado de canal'
