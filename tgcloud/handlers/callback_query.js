@@ -72,10 +72,32 @@ async function answer(query, text = '', alert = false) {
     ...(text ? { text, show_alert: alert } : {}),
   });
 }
+function sanitizeInlineKeyboard(keyboard) {
+  if (!Array.isArray(keyboard)) return [];
+  return keyboard
+    .filter(Array.isArray)
+    .map(row => row.filter(button => button && typeof button === 'object' && !Array.isArray(button))
+      .map(button => {
+        const clean = { ...button, text: String(button.text ?? '') };
+        if (clean.callback_data != null) clean.callback_data = String(clean.callback_data);
+        if (clean.url != null) clean.url = String(clean.url);
+        return clean;
+      })
+      .filter(button => button.text.trim() && (
+        typeof button.callback_data === 'string' ||
+        typeof button.url === 'string' ||
+        button.web_app || button.login_url || button.switch_inline_query != null ||
+        button.switch_inline_query_current_chat != null || button.copy_text ||
+        button.callback_game || button.pay === true
+      )))
+    .filter(row => row.length > 0);
+}
+
 async function sendPanel(chatId, text, keyboard = null, messageId = null) {
+  const safeKeyboard = sanitizeInlineKeyboard(keyboard);
   if (messageId) {
     try {
-      await api.editMessageText({ chat_id: chatId, message_id: messageId, text, reply_markup: { inline_keyboard: keyboard || [] } });
+      await api.editMessageText({ chat_id: chatId, message_id: messageId, text: String(text ?? ''), reply_markup: { inline_keyboard: safeKeyboard } });
       return;
     } catch (error) {
       const reason = String(error ?? '');
@@ -84,7 +106,7 @@ async function sendPanel(chatId, text, keyboard = null, messageId = null) {
       console.log('No se pudo editar el panel; se enviará un mensaje nuevo', reason);
     }
   }
-  await api.sendMessage({ chat_id: chatId, text, reply_markup: { inline_keyboard: keyboard || [] } });
+  await api.sendMessage({ chat_id: chatId, text: String(text ?? ''), reply_markup: { inline_keyboard: safeKeyboard } });
 }
 function channelButtons(rows, kind) {
   return rows.map((row) => [{
