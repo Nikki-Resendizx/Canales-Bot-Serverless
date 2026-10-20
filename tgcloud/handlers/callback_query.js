@@ -505,7 +505,9 @@ export default async function (query) {
         .map(route => [{ text: '⚙️ ' + names.get(Number(route.sourceChatId)).slice(0,16) + ' → ' + names.get(Number(route.destinationChatId)).slice(0,16) + ' · ' + (route.mode === 'copy' ? 'Copiar' : route.mode === 'forward' ? 'Reenviar' : 'Auto'), callback_data: 'admin:routedetail:' + route.sourceChatId + ':' + route.destinationChatId }]);
       keyboard.unshift([{ text: '➕ Crear ruta', callback_data: 'admin:routeadd' }]);
       keyboard.push(await backRow());
-      await renderPanel('🔀 DISTRIBUCIÓN ENTRE CANALES\n\n' + (routeRows.length ? 'Pulsa una ruta para configurar el modo o eliminarla.' : 'Aún no hay rutas configuradas.') + '\n\nCada ruta permite copiar, reenviar o usar el modo automático.', keyboard);
+      // Normalizar cada etiqueta antes de enviarla a Telegram: la API exige text de tipo string.
+      const safeKeyboard = keyboard.map(row => row.map(button => ({ ...button, text: String(button?.text ?? ' '), callback_data: String(button?.callback_data ?? 'admin:routes') })));
+      await renderPanel('🔀 DISTRIBUCIÓN ENTRE CANALES\n\n' + (routeRows.length ? 'Pulsa una ruta para configurar el modo o eliminarla.' : 'Aún no hay rutas configuradas.') + '\n\nCada ruta permite copiar, reenviar o usar el modo automático.', safeKeyboard);
     } catch (error) {
       console.log('Error al abrir DISTRIBUCIÓN:', String(error), error?.stack || '');
       const diagnostic = String(error?.message || error || 'Error desconocido').replace(/[\r\n]+/g, ' ').slice(0, 240);
