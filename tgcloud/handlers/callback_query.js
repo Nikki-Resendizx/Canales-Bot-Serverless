@@ -109,7 +109,7 @@ async function sendPanel(chatId, text, keyboard = null, messageId = null) {
   const safeKeyboard = sanitizeInlineKeyboard(keyboard);
   if (messageId) {
     try {
-      await api.editMessageText({ chat_id: chatId, message_id: messageId, text: String(text ?? ''), reply_markup: { inline_keyboard: safeKeyboard } });
+      await api.editMessageText({ chat_id: chatId, message_id: messageId, text: String(text ?? ''), reply_markup: JSON.stringify({ inline_keyboard: safeKeyboard }) });
       return;
     } catch (error) {
       const reason = String(error ?? '');
@@ -119,7 +119,7 @@ async function sendPanel(chatId, text, keyboard = null, messageId = null) {
     }
   }
   try {
-    await api.sendMessage({ chat_id: chatId, text: String(text ?? ''), reply_markup: { inline_keyboard: safeKeyboard } });
+    await api.sendMessage({ chat_id: chatId, text: String(text ?? ''), reply_markup: JSON.stringify({ inline_keyboard: safeKeyboard }) });
   } catch (error) {
     console.log('Falló sendMessage con teclado inline:', String(error), JSON.stringify(safeKeyboard));
     if (!safeKeyboard.length) throw error;
