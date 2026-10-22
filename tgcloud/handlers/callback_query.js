@@ -1074,8 +1074,8 @@ export default async function (query) {
       })));
     }
     const navigation = [{ text: '➕ Agg Canal', callback_data: 'admin:channeladd' }];
+    if (page > 0) navigation.push({ text: '⬅️ Anterior', callback_data: 'admin:channels:' + (page - 1) });
     if (page + 1 < pageCount) navigation.push({ text: 'Siguiente ➡️', callback_data: 'admin:channels:' + (page + 1) });
-    else if (page > 0) navigation.push({ text: '⬅️ Anterior', callback_data: 'admin:channels:' + (page - 1) });
     keyboard.push(navigation);
     keyboard.push([{ text: '🔙 Volver al panel', callback_data: 'admin:back' }]);
     const text = rows.length
