@@ -110,23 +110,24 @@ function sanitizeInlineKeyboard(keyboard) {
 
 async function sendPanel(chatId, text, keyboard = null, messageId = null) {
   const safeKeyboard = sanitizeInlineKeyboard(keyboard);
+  // El SDK recibe reply_markup como objeto estructurado; serializarlo aquí puede
+  // convertir el teclado en una cadena y provocar el rechazo de Telegram.
+  const replyMarkup = { inline_keyboard: safeKeyboard };
   if (messageId) {
     try {
-      await api.editMessageText({ chat_id: chatId, message_id: messageId, text: String(text ?? ''), reply_markup: JSON.stringify({ inline_keyboard: safeKeyboard }) });
+      await api.editMessageText({ chat_id: chatId, message_id: messageId, text: String(text ?? ''), reply_markup: replyMarkup });
       return;
     } catch (error) {
       const reason = String(error ?? '');
       if (/message is not modified/i.test(reason)) return;
-      // No dejar el panel invisible si Telegram no permite editar el mensaje original.
       console.log('No se pudo editar el panel; se enviará un mensaje nuevo', reason);
     }
   }
   try {
-    await api.sendMessage({ chat_id: chatId, text: String(text ?? ''), reply_markup: JSON.stringify({ inline_keyboard: safeKeyboard }) });
+    await api.sendMessage({ chat_id: chatId, text: String(text ?? ''), reply_markup: replyMarkup });
   } catch (error) {
     console.log('Falló sendMessage con teclado inline:', String(error), JSON.stringify(safeKeyboard));
     if (!safeKeyboard.length) throw error;
-    // Si el adaptador rechaza el teclado, al menos mostrar la pantalla sin botones.
     await api.sendMessage({
       chat_id: chatId,
       text: String(text ?? '') + '\n\n⚠️ Telegram rechazó los botones de esta pantalla. El error quedó registrado.',
