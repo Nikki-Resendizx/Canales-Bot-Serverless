@@ -149,12 +149,12 @@ async function completeManualPublication(post, channelId) {
     console.log('Botones inválidos en plantilla del canal', channelId, kind, String(error));
   }
 
-  const hasText = typeof post.text === 'string';
-  const hasCaption = typeof post.caption === 'string';
   const isMedia = Boolean(post.photo || post.video || post.animation || post.document || post.audio || post.voice || post.video_note);
-  const canEditContent = !post.video_note && (!post.media_group_id || hasCaption || hasText);
-  const canAddButtons = !post.media_group_id || hasCaption || hasText;
-  const replyMarkup = buttons.length && canAddButtons ? { inline_keyboard: buttons } : undefined;
+  // Telegram entrega cada elemento de un álbum como un mensaje independiente.
+  // La llamada solo se realiza para un elemento elegido del grupo; por eso puede
+  // añadir caption y botones aunque el elemento original no tuviera caption.
+  const canEditContent = !post.video_note;
+  const replyMarkup = buttons.length ? { inline_keyboard: buttons } : undefined;
 
   if (format === 'RICH_MESSAGE' && template?.body && canEditContent) {
     try {
@@ -255,11 +255,34 @@ export default async function (post) {
   // de canales que no estén registrados y activos en la base de datos.
   if (!connected || !Number(connected.active)) return;
 
-  // Función principal: completar la publicación manual con los ajustes de este canal.
-  try {
-    await completeManualPublication(post, sourceId);
-  } catch (error) {
-    console.log('No se pudo completar automáticamente la publicación', sourceId, post.message_id, String(error));
+  // Telegram dispara un update por cada archivo del álbum. Reclama una sola
+  // clave persistente por grupo para que la plantilla, el caption y los botones
+  // no se apliquen repetidamente a cada foto/vídeo/GIF.
+  let shouldComplete = true;
+  if (post.media_group_id) {
+    const albumKey = `album-template:${sourceId}:${post.media_group_id}`;
+    try {
+      const existingAlbum = await db.select().from(postAlertKeys)
+        .where(eq(postAlertKeys.alertKey, albumKey)).get();
+      if (existingAlbum) {
+        shouldComplete = false;
+      } else {
+        await db.insert(postAlertKeys).values({ alertKey: albumKey, createdAt: Date.now() }).run();
+      }
+    } catch (error) {
+      // Ante incertidumbre no procesamos todos los elementos: evitamos duplicar
+      // plantilla/botones y dejamos constancia para poder diagnosticarlo.
+      shouldComplete = false;
+      console.log('No se pudo reclamar el procesamiento único del álbum', sourceId, post.media_group_id, String(error));
+    }
+  }
+
+  if (shouldComplete) {
+    try {
+      await completeManualPublication(post, sourceId);
+    } catch (error) {
+      console.log('No se pudo completar automáticamente la publicación', sourceId, post.message_id, String(error));
+    }
   }
 
   if (sourceId !== ALERTS_CHAT_ID && sourceId !== REACTION_REPORT_CHAT_ID) {
