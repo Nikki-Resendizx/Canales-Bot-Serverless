@@ -191,7 +191,7 @@ const HELP = [
   '/routes — listar rutas',
   '/template_set ID_CANAL TIPO FORMATO texto — crear/editar plantilla',
   'Tipos de plantilla: default, text, photo, video, gif, audio, document, video_note, album, link y forward.',
-  'Variables de plantilla: {canal}, {descripcion}, {titulo}, {enlace}, {hashtags}, {fecha}, {contenido}, {vacio} (también {texto}). {vacio} evita cualquier modificación automática de la publicación.',
+  'Variables de plantilla: {canal}, {descripcion}, {titulo}, {enlace}, {enlace_cerrado}, {hashtags}, {fecha}, {contenido}, {vacio} (también {texto}). {enlace} usa el enlace público del canal o crea un enlace de invitación abierto para canales privados; {enlace_cerrado} crea un enlace que requiere aprobación de un administrador. El bot necesita permiso para invitar miembros cuando se generan enlaces privados. {vacio} evita cualquier modificación automática de la publicación.',
   '/template_list ID_CANAL — listar plantillas',
   '/template_buttons ID_CANAL TIPO — configurar botones por sintaxis de líneas o JSON',
   '/button_edit ID_CANAL TIPO N texto - acción — editar un botón (índice 1-based)',

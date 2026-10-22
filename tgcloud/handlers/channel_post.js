@@ -28,6 +28,48 @@ function getPublicationLink(chat, messageId) {
   return /^-100\d+$/.test(id) ? 'https://t.me/c/' + id.slice(4) + '/' + messageId : '';
 }
 
+async function getChannelInviteLinks(chat, channelId, needsOpen, needsClosed) {
+  let openLink = '';
+  let closedLink = '';
+  const username = String(chat?.username ?? '').replace(/^@/, '').trim();
+
+  // Los canales públicos tienen un enlace abierto estable; no hace falta crear otro.
+  if (username) openLink = 'https://t.me/' + username;
+
+  if (!needsOpen && !needsClosed) return { openLink, closedLink };
+
+  try {
+    const bot = await api.getMe();
+    const membership = await api.getChatMember({ chat_id: Number(channelId), user_id: bot.id });
+    const canInvite = membership?.status === 'creator' ||
+      (membership?.status === 'administrator' && membership?.can_invite_users === true);
+    if (!canInvite) {
+      console.log('No se pueden generar enlaces del canal: el bot no tiene permiso para invitar miembros', Number(channelId));
+      return { openLink, closedLink };
+    }
+
+    if (needsOpen && !openLink) {
+      const invite = await api.createChatInviteLink({
+        chat_id: Number(channelId),
+        creates_join_request: false,
+        name: 'CANALES-BOT enlace abierto',
+      });
+      openLink = String(invite?.invite_link ?? '');
+    }
+    if (needsClosed) {
+      const invite = await api.createChatInviteLink({
+        chat_id: Number(channelId),
+        creates_join_request: true,
+        name: 'CANALES-BOT aprobación admin',
+      });
+      closedLink = String(invite?.invite_link ?? '');
+    }
+  } catch (error) {
+    console.log('No se pudieron generar enlaces de invitación del canal', Number(channelId), String(error));
+  }
+  return { openLink, closedLink };
+}
+
 function applyTemplate(template, values) {
   let result = String(template ?? '');
   for (const [key, value] of Object.entries(values)) {
@@ -102,7 +144,10 @@ async function completeManualPublication(post, channelId) {
     : rawOriginal;
   const detectedLink = corrected.match(/https?:\/\/\S+|t\.me\/\S+/i)?.[0] ?? '';
   const permalink = getPublicationLink(post.chat, post.message_id);
-  const link = detectedLink || permalink;
+  const templateText = String(template?.body ?? '') + '\\n' + String(settings?.descriptionTemplate ?? '') + '\\n' + String(settings?.missingDataText ?? '');
+  const needsOpenInvite = /\\{enlace\\}/i.test(templateText);
+  const needsClosedInvite = /\\{enlace_cerrado\\}/i.test(templateText);
+  const { openLink, closedLink } = await getChannelInviteLinks(post.chat, channelId, needsOpenInvite, needsClosedInvite);
   const date = new Intl.DateTimeFormat('es-MX', {
     timeZone: 'America/Mexico_City', dateStyle: 'medium', timeStyle: 'short',
   }).format(new Date());
@@ -113,7 +158,8 @@ async function completeManualPublication(post, channelId) {
     texto: corrected,
     titulo: rawOriginal.split('\n')[0] ?? '',
     descripcion: rawOriginal,
-    enlace: link,
+    enlace: openLink,
+    enlace_cerrado: closedLink,
     hashtags: String(settings?.hashtags ?? '').trim(),
     firma: Number(settings?.signatureEnabled) ? String(settings?.signatureText ?? '').trim() : '',
     fecha: date,
