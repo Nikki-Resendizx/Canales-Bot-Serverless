@@ -1060,8 +1060,29 @@ export default async function (query) {
   }
   if (section === 'channels') {
     const rows = await managedChannels(userId);
-    const text = rows.length ? '📣 CANALES REGISTRADOS\n' + rows.map(c => `• ${c.title || 'Sin título'} — ${c.chatId} — ${c.active ? 'activo' : 'inactivo'}`).join('\n') : 'No hay canales registrados.';
-    await renderPanel(text + '\n\nPulsa el nombre de un canal para abrir sus opciones, activa/pausa el procesamiento o elimina su configuración. La eliminación requiere confirmación.', channelManagementButtons(rows));
+    const pageSize = 9;
+    const requestedPage = Number(parts[2] || 0);
+    const pageCount = Math.max(1, Math.ceil(rows.length / pageSize));
+    const page = Number.isSafeInteger(requestedPage) && requestedPage >= 0
+      ? Math.min(requestedPage, pageCount - 1) : 0;
+    const visible = rows.slice(page * pageSize, (page + 1) * pageSize);
+    const keyboard = [];
+    for (let i = 0; i < visible.length; i += 3) {
+      keyboard.push(visible.slice(i, i + 3).map(channel => ({
+        text: String(channel.title || 'Canal').slice(0, 32),
+        callback_data: 'admin:channelsettings:' + channel.chatId,
+      })));
+    }
+    const navigation = [{ text: '➕ Agg Canal', callback_data: 'admin:channeladd' }];
+    if (page + 1 < pageCount) navigation.push({ text: 'Siguiente ➡️', callback_data: 'admin:channels:' + (page + 1) });
+    else if (page > 0) navigation.push({ text: '⬅️ Anterior', callback_data: 'admin:channels:' + (page - 1) });
+    keyboard.push(navigation);
+    keyboard.push([{ text: '🔙 Volver al panel', callback_data: 'admin:back' }]);
+    const text = rows.length
+      ? '📣 CANALES REGISTRADOS · ' + (page + 1) + '/' + pageCount + '\nSelecciona un canal para abrir su configuración.\n\n' +
+        visible.map(channel => `• ${channel.title || 'Sin título'} — ${channel.active ? 'activo' : 'inactivo'}`).join('\n')
+      : '📣 CANALES REGISTRADOS\n\nTodavía no hay canales conectados. Pulsa «➕ Agg Canal» para agregar el primero.';
+    await renderPanel(text, keyboard);
     return;
   }
   if (section === 'welcome' || section === 'captcha') {
