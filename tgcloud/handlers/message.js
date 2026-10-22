@@ -50,15 +50,25 @@ async function isAdmin(userId) {
   return Boolean(await db.select().from(admins).where(eq(admins.userId, Number(userId))).get());
 }
 async function canManageChannel(userId, channelId) {
-  // Los administradores autorizados del bot comparten el acceso a todos los canales registrados.
-  // addedBy se conserva solo como dato histórico; no concede ni restringe permisos.
+  if (!(await isAdmin(userId))) return false;
   const channel = await db.select().from(channels).where(eq(channels.chatId, Number(channelId))).get();
-  return Boolean(channel && await isAdmin(userId));
+  if (!channel) return false;
+  try {
+    const member = await api.getChatMember({ chat_id: Number(channelId), user_id: Number(userId) });
+    return member?.status === 'creator' || member?.status === 'administrator';
+  } catch (error) {
+    console.log('No se pudo verificar si el administrador gestiona el canal', Number(userId), Number(channelId), String(error));
+    return false;
+  }
 }
 async function managedChannels(userId) {
   if (!(await isAdmin(userId))) return [];
-  // Un registro por canal, visible para todos los administradores autorizados.
-  return await db.select().from(channels).all();
+  const rows = await db.select().from(channels).all();
+  const visible = [];
+  for (const channel of rows) {
+    if (await canManageChannel(userId, channel.chatId)) visible.push(channel);
+  }
+  return visible;
 }
 async function say(chatId, text, extra = {}) {
   return api.sendMessage({ chat_id: chatId, text, ...extra });
