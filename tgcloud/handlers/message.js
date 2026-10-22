@@ -50,12 +50,15 @@ async function isAdmin(userId) {
   return Boolean(await db.select().from(admins).where(eq(admins.userId, Number(userId))).get());
 }
 async function canManageChannel(userId, channelId) {
+  // Los administradores autorizados del bot comparten el acceso a todos los canales registrados.
+  // addedBy se conserva solo como dato histórico; no concede ni restringe permisos.
   const channel = await db.select().from(channels).where(eq(channels.chatId, Number(channelId))).get();
-  return Boolean(channel && (Number(userId) === OWNER_ID || Number(channel.addedBy) === Number(userId)));
+  return Boolean(channel && await isAdmin(userId));
 }
 async function managedChannels(userId) {
-  const rows = await db.select().from(channels).all();
-  return Number(userId) === OWNER_ID ? rows : rows.filter(row => Number(row.addedBy) === Number(userId));
+  if (!(await isAdmin(userId))) return [];
+  // Un registro por canal, visible para todos los administradores autorizados.
+  return await db.select().from(channels).all();
 }
 async function say(chatId, text, extra = {}) {
   return api.sendMessage({ chat_id: chatId, text, ...extra });
