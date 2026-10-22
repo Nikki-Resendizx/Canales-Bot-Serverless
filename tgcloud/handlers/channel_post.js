@@ -145,8 +145,8 @@ async function completeManualPublication(post, channelId) {
   const detectedLink = corrected.match(/https?:\/\/\S+|t\.me\/\S+/i)?.[0] ?? '';
   const permalink = getPublicationLink(post.chat, post.message_id);
   const templateText = String(template?.body ?? '') + '\\n' + String(settings?.descriptionTemplate ?? '') + '\\n' + String(settings?.missingDataText ?? '');
-  const needsOpenInvite = /\\{enlace\\}/i.test(templateText);
-  const needsClosedInvite = /\\{enlace_cerrado\\}/i.test(templateText);
+  const needsOpenInvite = /\{enlace\}/i.test(templateText);
+  const needsClosedInvite = /\{enlace_cerrado\}/i.test(templateText);
   const { openLink, closedLink } = await getChannelInviteLinks(post.chat, channelId, needsOpenInvite, needsClosedInvite);
   const date = new Intl.DateTimeFormat('es-MX', {
     timeZone: 'America/Mexico_City', dateStyle: 'medium', timeStyle: 'short',
