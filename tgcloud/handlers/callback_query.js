@@ -92,13 +92,26 @@ function sanitizeInlineKeyboard(keyboard) {
     .map(row => row
       .filter(button => button && typeof button === 'object' && !Array.isArray(button))
       .map(button => {
-        // Construir un objeto nuevo y mínimo con campos permitidos por Telegram.
-        const text = typeof button.text === 'string'
-          ? button.text
-          : button.text == null ? '' : String(button.text);
+        // Normalizar nombres de canales y eliminar caracteres de control o
+        // sustitutos Unicode aislados que pueden invalidar el teclado de Telegram.
+        const rawText = button.text == null ? '' : String(button.text);
+        const text = Array.from(rawText.normalize('NFC'))
+          .filter(char => {
+            const cp = char.codePointAt(0);
+            return !(cp >= 0xD800 && cp <= 0xDFFF) &&
+              !(cp < 0x20 && cp !== 0x09);
+          })
+          .join('')
+          .slice(0, 256);
         const clean = { text };
-        if (button.callback_data != null) clean.callback_data = String(button.callback_data);
-        else if (button.url != null) clean.url = String(button.url);
+        if (button.callback_data != null) {
+          const callbackData = String(button.callback_data);
+          if (new TextEncoder().encode(callbackData).length > 64) {
+            console.log('Botón omitido: callback_data supera 64 bytes', callbackData);
+            return null;
+          }
+          clean.callback_data = callbackData;
+        } else if (button.url != null) clean.url = String(button.url);
         else if (button.web_app && typeof button.web_app.url === 'string') clean.web_app = { url: button.web_app.url };
         else if (button.switch_inline_query != null) clean.switch_inline_query = String(button.switch_inline_query);
         else if (button.switch_inline_query_current_chat != null) clean.switch_inline_query_current_chat = String(button.switch_inline_query_current_chat);
@@ -108,7 +121,7 @@ function sanitizeInlineKeyboard(keyboard) {
         else if (button.login_url && typeof button.login_url.url === 'string') clean.login_url = { url: button.login_url.url };
         return clean;
       })
-      .filter(button => typeof button.text === 'string' && button.text.trim() && (
+      .filter(button => button && typeof button.text === 'string' && button.text.trim() && (
         typeof button.callback_data === 'string' ||
         typeof button.url === 'string' ||
         button.web_app || button.login_url || button.switch_inline_query != null ||
