@@ -429,18 +429,43 @@ export default async function (post) {
         } catch {
           continue;
         }
-        if (shouldForward) {
-          await api.forwardMessages({
-            chat_id: route.destinationChatId,
-            from_chat_id: post.chat.id,
-            message_ids: albumMessageIds,
-          });
-        } else {
-          await api.copyMessages({
-            chat_id: route.destinationChatId,
-            from_chat_id: post.chat.id,
-            message_ids: albumMessageIds,
-          });
+        try {
+          if (shouldForward) {
+            await api.forwardMessages({
+              chat_id: route.destinationChatId,
+              from_chat_id: post.chat.id,
+              message_ids: albumMessageIds,
+            });
+          } else {
+            await api.copyMessages({
+              chat_id: route.destinationChatId,
+              from_chat_id: post.chat.id,
+              message_ids: albumMessageIds,
+            });
+          }
+        } catch (albumError) {
+          // Compatibilidad: si la versión del SDK no implementa los métodos
+          // plurales, no perder el álbum; enviar cada elemento como respaldo.
+          console.log('No se pudo distribuir el álbum agrupado; se intentará por elemento', route.routeKey, String(albumError));
+          for (const messageId of albumMessageIds) {
+            try {
+              if (shouldForward) {
+                await api.forwardMessage({
+                  chat_id: route.destinationChatId,
+                  from_chat_id: post.chat.id,
+                  message_id: messageId,
+                });
+              } else {
+                await api.copyMessage({
+                  chat_id: route.destinationChatId,
+                  from_chat_id: post.chat.id,
+                  message_id: messageId,
+                });
+              }
+            } catch (itemError) {
+              console.log('No se pudo distribuir un elemento del álbum', route.routeKey, messageId, String(itemError));
+            }
+          }
         }
       } else if (shouldForward) {
         await api.forwardMessage({
