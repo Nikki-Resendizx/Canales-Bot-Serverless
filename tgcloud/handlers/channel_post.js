@@ -377,36 +377,6 @@ export default async function (post) {
   const routes = await db.select().from(channelRoutes).where(eq(channelRoutes.sourceChatId, sourceId)).all();
   if (!routes?.length) return;
 
-  // Los elementos de un álbum llegan en updates separados. Guardamos cada ID
-  // y damos una ventana breve para reunir el grupo antes de usar los métodos
-  // plurales de Telegram, que conservan el álbum como una sola publicación.
-  let albumMessageIds = [];
-  if (post.media_group_id) {
-    const itemPrefix = `distribution-item:${sourceId}:${post.media_group_id}:`;
-    try {
-      await db.insert(postAlertKeys).values({
-        alertKey: itemPrefix + Number(post.message_id),
-        createdAt: Date.now(),
-      }).run();
-    } catch {
-      // El mismo elemento puede haber sido registrado por un reintento.
-    }
-    await new Promise(resolve => setTimeout(resolve, 1800));
-    try {
-      const now = Date.now();
-      const keys = await db.select().from(postAlertKeys).all();
-      albumMessageIds = keys
-        .filter(row => row.alertKey.startsWith(itemPrefix) && now - Number(row.createdAt) < 120000)
-        .map(row => Number(row.alertKey.slice(itemPrefix.length)))
-        .filter(id => Number.isInteger(id) && id > 0)
-        .sort((a, b) => a - b);
-      albumMessageIds = [...new Set(albumMessageIds)];
-    } catch (error) {
-      console.log('No se pudieron reunir los elementos del álbum para distribución', sourceId, post.media_group_id, String(error));
-    }
-    if (albumMessageIds.length < 2) albumMessageIds = [Number(post.message_id)];
-  }
-
   // La configuración es la fuente de verdad: una ruta solo se ejecuta cuando
   // origen y destino siguen registrados y activos. Cada destino falla aislado.
   const registeredChannels = await db.select().from(channels).all();
@@ -420,54 +390,7 @@ export default async function (post) {
       const mode = ['copy', 'forward'].includes(route.mode) ? route.mode : 'auto';
       const shouldForward = mode === 'forward' ||
         (mode === 'auto' && Boolean(post.forward_origin || post.forward_from || post.forward_from_chat || post.forward_sender_name));
-
-      if (post.media_group_id && albumMessageIds.length > 1) {
-        // Una clave por ruta y álbum impide que cada update vuelva a enviarlo.
-        const albumRouteKey = `distribution-sent:${sourceId}:${post.media_group_id}:${route.destinationChatId}`;
-        try {
-          await db.insert(postAlertKeys).values({ alertKey: albumRouteKey, createdAt: Date.now() }).run();
-        } catch {
-          continue;
-        }
-        try {
-          if (shouldForward) {
-            await api.forwardMessages({
-              chat_id: route.destinationChatId,
-              from_chat_id: post.chat.id,
-              message_ids: albumMessageIds,
-            });
-          } else {
-            await api.copyMessages({
-              chat_id: route.destinationChatId,
-              from_chat_id: post.chat.id,
-              message_ids: albumMessageIds,
-            });
-          }
-        } catch (albumError) {
-          // Compatibilidad: si la versión del SDK no implementa los métodos
-          // plurales, no perder el álbum; enviar cada elemento como respaldo.
-          console.log('No se pudo distribuir el álbum agrupado; se intentará por elemento', route.routeKey, String(albumError));
-          for (const messageId of albumMessageIds) {
-            try {
-              if (shouldForward) {
-                await api.forwardMessage({
-                  chat_id: route.destinationChatId,
-                  from_chat_id: post.chat.id,
-                  message_id: messageId,
-                });
-              } else {
-                await api.copyMessage({
-                  chat_id: route.destinationChatId,
-                  from_chat_id: post.chat.id,
-                  message_id: messageId,
-                });
-              }
-            } catch (itemError) {
-              console.log('No se pudo distribuir un elemento del álbum', route.routeKey, messageId, String(itemError));
-            }
-          }
-        }
-      } else if (shouldForward) {
+      if (shouldForward) {
         await api.forwardMessage({
           chat_id: route.destinationChatId,
           from_chat_id: post.chat.id,
