@@ -593,6 +593,40 @@ export default async function (message) {
     return;
   }
 
+  // Los grupos y supergrupos reciben actualizaciones de tipo message, no channel_post.
+  // Procesamos sus publicaciones normales aquí para que puedan ser origen de rutas,
+  // sin tocar el flujo existente de comandos ni la distribución de canales.
+  if (!isPrivate && ['group', 'supergroup'].includes(String(message.chat.type)) && !text.startsWith('/') && message.message_id) {
+    try {
+      const source = await db.select().from(channels).where(eq(channels.chatId, chatId)).get();
+      if (source && Number(source.active)) {
+        const routes = await db.select().from(channelRoutes).where(eq(channelRoutes.sourceChatId, chatId)).all();
+        if (routes?.length) {
+          const registeredChats = await db.select().from(channels).all();
+          const chatById = new Map(registeredChats.map(row => [Number(row.chatId), row]));
+          for (const route of routes) {
+            const destination = chatById.get(Number(route.destinationChatId));
+            if (Number(route.destinationChatId) === chatId || !destination || !Number(destination.active)) continue;
+            try {
+              const mode = ['copy', 'forward'].includes(route.mode) ? route.mode : 'auto';
+              const isForwarded = Boolean(message.forward_origin || message.forward_from || message.forward_from_chat || message.forward_sender_name);
+              const shouldForward = mode === 'forward' || (mode === 'auto' && isForwarded);
+              if (shouldForward) {
+                await api.forwardMessage({ chat_id: Number(route.destinationChatId), from_chat_id: chatId, message_id: message.message_id });
+              } else {
+                await api.copyMessage({ chat_id: Number(route.destinationChatId), from_chat_id: chatId, message_id: message.message_id });
+              }
+            } catch (error) {
+              console.log('No se pudo distribuir el mensaje de grupo a la ruta', route.routeKey, String(error));
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.log('No se pudieron procesar las rutas del grupo', chatId, String(error));
+    }
+  }
+
   if (!text.startsWith('/')) return;
   if (!(await isAdmin(userId))) {
     if (isPrivate) await say(chatId, '⛔ No tienes autorización para usar comandos administrativos.');
