@@ -11,11 +11,11 @@ export default async function (update) {
 
   const chatId = Number(chat.id);
   const userId = Number(user.id);
-  const requestKey = chatId + ':' + userId;
-  const existing = await db.select().from(joinRequests).where(eq(joinRequests.requestKey, requestKey)).get();
-  if (existing && existing.status !== 'pending') return;
-
   const now = Date.now();
+  const requestedAt = Number(update.date || Math.floor(now / 1000)) * 1000;
+  const requestKey = chatId + ':' + userId + ':' + requestedAt;
+  const existing = await db.select().from(joinRequests).where(eq(joinRequests.requestKey, requestKey)).get();
+  if (existing) return;
   if (!existing) {
     await db.insert(joinRequests).values({
       requestKey,
@@ -26,7 +26,7 @@ export default async function (update) {
       bio: String(update.bio || ''),
       inviteLink: String(update.invite_link?.invite_link || ''),
       status: 'pending',
-      requestedAt: Number(update.date || Math.floor(now / 1000)) * 1000,
+      requestedAt,
     }).onConflictDoNothing().run();
   }
 
@@ -68,8 +68,8 @@ export default async function (update) {
         text,
         reply_markup: {
           inline_keyboard: [[
-            { text: '✅ Aceptar solicitud', callback_data: 'admin:joinapprove:' + chatId + ':' + userId },
-            { text: '❌ Rechazar', callback_data: 'admin:joindecline:' + chatId + ':' + userId },
+            { text: '✅ Aceptar solicitud', callback_data: 'admin:joinapprove:' + chatId + ':' + userId + ':' + requestedAt },
+            { text: '❌ Rechazar', callback_data: 'admin:joindecline:' + chatId + ':' + userId + ':' + requestedAt },
           ]],
         },
       });
