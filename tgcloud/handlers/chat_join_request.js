@@ -1,6 +1,6 @@
-import { api, db } from 'sdk';
+import { db } from 'sdk';
 import { eq } from 'sdk/db';
-import { admins, channels, joinRequests } from '../schema.js';
+import { channels, joinRequests } from '../schema.js';
 
 const OWNER_ID = 8624574996;
 
@@ -14,24 +14,24 @@ export default async function (update) {
   const now = Date.now();
   const requestedAt = Number(update.date || Math.floor(now / 1000)) * 1000;
   const requestKey = chatId + ':' + userId + ':' + requestedAt;
-  const existing = await db.select().from(joinRequests).where(eq(joinRequests.requestKey, requestKey)).get();
-  if (existing) return;
-  if (!existing) {
-    await db.insert(joinRequests).values({
-      requestKey,
-      chatId,
-      userId,
-      requesterName: [user.first_name, user.last_name].filter(Boolean).join(' ') || 'Usuario',
-      username: String(user.username || ''),
-      bio: String(update.bio || ''),
-      inviteLink: String(update.invite_link?.invite_link || ''),
-      status: 'pending',
-      requestedAt,
-    }).onConflictDoNothing().run();
-  }
 
-  // Un chat que envía chat_join_request ya tiene al bot como administrador;
-  // se registra para que las acciones posteriores puedan validar permisos.
+  const existing = await db.select().from(joinRequests)
+    .where(eq(joinRequests.requestKey, requestKey)).get();
+  if (existing) return;
+
+  await db.insert(joinRequests).values({
+    requestKey,
+    chatId,
+    userId,
+    requesterName: [user.first_name, user.last_name].filter(Boolean).join(' ') || 'Usuario',
+    username: String(user.username || ''),
+    bio: String(update.bio || ''),
+    inviteLink: String(update.invite_link?.invite_link || ''),
+    status: 'pending',
+    requestedAt,
+  }).onConflictDoNothing().run();
+
+  // Registrar el chat para que aparezca y pueda gestionarse desde el panel.
   await db.insert(channels).values({
     chatId,
     title: String(chat.title || chat.username || chatId),
@@ -40,41 +40,6 @@ export default async function (update) {
     createdAt: now,
   }).onConflictDoNothing().run();
 
-  const channelAdmins = await db.select().from(admins).all();
-  const recipients = new Set([OWNER_ID, ...channelAdmins.map(row => Number(row.userId))]);
-  const requesterName = [user.first_name, user.last_name].filter(Boolean).join(' ') || 'Usuario';
-  const username = user.username ? '@' + user.username : 'No disponible';
-  const bio = String(update.bio || '').trim();
-  const text = [
-    '📥 NUEVA SOLICITUD DE INGRESO',
-    '',
-    'Destino: ' + String(chat.title || chat.username || chatId),
-    'Tipo: ' + (chat.type === 'channel' ? 'Canal' : 'Grupo'),
-    'Solicitante: ' + requesterName,
-    'Usuario: ' + username,
-    'ID: ' + userId,
-    bio ? 'Bio: ' + bio.slice(0, 500) : '',
-    '',
-    'Elige qué hacer con esta solicitud:',
-  ].filter(Boolean).join('\n');
-
-  for (const adminId of recipients) {
-    if (!Number.isSafeInteger(adminId) || adminId <= 0) continue;
-    try {
-      const member = await api.getChatMember({ chat_id: chatId, user_id: adminId });
-      if (!['creator', 'administrator'].includes(member?.status)) continue;
-      await api.sendMessage({
-        chat_id: adminId,
-        text,
-        reply_markup: {
-          inline_keyboard: [[
-            { text: '✅ Aceptar solicitud', callback_data: 'admin:joinapprove:' + chatId + ':' + userId + ':' + requestedAt },
-            { text: '❌ Rechazar', callback_data: 'admin:joindecline:' + chatId + ':' + userId + ':' + requestedAt },
-          ]],
-        },
-      });
-    } catch (error) {
-      console.log('No se pudo notificar la solicitud al administrador', adminId, chatId, String(error));
-    }
-  }
+  // Sin mensajes privados ni avisos: las solicitudes solo se acumulan
+  // y se consultan manualmente desde 📥 SOLICITUDES DE INGRESO.
 }
