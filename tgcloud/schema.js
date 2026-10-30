@@ -134,3 +134,19 @@ export const postAlertKeys = table('post_alert_keys', {
   alertKey: text('alert_key').primaryKey(),
   createdAt: integer('created_at').notNull(),
 });
+
+
+// Solicitudes de ingreso recibidas para grupos y canales administrados por el bot.
+export const joinRequests = table('join_requests', {
+  requestKey: text('request_key').primaryKey(),
+  chatId: integer('chat_id').notNull(),
+  userId: integer('user_id').notNull(),
+  requesterName: text('requester_name').notNull().default(''),
+  username: text('username').notNull().default(''),
+  bio: text('bio').notNull().default(''),
+  inviteLink: text('invite_link').notNull().default(''),
+  status: text('status').notNull().default('pending'),
+  requestedAt: integer('requested_at').notNull(),
+  decidedBy: integer('decided_by'),
+  decidedAt: integer('decided_at'),
+});
