@@ -231,6 +231,47 @@ export default async function (query) {
     return;
   }
 
+  if (data === 'admin:joinapproveall') {
+    if (!userId || chatId !== userId || !(await isAdmin(userId))) {
+      await answer(query, 'No tienes permiso para aprobar solicitudes.', true);
+      return;
+    }
+    const managed = await managedChannels(userId);
+    const allowed = new Set(managed.map(row => Number(row.chatId)));
+    const pending = (await db.select().from(joinRequests).all())
+      .filter(row => row.status === 'pending' && allowed.has(Number(row.chatId)))
+      .sort((a, b) => Number(a.requestedAt) - Number(b.requestedAt));
+    if (!pending.length) {
+      await answer(query, 'No tienes solicitudes pendientes acumuladas.', true);
+      return;
+    }
+    await answer(query, 'Procesando ' + pending.length + ' solicitudes pendientes…');
+    let approved = 0;
+    let failed = 0;
+    for (const request of pending) {
+      try {
+        await api.approveChatJoinRequest({ chat_id: Number(request.chatId), user_id: Number(request.userId) });
+        await db.update(joinRequests).set({
+          status: 'approved',
+          decidedBy: userId,
+          decidedAt: Date.now(),
+        }).where(eq(joinRequests.requestKey, request.requestKey)).run();
+        approved++;
+      } catch (error) {
+        failed++;
+        console.log('No se pudo aprobar solicitud acumulada', request.requestKey, String(error));
+      }
+    }
+    await renderPanel(
+      '📥 SOLICITUDES DE INGRESO\\n\\n' +
+      '✅ Aprobadas: ' + approved + '\\n' +
+      '⚠️ No procesadas: ' + failed + '\\n\\n' +
+      'Las solicitudes no procesadas siguen pendientes. Pulsa actualizar para revisar.',
+      [[{ text: '🔄 Actualizar solicitudes', callback_data: 'admin:requests' }], await backRow()]
+    );
+    return;
+  }
+
   if (data.startsWith('admin:joinapprove:') || data.startsWith('admin:joindecline:')) {
     const action = data.startsWith('admin:joinapprove:') ? 'approve' : 'decline';
     const [, , rawChatId, rawUserId, rawRequestedAt] = data.split(':');
@@ -1131,6 +1172,7 @@ export default async function (query) {
       .sort((a, b) => Number(b.requestedAt) - Number(a.requestedAt))
       .slice(0, 20);
     const keyboard = [];
+    if (pending.length) keyboard.push([{ text: '✅ ACEPTAR TODAS (' + pending.length + ')', callback_data: 'admin:joinapproveall' }]);
     for (const request of pending) {
       keyboard.push([
         { text: '✅ Aceptar', callback_data: 'admin:joinapprove:' + request.chatId + ':' + request.userId + ':' + request.requestedAt },
