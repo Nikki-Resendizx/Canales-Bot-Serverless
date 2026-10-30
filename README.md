@@ -2,6 +2,12 @@
 
 Migración independiente de CANALES-BOT para **ChannelPosts_RoBot**. El repositorio original `Nikki-Resendizx/Canales-bot` no se modifica.
 
+## Configuración importada del Constructor
+
+Se conserva el JSON exportado en `config/constructor.json` y se valida en cada ejecución de `npm run validate`. El manifiesto solicita los módulos Publicaciones, Plantillas, Hashtags y Botones. Estos módulos ya forman parte del código del bot; el manifiesto no apaga ni elimina las demás funciones existentes.
+
+La validación confirma la versión del esquema, el nombre del proyecto, el usuario del bot, la plantilla y los módulos admitidos. No contiene el token de Telegram ni credenciales de despliegue y no realiza por sí sola una instalación ni crea una segunda instancia del bot.
+
 ## Estado de la migración
 
 El código y los módulos están en la rama `main`. GitHub Actions valida la sintaxis; el despliegue a Telegram Serverless solo se ejecuta cuando el secreto `TGCLOUD_TOKEN` está configurado. Si falta, el trabajo de despliegue se omite y no debe asumirse que el bot esté actualizado en Telegram.
