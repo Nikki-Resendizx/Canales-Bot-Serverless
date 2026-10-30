@@ -262,7 +262,7 @@ export default async function (query) {
       await api.editMessageText({
         chat_id: chatId,
         message_id: message.message_id,
-        text: (message.text || 'Solicitud de ingreso') + '\\n\\n' +
+        text: (message.text || 'Solicitud de ingreso') + '\n\n' +
           (action === 'approve' ? '✅ ACEPTADA' : '❌ RECHAZADA') + ' por el administrador ' + userId,
       });
     } catch (editError) {
@@ -1131,8 +1131,6 @@ export default async function (query) {
       .slice(0, 20);
     const keyboard = [];
     for (const request of pending) {
-      const channel = managed.find(row => Number(row.chatId) === Number(request.chatId));
-      const label = String(request.requesterName || request.username || request.userId).slice(0, 24);
       keyboard.push([
         { text: '✅ Aceptar', callback_data: 'admin:joinapprove:' + request.chatId + ':' + request.userId },
         { text: '❌ Rechazar', callback_data: 'admin:joindecline:' + request.chatId + ':' + request.userId },
@@ -1140,9 +1138,9 @@ export default async function (query) {
     }
     keyboard.push([{ text: '🔄 Actualizar', callback_data: 'admin:requests' }]);
     keyboard.push(await backRow());
-    await renderPanel('📥 SOLICITUDES DE INGRESO\\n\\n' +
-      (pending.length ? pending.map(row => '• ' + (row.requesterName || row.username || row.userId) + ' — ' + (managed.find(c => Number(c.chatId) === Number(row.chatId))?.title || row.chatId)).join('\\n') : 'No hay solicitudes pendientes en los grupos y canales que administras.') +
-      (pending.length === 20 ? '\\n\\nMostrando las 20 más recientes.' : ''), keyboard);
+    await renderPanel('📥 SOLICITUDES DE INGRESO\n\n' +
+      (pending.length ? pending.map(row => '• ' + (row.requesterName || row.username || row.userId) + ' — ' + (managed.find(c => Number(c.chatId) === Number(row.chatId))?.title || row.chatId)).join('\n') : 'No hay solicitudes pendientes en los grupos y canales que administras.') +
+      (pending.length === 20 ? '\n\nMostrando las 20 más recientes.' : ''), keyboard);
     return;
   }
   if (section === 'channels') {
