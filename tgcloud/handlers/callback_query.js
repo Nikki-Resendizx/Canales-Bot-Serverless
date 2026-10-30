@@ -1176,7 +1176,7 @@ export default async function (query) {
     }]);
     keyboard.push([{ text: '🔄 Actualizar', callback_data: 'admin:requests' }]);
     keyboard.push(await backRow());
-    await renderPanel('📥 SOLICITUDES DE INGRESO\\n\\n' +
+    await renderPanel('📥 SOLICITUDES DE INGRESO\n\n' +
       (visible.length
         ? 'Selecciona el grupo o canal para consultar y gestionar sus solicitudes por separado.'
         : 'No hay solicitudes pendientes en los grupos y canales que administras.'), keyboard);
@@ -1203,12 +1203,12 @@ export default async function (query) {
     }
     keyboard.push([{ text: '🔄 Actualizar', callback_data: 'admin:requestschat:' + channelId }]);
     keyboard.push([{ text: '🔙 Volver a grupos y canales', callback_data: 'admin:requests' }]);
-    await renderPanel('📥 SOLICITUDES DE INGRESO\\n' + String(channel?.title || channelId) + '\\n\\n' +
+    await renderPanel('📥 SOLICITUDES DE INGRESO\n' + String(channel?.title || channelId) + '\n\n' +
       (pending.length ? pending.map(row => '• ' + (row.requesterName || row.username || row.userId) +
-        (row.username ? ' (@' + row.username + ')' : '') + '\\n  ID: ' + row.userId +
-        '\\n  Fecha: ' + new Date(Number(row.requestedAt)).toLocaleString('es-MX')).join('\\n\\n')
+        (row.username ? ' (@' + row.username + ')' : '') + '\n  ID: ' + row.userId +
+        '\n  Fecha: ' + new Date(Number(row.requestedAt)).toLocaleString('es-MX')).join('\n\n')
         : 'No hay solicitudes pendientes para este chat.') +
-      (pending.length === 20 ? '\\n\\nMostrando las 20 más recientes.' : ''), keyboard);
+      (pending.length === 20 ? '\n\nMostrando las 20 más recientes.' : ''), keyboard);
     return;
   }
   if (section === 'channels') {
