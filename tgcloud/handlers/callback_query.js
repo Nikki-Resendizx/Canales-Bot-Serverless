@@ -233,15 +233,16 @@ export default async function (query) {
 
   if (data.startsWith('admin:joinapprove:') || data.startsWith('admin:joindecline:')) {
     const action = data.startsWith('admin:joinapprove:') ? 'approve' : 'decline';
-    const [, , rawChatId, rawUserId] = data.split(':');
+    const [, , rawChatId, rawUserId, rawRequestedAt] = data.split(':');
     const channelId = Number(rawChatId);
     const requesterId = Number(rawUserId);
-    if (!userId || chatId !== userId || !Number.isSafeInteger(channelId) || !Number.isSafeInteger(requesterId) ||
+    const requestedAt = Number(rawRequestedAt);
+    if (!userId || chatId !== userId || !Number.isSafeInteger(channelId) || !Number.isSafeInteger(requesterId) || !Number.isSafeInteger(requestedAt) ||
         !(await canManageChannel(userId, channelId))) {
       await answer(query, 'No tienes permiso para gestionar solicitudes de este grupo o canal.', true);
       return;
     }
-    const requestKey = channelId + ':' + requesterId;
+    const requestKey = channelId + ':' + requesterId + ':' + requestedAt;
     const request = await db.select().from(joinRequests).where(eq(joinRequests.requestKey, requestKey)).get();
     if (!request || request.status !== 'pending') {
       await answer(query, 'Esta solicitud ya fue atendida o no está disponible.', true);
@@ -1132,8 +1133,8 @@ export default async function (query) {
     const keyboard = [];
     for (const request of pending) {
       keyboard.push([
-        { text: '✅ Aceptar', callback_data: 'admin:joinapprove:' + request.chatId + ':' + request.userId },
-        { text: '❌ Rechazar', callback_data: 'admin:joindecline:' + request.chatId + ':' + request.userId },
+        { text: '✅ Aceptar', callback_data: 'admin:joinapprove:' + request.chatId + ':' + request.userId + ':' + request.requestedAt },
+        { text: '❌ Rechazar', callback_data: 'admin:joindecline:' + request.chatId + ':' + request.userId + ':' + request.requestedAt },
       ]);
     }
     keyboard.push([{ text: '🔄 Actualizar', callback_data: 'admin:requests' }]);
