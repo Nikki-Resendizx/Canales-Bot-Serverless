@@ -1133,7 +1133,6 @@ export default async function (query) {
     for (const request of pending) {
       const channel = managed.find(row => Number(row.chatId) === Number(request.chatId));
       const label = String(request.requesterName || request.username || request.userId).slice(0, 24);
-      keyboard.push([{ text: '👤 ' + label + ' · ' + String(channel?.title || request.chatId).slice(0, 20), callback_data: 'admin:joinapprove:' + request.chatId + ':' + request.userId }]);
       keyboard.push([
         { text: '✅ Aceptar', callback_data: 'admin:joinapprove:' + request.chatId + ':' + request.userId },
         { text: '❌ Rechazar', callback_data: 'admin:joindecline:' + request.chatId + ':' + request.userId },
