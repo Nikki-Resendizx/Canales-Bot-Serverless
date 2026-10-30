@@ -2,7 +2,7 @@ import { api, db } from 'sdk';
 import { eq } from 'sdk/db';
 import {
   admins, captchaSessions, channels, channelSettings, channelRoutes,
-  templates, globalBans, publications, purchases, reactionReports, botTexts,
+  templates, globalBans, publications, purchases, reactionReports, botTexts, joinRequests,
 } from '../schema.js';
 
 const OWNER_ID = 8624574996;
@@ -15,7 +15,7 @@ const NAV_DEFAULTS = {
   publications: '💰 PUBLICACIONES', buttons: '🔘 BOTONES', formats: '🎨 FORMATOS',
   reactions: '🔔 REACCIONES', stars: '⭐ PREMIUM / ESTRELLAS', admins: '👥 ADMINISTRADORES',
   stats: '📊 ESTADÍSTICAS', settings: '⚙️ CONFIGURACIÓN', close: '❌ CERRAR', navigation: '🧭 NAVEGACIÓN',
-  back: '🔙 VOLVER',
+  requests: '📥 SOLICITUDES DE INGRESO', back: '🔙 VOLVER',
 };
 async function navText(key) {
   // El menú principal debe poder abrirse incluso si la migración de bot_texts aún no terminó.
@@ -32,7 +32,8 @@ async function buildMainMenu() {
     ['channels', 'templates', 'hashtags'],
     ['buttons', 'formats', 'rules'],
     ['welcome', 'captcha', 'blacklist'],
-    ['routes', 'reactions', 'publications'],
+    ['requests', 'routes', 'reactions'],
+    ['publications'],
     ['stars', 'stats', 'admins'],
     ['testmode', 'settings', 'navigation'],
     ['close'],
@@ -227,6 +228,46 @@ export default async function (query) {
   }
   if (data.startsWith('btn:callback:')) {
     await answer(query, (data.slice('btn:callback:'.length) || 'Acción ejecutada').slice(0, 200), true);
+    return;
+  }
+
+  if (data.startsWith('admin:joinapprove:') || data.startsWith('admin:joindecline:')) {
+    const action = data.startsWith('admin:joinapprove:') ? 'approve' : 'decline';
+    const [, , rawChatId, rawUserId] = data.split(':');
+    const channelId = Number(rawChatId);
+    const requesterId = Number(rawUserId);
+    if (!userId || chatId !== userId || !Number.isSafeInteger(channelId) || !Number.isSafeInteger(requesterId) ||
+        !(await canManageChannel(userId, channelId))) {
+      await answer(query, 'No tienes permiso para gestionar solicitudes de este grupo o canal.', true);
+      return;
+    }
+    const requestKey = channelId + ':' + requesterId;
+    const request = await db.select().from(joinRequests).where(eq(joinRequests.requestKey, requestKey)).get();
+    if (!request || request.status !== 'pending') {
+      await answer(query, 'Esta solicitud ya fue atendida o no está disponible.', true);
+      return;
+    }
+    if (action === 'approve') {
+      await api.approveChatJoinRequest({ chat_id: channelId, user_id: requesterId });
+    } else {
+      await api.declineChatJoinRequest({ chat_id: channelId, user_id: requesterId });
+    }
+    await db.update(joinRequests).set({
+      status: action === 'approve' ? 'approved' : 'declined',
+      decidedBy: userId,
+      decidedAt: Date.now(),
+    }).where(eq(joinRequests.requestKey, requestKey)).run();
+    await answer(query, action === 'approve' ? 'Solicitud aceptada.' : 'Solicitud rechazada.');
+    try {
+      await api.editMessageText({
+        chat_id: chatId,
+        message_id: message.message_id,
+        text: (message.text || 'Solicitud de ingreso') + '\\n\\n' +
+          (action === 'approve' ? '✅ ACEPTADA' : '❌ RECHAZADA') + ' por el administrador ' + userId,
+      });
+    } catch (editError) {
+      console.log('No se pudo actualizar el aviso de solicitud:', String(editError));
+    }
     return;
   }
   if (!data.startsWith('admin:')) { await answer(query, 'Acción desconocida.'); return; }
@@ -1079,6 +1120,30 @@ export default async function (query) {
     const keyboard = rows.map(row => [{ text: '🧪 ' + String(row.title || row.chatId).slice(0, 45), callback_data: 'admin:channeltest:' + row.chatId }]);
     keyboard.push(await backRow());
     await renderPanel('🧪 MODO DE PRUEBA\n\nSelecciona un canal para comprobar permisos y acceso. Esta prueba no publica ni elimina mensajes y no modifica las publicaciones existentes.', keyboard);
+    return;
+  }
+  if (section === 'requests') {
+    const managed = await managedChannels(userId);
+    const allowed = new Set(managed.map(row => Number(row.chatId)));
+    const pending = (await db.select().from(joinRequests).all())
+      .filter(row => row.status === 'pending' && allowed.has(Number(row.chatId)))
+      .sort((a, b) => Number(b.requestedAt) - Number(a.requestedAt))
+      .slice(0, 20);
+    const keyboard = [];
+    for (const request of pending) {
+      const channel = managed.find(row => Number(row.chatId) === Number(request.chatId));
+      const label = String(request.requesterName || request.username || request.userId).slice(0, 24);
+      keyboard.push([{ text: '👤 ' + label + ' · ' + String(channel?.title || request.chatId).slice(0, 20), callback_data: 'admin:joinapprove:' + request.chatId + ':' + request.userId }]);
+      keyboard.push([
+        { text: '✅ Aceptar', callback_data: 'admin:joinapprove:' + request.chatId + ':' + request.userId },
+        { text: '❌ Rechazar', callback_data: 'admin:joindecline:' + request.chatId + ':' + request.userId },
+      ]);
+    }
+    keyboard.push([{ text: '🔄 Actualizar', callback_data: 'admin:requests' }]);
+    keyboard.push(await backRow());
+    await renderPanel('📥 SOLICITUDES DE INGRESO\\n\\n' +
+      (pending.length ? pending.map(row => '• ' + (row.requesterName || row.username || row.userId) + ' — ' + (managed.find(c => Number(c.chatId) === Number(row.chatId))?.title || row.chatId)).join('\\n') : 'No hay solicitudes pendientes en los grupos y canales que administras.') +
+      (pending.length === 20 ? '\\n\\nMostrando las 20 más recientes.' : ''), keyboard);
     return;
   }
   if (section === 'channels') {
