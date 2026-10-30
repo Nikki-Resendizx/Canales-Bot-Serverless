@@ -65,6 +65,7 @@ El código y los módulos están en la rama `main`. GitHub Actions valida la sin
 - Activar Telegram Serverless para el bot correcto en @BotFather.
 - Mantener el secreto de repositorio `TGCLOUD_TOKEN` con el **CLI Access Token de Serverless**, nunca el token normal del Bot API.
 - Dar al bot los permisos de administrador necesarios en los canales y grupos conectados.
+- Para recibir y gestionar solicitudes de ingreso, el bot debe tener el permiso de administrador **Invitar usuarios / Agregar usuarios** (`can_invite_users`) en cada grupo o canal. Los administradores que recibirán los avisos deben ser también administradores de ese chat y estar autorizados en el bot.
 - El propietario está configurado en `OWNER_ID` dentro de `tgcloud/handlers/message.js` y `tgcloud/handlers/callback_query.js`; ambos valores deben coincidir con el ID numérico real del propietario.
 - Configurar `/setreport` para cada canal que deba enviar avisos a un chat de reportes.
 
