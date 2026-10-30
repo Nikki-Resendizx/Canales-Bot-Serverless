@@ -5,7 +5,7 @@
   "type": "module",
   "engines": { "node": ">=18" },
   "scripts": {
-    "check": "node --check tgcloud/schema.js && node --check tgcloud/handlers/message.js && node --check tgcloud/handlers/callback_query.js && node --check tgcloud/handlers/channel_post.js && node --check tgcloud/handlers/chat_member.js && node --check tgcloud/handlers/my_chat_member.js && node --check tgcloud/handlers/message_reaction.js && node --check tgcloud/handlers/message_reaction_count.js && node --check tgcloud/handlers/pre_checkout_query.js",
+    "check": "node --check scripts/validate-constructor-config.js && node scripts/validate-constructor-config.js && node --check tgcloud/schema.js && node --check tgcloud/handlers/message.js && node --check tgcloud/handlers/callback_query.js && node --check tgcloud/handlers/channel_post.js && node --check tgcloud/handlers/chat_member.js && node --check tgcloud/handlers/my_chat_member.js && node --check tgcloud/handlers/message_reaction.js && node --check tgcloud/handlers/message_reaction_count.js && node --check tgcloud/handlers/pre_checkout_query.js",
     "validate": "npm run check"
   },
   "devDependencies": { "@tgcloud/cli": "^0.2.0" }
