@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "name": "CANALES-BOT-SERVERLESS",
+  "username": "ChannelPosts_RoBot",
+  "template": "channel",
+  "modules": [
+    "Publicaciones",
+    "Plantillas",
+    "Hashtags",
+    "Botones"
+  ],
+  "deployment": {
+    "status": "not_deployed",
+    "note": "Configuración exportable; requiere conectar un proveedor de ejecución y un token de Telegram de forma segura."
+  }
+}
