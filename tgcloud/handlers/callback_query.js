@@ -231,15 +231,15 @@ export default async function (query) {
     return;
   }
 
-  if (data === 'admin:joinapproveall') {
-    if (!userId || chatId !== userId || !(await isAdmin(userId))) {
-      await answer(query, 'No tienes permiso para aprobar solicitudes.', true);
+  if (data.startsWith('admin:joinapproveall:')) {
+    const channelId = Number(data.split(':')[2]);
+    if (!userId || chatId !== userId || !Number.isSafeInteger(channelId) ||
+        !(await canManageChannel(userId, channelId))) {
+      await answer(query, 'No tienes permiso para aprobar solicitudes de este chat.', true);
       return;
     }
-    const managed = await managedChannels(userId);
-    const allowed = new Set(managed.map(row => Number(row.chatId)));
     const pending = (await db.select().from(joinRequests).all())
-      .filter(row => row.status === 'pending' && allowed.has(Number(row.chatId)))
+      .filter(row => row.status === 'pending' && Number(row.chatId) === channelId)
       .sort((a, b) => Number(a.requestedAt) - Number(b.requestedAt));
     if (!pending.length) {
       await answer(query, 'No tienes solicitudes pendientes acumuladas.', true);
@@ -267,7 +267,7 @@ export default async function (query) {
       '✅ Aprobadas: ' + approved + '\\n' +
       '⚠️ No procesadas: ' + failed + '\\n\\n' +
       'Las solicitudes no procesadas siguen pendientes. Pulsa actualizar para revisar.',
-      [[{ text: '🔄 Actualizar solicitudes', callback_data: 'admin:requests' }], await backRow()]
+      [[{ text: '🔄 Actualizar solicitudes', callback_data: 'admin:requestschat:' + channelId }], await backRow()]
     );
     return;
   }
@@ -1166,24 +1166,49 @@ export default async function (query) {
   }
   if (section === 'requests') {
     const managed = await managedChannels(userId);
-    const allowed = new Set(managed.map(row => Number(row.chatId)));
+    const allPending = (await db.select().from(joinRequests).all()).filter(row => row.status === 'pending');
+    const counts = new Map();
+    for (const row of allPending) counts.set(Number(row.chatId), (counts.get(Number(row.chatId)) || 0) + 1);
+    const visible = managed.filter(channel => counts.has(Number(channel.chatId)));
+    const keyboard = visible.map(channel => [{
+      text: String(channel.title || channel.chatId).slice(0, 28) + ' · ' + counts.get(Number(channel.chatId)) + ' pendientes',
+      callback_data: 'admin:requestschat:' + channel.chatId,
+    }]);
+    keyboard.push([{ text: '🔄 Actualizar', callback_data: 'admin:requests' }]);
+    keyboard.push(await backRow());
+    await renderPanel('📥 SOLICITUDES DE INGRESO\\n\\n' +
+      (visible.length
+        ? 'Selecciona el grupo o canal para consultar y gestionar sus solicitudes por separado.'
+        : 'No hay solicitudes pendientes en los grupos y canales que administras.'), keyboard);
+    return;
+  }
+  if (section === 'requestschat') {
+    const channelId = Number(parts[2]);
+    if (!Number.isSafeInteger(channelId) || !(await canManageChannel(userId, channelId))) {
+      await renderPanel('No tienes permiso para consultar las solicitudes de este chat.', [[{ text: '🔙 Volver', callback_data: 'admin:requests' }]]);
+      return;
+    }
+    const channel = await db.select().from(channels).where(eq(channels.chatId, channelId)).get();
     const pending = (await db.select().from(joinRequests).all())
-      .filter(row => row.status === 'pending' && allowed.has(Number(row.chatId)))
+      .filter(row => row.status === 'pending' && Number(row.chatId) === channelId)
       .sort((a, b) => Number(b.requestedAt) - Number(a.requestedAt))
       .slice(0, 20);
     const keyboard = [];
-    if (pending.length) keyboard.push([{ text: '✅ ACEPTAR TODAS (' + pending.length + ')', callback_data: 'admin:joinapproveall' }]);
+    if (pending.length) keyboard.push([{ text: '✅ ACEPTAR TODAS (' + pending.length + ')', callback_data: 'admin:joinapproveall:' + channelId }]);
     for (const request of pending) {
       keyboard.push([
-        { text: '✅ Aceptar', callback_data: 'admin:joinapprove:' + request.chatId + ':' + request.userId + ':' + request.requestedAt },
+        { text: '✅ ' + String(request.requesterName || request.username || request.userId).slice(0, 22), callback_data: 'admin:joinapprove:' + request.chatId + ':' + request.userId + ':' + request.requestedAt },
         { text: '❌ Rechazar', callback_data: 'admin:joindecline:' + request.chatId + ':' + request.userId + ':' + request.requestedAt },
       ]);
     }
-    keyboard.push([{ text: '🔄 Actualizar', callback_data: 'admin:requests' }]);
-    keyboard.push(await backRow());
-    await renderPanel('📥 SOLICITUDES DE INGRESO\n\n' +
-      (pending.length ? pending.map(row => '• ' + (row.requesterName || row.username || row.userId) + ' — ' + (managed.find(c => Number(c.chatId) === Number(row.chatId))?.title || row.chatId)).join('\n') : 'No hay solicitudes pendientes en los grupos y canales que administras.') +
-      (pending.length === 20 ? '\n\nMostrando las 20 más recientes.' : ''), keyboard);
+    keyboard.push([{ text: '🔄 Actualizar', callback_data: 'admin:requestschat:' + channelId }]);
+    keyboard.push([{ text: '🔙 Volver a grupos y canales', callback_data: 'admin:requests' }]);
+    await renderPanel('📥 SOLICITUDES DE INGRESO\\n' + String(channel?.title || channelId) + '\\n\\n' +
+      (pending.length ? pending.map(row => '• ' + (row.requesterName || row.username || row.userId) +
+        (row.username ? ' (@' + row.username + ')' : '') + '\\n  ID: ' + row.userId +
+        '\\n  Fecha: ' + new Date(Number(row.requestedAt)).toLocaleString('es-MX')).join('\\n\\n')
+        : 'No hay solicitudes pendientes para este chat.') +
+      (pending.length === 20 ? '\\n\\nMostrando las 20 más recientes.' : ''), keyboard);
     return;
   }
   if (section === 'channels') {
