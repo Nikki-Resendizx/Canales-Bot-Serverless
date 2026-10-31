@@ -1,4 +1,4 @@
-import { db } from 'sdk';
+import { api, db } from 'sdk';
 import { eq } from 'sdk/db';
 import { channels, joinRequests, notificationTopics } from '../schema.js';
 
@@ -57,7 +57,7 @@ export default async function (update) {
         'REGISTRO: ' + new Date(requestedAt).toLocaleString('es-MX', { timeZone: 'America/Mexico_City' }),
         'ENLACE DE: ' + String(update.invite_link?.invite_link || 'No disponible'),
         'MIEMBRO EN: No calculado',
-      ].join('\\n');
+      ].join('\n');
       await api.sendMessage({
         chat_id: Number(destination.chatId),
         message_thread_id: Number(destination.messageThreadId),
