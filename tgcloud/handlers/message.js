@@ -182,6 +182,7 @@ const HELP = [
   '/description ID texto — plantilla de descripción con {texto}',
   '/missingdata ID texto — texto de respaldo si falta el contenido',
   '/setreport ID_CANAL ID_REPORTE — destino de avisos de reacción',
+  '/setnotifications — configurar el grupo central de avisos (solo propietario; ejecutar dentro del supergrupo con temas)',
   '/blacklist_add ID|@username [motivo] — blacklist y baneo global',
   '/blacklist_remove ID|@username — retirar blacklist y desbanear',
   '/globalban ID|@username [motivo] y /globalunban ID|@username — moderación global',
@@ -628,6 +629,62 @@ export default async function (message) {
   }
 
   if (!text.startsWith('/')) return;
+
+  const [earlyCommandRaw] = text.split(/\\s+/);
+  const earlyCommand = earlyCommandRaw.split('@')[0].toLowerCase();
+  if (earlyCommand === '/setnotifications') {
+    if (userId !== OWNER_ID) {
+      await say(chatId, '⛔ Solo el propietario puede configurar el grupo central de notificaciones.');
+      return;
+    }
+    if (!['group', 'supergroup'].includes(String(message.chat.type))) {
+      await say(chatId, '⚠️ Ejecuta /setnotifications dentro del supergrupo que quieres utilizar.');
+      return;
+    }
+    try {
+      const targetChat = await api.getChat({ chat_id: chatId });
+      if (!targetChat?.is_forum) {
+        await say(chatId, '⚠️ Este grupo no tiene los temas activados. Activa Temas en los ajustes del grupo y vuelve a ejecutar /setnotifications.');
+        return;
+      }
+      const botInfo = await api.getMe();
+      const botMember = await api.getChatMember({ chat_id: chatId, user_id: botInfo.id });
+      if (botMember?.status !== 'administrator' || !botMember?.can_manage_topics) {
+        await say(chatId, '⚠️ Necesito ser administrador del grupo y tener activado el permiso «Administrar temas».');
+        return;
+      }
+      const topicDefinitions = [
+        ['publications', '📢 PUBLICACIONES'],
+        ['distribution', '🔀 DISTRIBUCIÓN'],
+        ['requests', '📥 SOLICITUDES'],
+        ['reactions', '❤️ REACCIONES'],
+        ['errors', '⚠️ ERRORES'],
+        ['admins', '👥 ADMINISTRADORES'],
+        ['stats', '📊 ESTADÍSTICAS'],
+        ['system', '🤖 SISTEMA'],
+        ['blacklist', '🚫 BLACKLIST'],
+        ['new_chat', '🆕 NUEVO CANAL O GRUPO INGRESADO'],
+      ];
+      const createdTopics = [];
+      for (const [topicKey, topicName] of topicDefinitions) {
+        const topic = await api.createForumTopic({ chat_id: chatId, name: topicName });
+        const threadId = Number(topic?.message_thread_id);
+        if (!Number.isSafeInteger(threadId) || threadId <= 0) throw new Error('Telegram no devolvió el identificador del tema: ' + topicName);
+        createdTopics.push({ topicKey, chatId, messageThreadId: threadId, chatTitle: String(targetChat.title || ''), updatedAt: now() });
+      }
+      await db.delete(notificationTopics).run();
+      await db.insert(notificationTopics).values([
+        { topicKey: '__group__', chatId, messageThreadId: 0, chatTitle: String(targetChat.title || ''), updatedAt: now() },
+        ...createdTopics,
+      ]).run();
+      await say(chatId, '✅ GRUPO DE NOTIFICACIONES CONFIGURADO\\n\\nGrupo: ' + String(targetChat.title || chatId) + '\\nTemas creados: ' + createdTopics.length + '\\n\\nPuedes volver a ejecutar /setnotifications en otro supergrupo para cambiar el destino.');
+    } catch (error) {
+      console.log('No se pudo configurar el grupo central de notificaciones', String(error));
+      await say(chatId, '⚠️ No se pudo completar la configuración. Comprueba que el bot tenga permiso para administrar temas y vuelve a intentarlo. Si algunos temas alcanzaron a crearse, podrían quedar duplicados al repetir el comando.');
+    }
+    return;
+  }
+
   if (!(await isAdmin(userId))) {
     if (isPrivate) await say(chatId, '⛔ No tienes autorización para usar comandos administrativos.');
     return;
