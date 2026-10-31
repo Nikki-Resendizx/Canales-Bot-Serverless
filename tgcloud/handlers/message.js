@@ -630,7 +630,7 @@ export default async function (message) {
 
   if (!text.startsWith('/')) return;
 
-  const [earlyCommandRaw] = text.split(/\\s+/);
+  const [earlyCommandRaw] = text.split(/\s+/);
   const earlyCommand = earlyCommandRaw.split('@')[0].toLowerCase();
   if (earlyCommand === '/setnotifications') {
     if (userId !== OWNER_ID) {
@@ -677,7 +677,7 @@ export default async function (message) {
         { topicKey: '__group__', chatId, messageThreadId: 0, chatTitle: String(targetChat.title || ''), updatedAt: now() },
         ...createdTopics,
       ]).run();
-      await say(chatId, '✅ GRUPO DE NOTIFICACIONES CONFIGURADO\\n\\nGrupo: ' + String(targetChat.title || chatId) + '\\nTemas creados: ' + createdTopics.length + '\\n\\nPuedes volver a ejecutar /setnotifications en otro supergrupo para cambiar el destino.');
+      await say(chatId, '✅ GRUPO DE NOTIFICACIONES CONFIGURADO\n\nGrupo: ' + String(targetChat.title || chatId) + '\nTemas creados: ' + createdTopics.length + '\n\nPuedes volver a ejecutar /setnotifications en otro supergrupo para cambiar el destino.');
     } catch (error) {
       console.log('No se pudo configurar el grupo central de notificaciones', String(error));
       await say(chatId, '⚠️ No se pudo completar la configuración. Comprueba que el bot tenga permiso para administrar temas y vuelve a intentarlo. Si algunos temas alcanzaron a crearse, podrían quedar duplicados al repetir el comando.');
