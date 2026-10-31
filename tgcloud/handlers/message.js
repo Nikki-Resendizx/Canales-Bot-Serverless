@@ -2,7 +2,7 @@ import { api, db } from 'sdk';
 import { eq } from 'sdk/db';
 import {
   admins, channels, channelSettings, globalBans, channelRoutes,
-  templates, publications, purchases, reactionReports, knownUsers, botTexts,
+  templates, publications, purchases, reactionReports, knownUsers, botTexts, notificationTopics,
 } from '../schema.js';
 
 const OWNER_ID = 8624574996;
@@ -651,6 +651,13 @@ export default async function (message) {
       const botMember = await api.getChatMember({ chat_id: chatId, user_id: botInfo.id });
       if (botMember?.status !== 'administrator' || !botMember?.can_manage_topics) {
         await say(chatId, '⚠️ Necesito ser administrador del grupo y tener activado el permiso «Administrar temas».');
+        return;
+      }
+      const currentGroup = await db.select().from(notificationTopics)
+        .where(eq(notificationTopics.topicKey, '__group__')).get();
+      const savedTopics = await db.select().from(notificationTopics).all();
+      if (Number(currentGroup?.chatId) === chatId && savedTopics.filter(row => row.topicKey !== '__group__').length === 10) {
+        await say(chatId, '✅ Este supergrupo ya está configurado como destino central. No crearé temas duplicados.');
         return;
       }
       const topicDefinitions = [
