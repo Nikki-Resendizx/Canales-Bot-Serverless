@@ -1,6 +1,6 @@
 import { db } from 'sdk';
 import { eq } from 'sdk/db';
-import { channels, joinRequests } from '../schema.js';
+import { channels, joinRequests, notificationTopics } from '../schema.js';
 
 const OWNER_ID = 8624574996;
 
@@ -40,6 +40,31 @@ export default async function (update) {
     createdAt: now,
   }).onConflictDoNothing().run();
 
-  // Sin mensajes privados ni avisos: las solicitudes solo se acumulan
-  // y se consultan manualmente desde 📥 SOLICITUDES DE INGRESO.
+  // Aviso central en el tema SOLICITUDES, sin enviar mensajes privados.
+  try {
+    const destination = await db.select().from(notificationTopics)
+      .where(eq(notificationTopics.topicKey, 'requests')).get();
+    if (destination?.chatId && destination?.messageThreadId) {
+      const displayUser = user.username ? '@' + user.username : String(userId);
+      const requestText = [
+        '📥 SOLICITUD DE INGRESO',
+        '',
+        'DESTINO: ' + String(chat.title || chatId),
+        'TIPO: ' + String(chat.type || ''),
+        'SOLICITANTE: ' + String([user.first_name, user.last_name].filter(Boolean).join(' ') || 'Usuario'),
+        'USUARIO: ' + displayUser,
+        'ID: ' + userId,
+        'REGISTRO: ' + new Date(requestedAt).toLocaleString('es-MX', { timeZone: 'America/Mexico_City' }),
+        'ENLACE DE: ' + String(update.invite_link?.invite_link || 'No disponible'),
+        'MIEMBRO EN: No calculado',
+      ].join('\\n');
+      await api.sendMessage({
+        chat_id: Number(destination.chatId),
+        message_thread_id: Number(destination.messageThreadId),
+        text: requestText,
+      });
+    }
+  } catch (error) {
+    console.log('No se pudo enviar la solicitud al tema central de notificaciones', String(error));
+  }
 }
