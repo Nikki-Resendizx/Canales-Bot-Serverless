@@ -137,6 +137,15 @@ export const postAlertKeys = table('post_alert_keys', {
 
 
 // Solicitudes de ingreso recibidas para grupos y canales administrados por el bot.
+// Grupo central y temas donde se publican las notificaciones del bot.
+export const notificationTopics = table('notification_topics', {
+  topicKey: text('topic_key').primaryKey(),
+  chatId: integer('chat_id').notNull(),
+  messageThreadId: integer('message_thread_id').notNull().default(0),
+  chatTitle: text('chat_title').notNull().default(''),
+  updatedAt: integer('updated_at').notNull(),
+});
+
 export const joinRequests = table('join_requests', {
   requestKey: text('request_key').primaryKey(),
   chatId: integer('chat_id').notNull(),
