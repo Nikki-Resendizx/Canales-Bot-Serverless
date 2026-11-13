@@ -2,10 +2,11 @@ import { api, db } from 'sdk';
 import { eq } from 'sdk/db';
 import {
   admins, channels, channelSettings, globalBans, channelRoutes,
-  templates, publications, purchases, reactionReports, knownUsers, botTexts, notificationTopics,
+  templates, publications, purchases, reactionReports, knownUsers, botTexts, notificationTopics, filterConfigs,
 } from '../schema.js';
 
 const OWNER_ID = 8624574996;
+import { defaultFilterConfig, mergeFilterConfigs } from '../lib/message_filters.js';
 const DEFAULT_REACTION_REPORT_CHAT_ID = -1004456932813;
 const now = () => Date.now();
 const parseId = value => /^-?\d+$/.test(String(value ?? '')) ? Number(value) : NaN;
@@ -437,6 +438,123 @@ export default async function (message) {
   }
 
   // Los formularios del panel se completan respondiendo al mensaje solicitado; no requieren comandos.
+  const filterPrompt = String(message.reply_to_message?.text ?? '');
+  const filterInputMatch = filterPrompt.match(/\[CBFILTERINPUT:(global|channel:-?\d+):([a-zA-Z]+)\]/i);
+  if (filterInputMatch && isPrivate && await isAdmin(userId) && text && !text.startsWith('/')) {
+    const [, scopeKey, field] = filterInputMatch;
+    const channelMatch = /^channel:(-?\d+)$/.exec(scopeKey);
+    const channelId = channelMatch ? Number(channelMatch[1]) : null;
+    if (channelId != null && (!Number.isSafeInteger(channelId) || !(await canManageChannel(userId, channelId)))) {
+      await say(chatId, '⛔ No tienes permiso para modificar los filtros de ese canal.');
+      return;
+    }
+    const allowedFields = ['whitelist','blockedWords','regex','limits','time','days','links','media','specific','signatures','quota'];
+    if (!allowedFields.includes(field)) { await say(chatId, '⚠️ Tipo de filtro no válido.'); return; }
+    try {
+      const existing = await db.select().from(filterConfigs).where(eq(filterConfigs.scopeKey, scopeKey)).get();
+      let stored = {};
+      try { stored = existing ? JSON.parse(existing.configJson || '{}') : {}; } catch {}
+      const config = mergeFilterConfigs(defaultFilterConfig(), stored);
+      const rule = { ...(stored[field] || {}), ...config[field] };
+      const lines = text.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+      const clear = text.trim().toUpperCase() === 'CLEAR';
+
+      if (field === 'whitelist' || field === 'blockedWords') {
+        if (clear) {
+          rule.words = [];
+          rule.enabled = false;
+        } else {
+          let words = lines;
+          if (field === 'whitelist' && /^(ANY|ALL)$/i.test(lines[0] || '')) {
+            rule.mode = lines[0].toLowerCase();
+            words = lines.slice(1);
+          }
+          if (!words.length) { await say(chatId, '⚠️ Añade al menos una palabra o frase, una por línea.'); return; }
+          rule.words = words.slice(0, 200);
+          rule.enabled = true;
+        }
+      } else if (field === 'regex') {
+        let pattern = text.trim(); let flags = 'i';
+        const slash = /^\/([\s\S]*)\/([dgimsuvy]*)$/.exec(pattern);
+        if (slash) { pattern = slash[1]; flags = slash[2] || 'i'; }
+        if (clear) { rule.pattern = ''; rule.enabled = false; }
+        else {
+          try { new RegExp(pattern, flags); } catch { await say(chatId, '⚠️ La expresión regular no es válida.'); return; }
+          rule.pattern = pattern; rule.flags = flags; rule.enabled = true;
+        }
+      } else if (field === 'limits' || field === 'quota') {
+        const values = text.split('|').map(value => Number(value.trim()));
+        if (values.length !== 2 || values.some(value => !Number.isInteger(value) || value < 0)) {
+          await say(chatId, field === 'limits' ? 'Formato: MAX_CARACTERES | MAX_LINEAS (0 desactiva cada límite).' : 'Formato: MAX_MENSAJES | MINUTOS (ejemplo: 5 | 25).');
+          return;
+        }
+        if (field === 'limits') {
+          rule.maxCharacters = values[0]; rule.maxLines = values[1];
+          rule.enabled = values.some(value => value > 0);
+        } else {
+          rule.maxMessages = values[0]; rule.windowMinutes = Math.max(1, values[1] || 25);
+          rule.enabled = values[0] > 0;
+        }
+      } else if (field === 'time') {
+        if (clear) { rule.ranges = []; rule.enabled = false; }
+        else {
+          const ranges = lines.map(line => {
+            const match = /^(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})$/.exec(line);
+            if (!match) return null;
+            return { start: match[1], end: match[2] };
+          });
+          if (ranges.some(range => !range)) { await say(chatId, '⚠️ Usa HH:MM-HH:MM, una franja por línea.'); return; }
+          rule.ranges = ranges.slice(0, 20); rule.timezone = rule.timezone || 'America/Mexico_City'; rule.enabled = true;
+        }
+      } else if (field === 'days') {
+        const names = { lunes:1, martes:2, miercoles:3, miércoles:3, jueves:4, viernes:5, sabado:6, sábado:6, domingo:7 };
+        const days = clear ? [] : text.split(/[,\s]+/).filter(Boolean).map(value => names[value.toLocaleLowerCase('es-MX')] || Number(value));
+        if (days.some(day => !Number.isInteger(day) || day < 1 || day > 7)) { await say(chatId, '⚠️ Usa números del 1 al 7 o nombres de días.'); return; }
+        rule.excluded = [...new Set(days)]; rule.enabled = rule.excluded.length > 0;
+      } else if (field === 'links') {
+        const value = text.trim().toUpperCase();
+        if (!['TEXT','BUTTONS','BOTH','CLEAR'].includes(value)) { await say(chatId, 'Usa TEXT, BUTTONS, BOTH o CLEAR.'); return; }
+        rule.text = value === 'TEXT' || value === 'BOTH';
+        rule.buttons = value === 'BUTTONS' || value === 'BOTH';
+        rule.enabled = value !== 'CLEAR';
+      } else if (field === 'media') {
+        const valid = new Set(['text','photo','video','gif','audio','voice','document','video_note','sticker','album']);
+        const types = clear ? [] : text.toLowerCase().split(/[,\s]+/).filter(Boolean);
+        if (types.some(type => !valid.has(type))) { await say(chatId, 'Tipos válidos: ' + [...valid].join(', ')); return; }
+        rule.blockedTypes = [...new Set(types)]; rule.enabled = types.length > 0;
+      } else if (field === 'specific') {
+        const value = text.trim();
+        if (/^FORWARDED$/i.test(value)) { rule.blockForwarded = true; rule.enabled = true; }
+        else if (/^REPEAT:\d+$/i.test(value)) { rule.blockRepeated = true; rule.repeatMinutes = Math.max(1, Math.min(10080, Number(value.split(':')[1]))); rule.enabled = true; }
+        else if (/^PATTERN:/i.test(value)) {
+          const pattern = value.replace(/^PATTERN:/i, '').trim();
+          if (!pattern) { await say(chatId, 'Añade el texto del patrón después de PATTERN:.'); return; }
+          rule.blockedPatterns = [...new Set([...(rule.blockedPatterns || []), pattern])].slice(0, 100); rule.enabled = true;
+        } else if (clear) {
+          rule.blockForwarded = false; rule.blockRepeated = false; rule.blockedPatterns = []; rule.enabled = false;
+        } else { await say(chatId, 'Usa FORWARDED, REPEAT:MINUTOS, PATTERN: texto o CLEAR.'); return; }
+      } else if (field === 'signatures') {
+        if (/^REQUIRE$/i.test(text.trim())) { rule.requireSignature = true; rule.enabled = true; }
+        else if (clear) { rule.allowed = []; rule.requireSignature = false; rule.enabled = false; }
+        else { rule.allowed = lines.slice(0, 100); rule.enabled = true; }
+      }
+      stored[field] = rule;
+      const values = {
+        scopeKey, scopeType: channelId == null ? 'global' : 'channel', channelId,
+        configJson: JSON.stringify(stored), updatedBy: userId, updatedAt: now(),
+      };
+      await db.insert(filterConfigs).values(values).onConflictDoUpdate({
+        target: filterConfigs.scopeKey,
+        set: { configJson: values.configJson, updatedBy: userId, updatedAt: values.updatedAt },
+      }).run();
+      await say(chatId, '✅ Filtro ' + field + ' guardado en ' + (channelId == null ? 'la configuración global' : 'el canal ' + channelId) + '.');
+    } catch (error) {
+      console.log('No se pudo guardar la configuración del filtro', scopeKey, field, String(error));
+      await say(chatId, '⚠️ No se pudo guardar el filtro. Revisa el formato y vuelve a intentarlo.');
+    }
+    return;
+  }
+
   const inputPrompt = String(message.reply_to_message?.text ?? '');
   const inputMatch = inputPrompt.match(/\[CBINPUT:(template|hashtags|welcome|buttons|buttonedit|description|missingdata|report|signature):(-?\d+)(?::([a-z_]+)(?::([A-Z_0-9]+))?)?\]/i);
   if (inputMatch && isPrivate && await isAdmin(userId) && text && !text.startsWith('/')) {
