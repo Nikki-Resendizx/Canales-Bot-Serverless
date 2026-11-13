@@ -32,7 +32,8 @@ async function navText(key) {
 async function buildMainMenu() {
   const keys = [
     ['channels', 'templates', 'hashtags'],
-    ['buttons', 'formats', 'rules'],\n    ['filters'],
+    ['buttons', 'formats', 'rules'],
+    ['filters'],
     ['welcome', 'captcha', 'blacklist'],
     ['requests', 'routes', 'reactions'],
     ['publications'],
