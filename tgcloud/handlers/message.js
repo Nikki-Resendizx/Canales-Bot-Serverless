@@ -5,8 +5,9 @@ import {
   templates, publications, purchases, reactionReports, knownUsers, botTexts, notificationTopics, filterConfigs,
 } from '../schema.js';
 
-const OWNER_ID = 8624574996;
 import { defaultFilterConfig, mergeFilterConfigs } from '../lib/message_filters.js';
+
+const OWNER_ID = 8624574996;
 const DEFAULT_REACTION_REPORT_CHAT_ID = -1004456932813;
 const now = () => Date.now();
 const parseId = value => /^-?\d+$/.test(String(value ?? '')) ? Number(value) : NaN;
@@ -96,7 +97,7 @@ const NAV_DEFAULTS = {
   rules: '⚙️ REGLAS AUTOMÁTICAS', testmode: '🧪 MODO DE PRUEBA',
   publications: '💰 PUBLICACIONES', buttons: '🔘 BOTONES', formats: '🎨 FORMATOS',
   reactions: '🔔 REACCIONES', stars: '⭐ PREMIUM / ESTRELLAS', admins: '👥 ADMINISTRADORES',
-  stats: '📊 ESTADÍSTICAS', settings: '⚙️ CONFIGURACIÓN', close: '❌ CERRAR', navigation: '🧭 NAVEGACIÓN',
+  stats: '📊 ESTADÍSTICAS', settings: '⚙️ CONFIGURACIÓN', close: '❌ CERRAR', navigation: '🧭 NAVEGACIÓN', filters: '🔏 FILTROS',
   back: '🔙 VOLVER',
 };
 async function navText(key) {
@@ -113,6 +114,7 @@ async function buildMainMenu() {
   const keys = [
     ['channels', 'templates', 'hashtags'],
     ['buttons', 'formats', 'rules'],
+    ['filters'],
     ['welcome', 'captcha', 'blacklist'],
     ['routes', 'reactions', 'publications'],
     ['stars', 'stats', 'admins'],
