@@ -541,8 +541,9 @@ export default async function (post) {
     const destination = channelById.get(Number(route.destinationChatId));
     if (Number(route.destinationChatId) === sourceId) continue;
     if (!destination || !Number(destination.active)) continue;
+    let filterCheck = null;
     try {
-      const filterCheck = await checkRouteFilters(post, route, sourceId);
+      filterCheck = await checkRouteFilters(post, route, sourceId);
       if (!filterCheck.accepted) {
         if (!filterCheck.alreadyDelivered) {
           console.log('Publicación detenida por filtros', route.routeKey, filterCheck.result?.key, filterCheck.result?.reason);
@@ -567,7 +568,7 @@ export default async function (post) {
       }
       await recordRouteDelivery(filterCheck);
     } catch (error) {
-      if (typeof filterCheck !== 'undefined') await releaseRouteDelivery(filterCheck);
+      await releaseRouteDelivery(filterCheck);
       // No bloquear otras rutas si un destino rechaza la copia.
       console.log('No se pudo copiar la publicación a la ruta', route.routeKey, String(error));
     }
