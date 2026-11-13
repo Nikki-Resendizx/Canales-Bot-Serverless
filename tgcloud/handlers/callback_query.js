@@ -1142,6 +1142,10 @@ export default async function (query) {
       '🔀 CONFIGURAR DISTRIBUCIÓN\n\nOrigen: ' + sourceId
         + '\nDestino: ' + destinationId
         + '\nModo actual: ' + modeLabel
+        + '\nAvisos al propietario: ' + (forwardConfig.notifyOwner ? 'Sí' : 'No')
+        + '\nFijar publicación: ' + (forwardConfig.pinPost ? 'Sí' : 'No')
+        + '\nEspera inicial: ' + Number(forwardConfig.initialDelaySeconds || 0) + ' s'
+        + '\nIntervalo entre rutas: ' + Number(forwardConfig.intervalSeconds || 0) + ' s'
         + '\n\nElige cómo se distribuirán las publicaciones nuevas.',
       [
         [{ text: (mode === 'auto' ? '✅ ' : '') + '🔄 Automático', callback_data: 'admin:routemode:' + sourceId + ':' + destinationId + ':auto' }],
