@@ -106,6 +106,13 @@ export function evaluateFilters(post, config, options = {}) {
   const text = String(post?.text ?? post?.caption ?? '');
   const checks = [
     () => {
+      const rule = cfg.blockedWords || {};
+      if (!rule.enabled) return null;
+      const haystack = getText(post, rule);
+      const found = (Array.isArray(rule.words) ? rule.words : []).find(word => wordMatches(haystack, word, rule.match, rule.caseSensitive));
+      return found ? { key: 'blockedWords', reason: 'Se detectó una palabra o frase bloqueada: ' + String(found).slice(0, 80) } : null;
+    },
+    () => {
       const rule = cfg.whitelist || {};
       if (!rule.enabled) return null;
       const words = (Array.isArray(rule.words) ? rule.words : []).map(String).filter(word => word.trim());
@@ -116,18 +123,11 @@ export function evaluateFilters(post, config, options = {}) {
       return valid ? null : { key: 'whitelist', reason: 'El mensaje no contiene las palabras o frases requeridas por la lista blanca.' };
     },
     () => {
-      const rule = cfg.blockedWords || {};
-      if (!rule.enabled) return null;
-      const haystack = getText(post, rule);
-      const found = (Array.isArray(rule.words) ? rule.words : []).find(word => wordMatches(haystack, word, rule.match, rule.caseSensitive));
-      return found ? { key: 'blockedWords', reason: 'Se detectó una palabra o frase bloqueada: ' + String(found).slice(0, 80) } : null;
-    },
-    () => {
       const rule = cfg.regex || {};
       if (!rule.enabled || !rule.pattern) return null;
       try {
         const regex = new RegExp(rule.pattern, String(rule.flags ?? 'i').replace(/[^dgimsuvy]/g, ''));
-        return regex.test(text) ? null : { key: 'regex', reason: 'El contenido no cumple el filtro Regex configurado.' };
+        return regex.test(text) ? { key: 'regex', reason: 'El contenido coincide con el patrón Regex bloqueado.' } : null;
       } catch {
         return { key: 'regex', reason: 'El filtro Regex tiene una expresión no válida.' };
       }
