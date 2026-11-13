@@ -1122,11 +1122,7 @@ export default async function (query) {
     }
 
     const mode = ['copy', 'forward'].includes(route.mode) ? route.mode : 'auto';
-    const modeLabel = mode === 'copy'
-      ? '📄 Copiar (sin encabezado de reenvío)'
-      : mode === 'forward'
-        ? '↪️ Reenviar (con encabezado de canal)'
-        : '🔄 Automático (comportamiento predeterminado)';
+    const modeLabel = route.mode === 'manual' ? '✋ Solo manual (sin distribución automática)' : mode === 'copy' ? '📄 Copiar (sin encabezado de reenvío)' : mode === 'forward' ? '↪️ Reenviar (con encabezado de canal)' : '🔄 Automático (comportamiento predeterminado)';
 
     await answer(query);
     await renderPanel(
@@ -1138,7 +1134,6 @@ export default async function (query) {
         [{ text: (mode === 'auto' ? '✅ ' : '') + '🔄 Automático', callback_data: 'admin:routemode:' + sourceId + ':' + destinationId + ':auto' }],
         [{ text: (mode === 'copy' ? '✅ ' : '') + '📄 Copiar publicación', callback_data: 'admin:routemode:' + sourceId + ':' + destinationId + ':copy' }],
         [{ text: (mode === 'forward' ? '✅ ' : '') + '↪️ Reenviar publicación', callback_data: 'admin:routemode:' + sourceId + ':' + destinationId + ':forward' }],
-        [{ text: (route.mode === 'manual' ? '✅ ' : '') + '✋ Solo manual', callback_data: 'admin:routemode:' + sourceId + ':' + destinationId + ':manual' }],
         [{ text: (route.mode === 'manual' ? '✅ ' : '') + '✋ Solo manual', callback_data: 'admin:routemode:' + sourceId + ':' + destinationId + ':manual' }],
         [{ text: '🗑️ Eliminar distribución', callback_data: 'admin:routedelete:' + sourceId + ':' + destinationId }],
         [{ text: '🔙 Volver a distribuciones', callback_data: 'admin:routes' }],
