@@ -81,7 +81,8 @@ async function checkRouteFilters(post, route, sourceId) {
   const config = await effectiveFilterConfig(sourceId, route);
   const scopeKey = 'route:' + route.routeKey;
   const shouldTrack = Boolean(config.quota?.enabled || (config.specific?.enabled && config.specific?.blockRepeated));
-  const eventKey = shouldTrack ? scopeKey + ':' + sourceId + ':' + String(post.media_group_id || post.message_id) : '';
+  const eventKey = shouldTrack ? scopeKey + ':' + sourceId + ':' + String(post.message_id) : '';
+  const publicationKey = shouldTrack ? scopeKey + ':' + sourceId + ':' + String(post.media_group_id || post.message_id) : '';
 
   if (eventKey) {
     const existingEvent = await db.select().from(filterDeliveryEvents).where(eq(filterDeliveryEvents.eventKey, eventKey)).get();
@@ -90,7 +91,7 @@ async function checkRouteFilters(post, route, sourceId) {
 
   let result = evaluateFilters(post, config);
   let fingerprint = '';
-  if (result.accepted && config.specific?.enabled && config.specific?.blockRepeated) {
+  if (result.accepted && !post.media_group_id && config.specific?.enabled && config.specific?.blockRepeated) {
     fingerprint = sourceId + ':' + filterFingerprint(post);
     const seen = await db.select().from(filterSeenContent).where(eq(filterSeenContent.fingerprint, fingerprint)).get();
     if (isRepeatedContent(post, config, seen?.createdAt, Date.now())) {
@@ -103,12 +104,24 @@ async function checkRouteFilters(post, route, sourceId) {
     }
   }
 
+  let reserved = false;
+  if (result.accepted && eventKey) {
+    await db.insert(filterDeliveryEvents).values({
+      eventKey, scopeKey, publicationKey, createdAt: Date.now(),
+    }).onConflictDoNothing().run();
+    reserved = true;
+  }
+
   if (result.accepted && config.quota?.enabled && Number(config.quota.maxMessages) > 0) {
     const minutes = Math.max(1, Math.min(10080, Number(config.quota.windowMinutes) || 25));
     const cutoff = Date.now() - minutes * 60 * 1000;
     const events = await db.select().from(filterDeliveryEvents).all();
-    const count = events.filter(row => row.scopeKey === scopeKey && Number(row.createdAt) >= cutoff).length;
-    if (count >= Number(config.quota.maxMessages)) {
+    const publications = new Set(events
+      .filter(row => row.scopeKey === scopeKey && Number(row.createdAt) >= cutoff)
+      .map(row => row.publicationKey || row.eventKey));
+    if (publications.size > Number(config.quota.maxMessages)) {
+      if (eventKey) await db.delete(filterDeliveryEvents).where(eq(filterDeliveryEvents.eventKey, eventKey)).run();
+      reserved = false;
       result = {
         accepted: false,
         key: 'quota',
@@ -122,21 +135,10 @@ async function checkRouteFilters(post, route, sourceId) {
     await recordFilterRejection(post, route, sourceId, result, scopeKey);
     return { accepted: false, config, scopeKey, result };
   }
-  return { accepted: true, config, scopeKey, eventKey, fingerprint };
+  return { accepted: true, config, scopeKey, eventKey, publicationKey, fingerprint, reserved };
 }
 
 async function recordRouteDelivery(check) {
-  if (check.eventKey) {
-    try {
-      await db.insert(filterDeliveryEvents).values({
-        eventKey: check.eventKey,
-        scopeKey: check.scopeKey,
-        createdAt: Date.now(),
-      }).onConflictDoNothing().run();
-    } catch (error) {
-      console.log('No se pudo registrar el contador de entregas', check.eventKey, String(error));
-    }
-  }
   if (check.fingerprint) {
     try {
       await db.insert(filterSeenContent).values({
@@ -151,6 +153,12 @@ async function recordRouteDelivery(check) {
       console.log('No se pudo registrar la huella de contenido', check.fingerprint, String(error));
     }
   }
+}
+
+async function releaseRouteDelivery(check) {
+  if (!check?.reserved || !check.eventKey) return;
+  try { await db.delete(filterDeliveryEvents).where(eq(filterDeliveryEvents.eventKey, check.eventKey)).run(); }
+  catch (error) { console.log('No se pudo liberar la reserva de cuota', check.eventKey, String(error)); }
 }
 
 function publicationKind(post) {
@@ -559,6 +567,7 @@ export default async function (post) {
       }
       await recordRouteDelivery(filterCheck);
     } catch (error) {
+      if (typeof filterCheck !== 'undefined') await releaseRouteDelivery(filterCheck);
       // No bloquear otras rutas si un destino rechaza la copia.
       console.log('No se pudo copiar la publicación a la ruta', route.routeKey, String(error));
     }
