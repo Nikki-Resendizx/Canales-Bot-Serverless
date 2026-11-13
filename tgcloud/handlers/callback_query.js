@@ -524,7 +524,7 @@ export default async function (query) {
     const scope = filterScopeFromParts(parts);
     const field = String(parts[scope?.type === 'channel' ? 4 : scope?.type === 'route' ? 5 : 3] || '');
     const allowed = ['whitelist','blockedWords','regex','limits','time','days','links','media','specific','signatures','quota'];
-    const permitted = scope && (scope.type === 'global' || (scope.type === 'channel' && await canManageChannel(userId, scope.channelId)) || (scope.type === 'route' && await canManageChannel(userId, scope.sourceId) && await canManageChannel(userId, scope.destinationId)));
+    const permitted = scope && (scope.type === 'global' && userId === OWNER_ID || (scope.type === 'channel' && await canManageChannel(userId, scope.channelId)) || (scope.type === 'route' && await canManageChannel(userId, scope.sourceId) && await canManageChannel(userId, scope.destinationId)));
     if (!permitted || !allowed.includes(field)) { await answer(query, 'Configuración no válida o sin permisos.', true); return; }
     const prompts = {
       whitelist: 'Envía palabras o frases permitidas, una por línea. Puedes escribir ANY o ALL en la primera línea para indicar si basta una coincidencia o deben aparecer todas.',
@@ -546,7 +546,7 @@ export default async function (query) {
   }
   if (section === 'filterbehaviors') {
     const scope = filterScopeFromParts(parts);
-    const permitted = scope && (scope.type === 'global' || (scope.type === 'channel' && await canManageChannel(userId, scope.channelId)) || (scope.type === 'route' && await canManageChannel(userId, scope.sourceId) && await canManageChannel(userId, scope.destinationId)));
+    const permitted = scope && (scope.type === 'global' && userId === OWNER_ID || (scope.type === 'channel' && await canManageChannel(userId, scope.channelId)) || (scope.type === 'route' && await canManageChannel(userId, scope.sourceId) && await canManageChannel(userId, scope.destinationId)));
     if (!permitted) { await answer(query, 'Sin permisos.', true); return; }
     const stored = await loadFilterScope(scope.key);
     const globalConfig = scope.type === 'global' ? {} : await loadFilterScope('global');
@@ -571,7 +571,7 @@ export default async function (query) {
     const scope = filterScopeFromParts(parts);
     const field = String(parts[scope?.type === 'channel' ? 4 : scope?.type === 'route' ? 5 : 3] || '');
     const allowed = ['whitelist','blockedWords','regex','limits','time','days','links','media','specific','signatures','quota'];
-    const permitted = scope && (scope.type === 'global' || (scope.type === 'channel' && await canManageChannel(userId, scope.channelId)) || (scope.type === 'route' && await canManageChannel(userId, scope.sourceId) && await canManageChannel(userId, scope.destinationId)));
+    const permitted = scope && (scope.type === 'global' && userId === OWNER_ID || (scope.type === 'channel' && await canManageChannel(userId, scope.channelId)) || (scope.type === 'route' && await canManageChannel(userId, scope.sourceId) && await canManageChannel(userId, scope.destinationId)));
     if (!permitted || !allowed.includes(field)) { await answer(query, 'Sin permisos.', true); return; }
     const stored = await loadFilterScope(scope.key);
     const globalConfig = scope.type === 'global' ? {} : await loadFilterScope('global');
@@ -589,7 +589,7 @@ export default async function (query) {
   }
   if (section === 'filterbehavior') {
     const scope = filterScopeFromParts(parts);
-    const permitted = scope && (scope.type === 'global' || (scope.type === 'channel' && await canManageChannel(userId, scope.channelId)) || (scope.type === 'route' && await canManageChannel(userId, scope.sourceId) && await canManageChannel(userId, scope.destinationId)));
+    const permitted = scope && (scope.type === 'global' && userId === OWNER_ID || (scope.type === 'channel' && await canManageChannel(userId, scope.channelId)) || (scope.type === 'route' && await canManageChannel(userId, scope.sourceId) && await canManageChannel(userId, scope.destinationId)));
     if (!permitted) { await answer(query, 'Sin permisos.', true); return; }
     const stored = await loadFilterScope(scope.key);
     const globalConfig = scope.type === 'global' ? {} : await loadFilterScope('global');
