@@ -136,6 +136,12 @@ function compactFilterKey(value) {
   return 'fr_' + (hash >>> 0).toString(36);
 }
 
+function compactFilterKey(value) {
+  let hash = 2166136261;
+  for (let i = 0; i < value.length; i++) { hash ^= value.charCodeAt(i); hash = Math.imul(hash, 16777619); }
+  return 'fr_' + (hash >>> 0).toString(36);
+}
+
 async function evaluateGroupRouteFilters(message, route, sourceId) {
   const [globalRow, channelRow, routeRow] = await Promise.all([
     db.select().from(filterConfigs).where(eq(filterConfigs.scopeKey, 'global')).get(),
@@ -146,29 +152,39 @@ async function evaluateGroupRouteFilters(message, route, sourceId) {
   const config = mergeFilterConfigs(defaultFilterConfig(), parse(globalRow), parse(channelRow), parse(routeRow));
   const scopeKey = 'route:' + route.routeKey;
   const shouldTrack = Boolean(config.quota?.enabled || (config.specific?.enabled && config.specific?.blockRepeated));
-  const eventKey = shouldTrack ? scopeKey + ':' + sourceId + ':' + String(message.media_group_id || message.message_id) : '';
+  const eventKey = shouldTrack ? scopeKey + ':' + sourceId + ':' + String(message.message_id) : '';
+  const publicationKey = shouldTrack ? scopeKey + ':' + sourceId + ':' + String(message.media_group_id || message.message_id) : '';
   if (eventKey && await db.select().from(filterDeliveryEvents).where(eq(filterDeliveryEvents.eventKey, eventKey)).get()) {
     return { accepted: false, alreadyDelivered: true };
   }
 
   let result = evaluateFilters(message, config);
   let fingerprint = '';
-  if (result.accepted && config.specific?.enabled && config.specific?.blockRepeated) {
+  if (result.accepted && !message.media_group_id && config.specific?.enabled && config.specific?.blockRepeated) {
     fingerprint = sourceId + ':' + filterFingerprint(message);
     const seen = await db.select().from(filterSeenContent).where(eq(filterSeenContent.fingerprint, fingerprint)).get();
     if (isRepeatedContent(message, config, seen?.createdAt, Date.now())) {
       result = { accepted: false, key: 'specific', reason: 'Se detectó una publicación repetida dentro del periodo configurado.', behavior: config.rejection?.perFilter?.specific || config.rejection?.default || 'discard' };
     }
   }
+
+  let reserved = false;
+  if (result.accepted && eventKey) {
+    await db.insert(filterDeliveryEvents).values({ eventKey, scopeKey, publicationKey, createdAt: Date.now() }).onConflictDoNothing().run();
+    reserved = true;
+  }
   if (result.accepted && config.quota?.enabled && Number(config.quota.maxMessages) > 0) {
     const minutes = Math.max(1, Math.min(10080, Number(config.quota.windowMinutes) || 25));
     const cutoff = Date.now() - minutes * 60 * 1000;
     const events = await db.select().from(filterDeliveryEvents).all();
-    const count = events.filter(row => row.scopeKey === scopeKey && Number(row.createdAt) >= cutoff).length;
-    if (count >= Number(config.quota.maxMessages)) {
+    const publications = new Set(events.filter(row => row.scopeKey === scopeKey && Number(row.createdAt) >= cutoff).map(row => row.publicationKey || row.eventKey));
+    if (publications.size > Number(config.quota.maxMessages)) {
+      if (eventKey) await db.delete(filterDeliveryEvents).where(eq(filterDeliveryEvents.eventKey, eventKey)).run();
+      reserved = false;
       result = { accepted: false, key: 'quota', reason: 'Se alcanzó el límite de ' + Number(config.quota.maxMessages) + ' publicaciones cada ' + minutes + ' minutos.', behavior: config.rejection?.perFilter?.quota || config.rejection?.default || 'discard' };
     }
   }
+
   if (!result.accepted) {
     const rejectionKey = compactFilterKey([scopeKey, sourceId, message.message_id, result.key].join(':'));
     try {
@@ -194,24 +210,24 @@ async function evaluateGroupRouteFilters(message, route, sourceId) {
     }
     return { accepted: false, result };
   }
-  return { accepted: true, scopeKey, eventKey, fingerprint };
+  return { accepted: true, scopeKey, eventKey, publicationKey, fingerprint, reserved };
 }
 
 async function recordGroupRouteDelivery(check) {
-  if (check.eventKey) {
-    try {
-      await db.insert(filterDeliveryEvents).values({ eventKey: check.eventKey, scopeKey: check.scopeKey, createdAt: Date.now() }).onConflictDoNothing().run();
-    } catch (error) { console.log('No se pudo registrar entrega de ruta de grupo', String(error)); }
-  }
-  if (check.fingerprint) {
-    try {
-      await db.insert(filterSeenContent).values({
-        fingerprint: check.fingerprint,
-        sourceChatId: Number(check.fingerprint.split(':')[0]),
-        createdAt: Date.now(),
-      }).onConflictDoUpdate({ target: filterSeenContent.fingerprint, set: { createdAt: Date.now() } }).run();
-    } catch (error) { console.log('No se pudo guardar huella de grupo', String(error)); }
-  }
+  if (!check.fingerprint) return;
+  try {
+    await db.insert(filterSeenContent).values({
+      fingerprint: check.fingerprint,
+      sourceChatId: Number(check.fingerprint.split(':')[0]),
+      createdAt: Date.now(),
+    }).onConflictDoUpdate({ target: filterSeenContent.fingerprint, set: { createdAt: Date.now() } }).run();
+  } catch (error) { console.log('No se pudo guardar huella de grupo', String(error)); }
+}
+
+async function releaseGroupRouteDelivery(check) {
+  if (!check?.reserved || !check.eventKey) return;
+  try { await db.delete(filterDeliveryEvents).where(eq(filterDeliveryEvents.eventKey, check.eventKey)).run(); }
+  catch (error) { console.log('No se pudo liberar reserva de cuota de grupo', check.eventKey, String(error)); }
 }
 
 function parseButtonSyntax(source, rulesUrl = '') {
@@ -830,8 +846,9 @@ export default async function (message) {
           for (const route of routes) {
             const destination = chatById.get(Number(route.destinationChatId));
             if (Number(route.destinationChatId) === chatId || !destination || !Number(destination.active)) continue;
+            let filterCheck = null;
             try {
-              const filterCheck = await evaluateGroupRouteFilters(message, route, chatId);
+              filterCheck = await evaluateGroupRouteFilters(message, route, chatId);
               if (!filterCheck.accepted) continue;
               const mode = ['copy', 'forward'].includes(route.mode) ? route.mode : 'auto';
               const isForwarded = Boolean(message.forward_origin || message.forward_from || message.forward_from_chat || message.forward_sender_name);
@@ -843,6 +860,7 @@ export default async function (message) {
               }
               await recordGroupRouteDelivery(filterCheck);
             } catch (error) {
+              await releaseGroupRouteDelivery(filterCheck);
               console.log('No se pudo distribuir el mensaje de grupo a la ruta', route.routeKey, String(error));
             }
           }
