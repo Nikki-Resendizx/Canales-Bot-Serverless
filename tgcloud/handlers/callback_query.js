@@ -433,14 +433,21 @@ export default async function (query) {
       .slice(0, 20);
     const report = rows.length ? rows.map(row =>
       (row.status === 'pending' ? '⏳ PENDIENTE' : row.status === 'approved' ? '✅ APROBADA' : '🚫 DESCARTADA') +
-      '\\nOrigen: ' + row.sourceChatId + ' → Destino: ' + row.destinationChatId +
-      '\\nFiltro: ' + row.filterKey + '\\nMotivo: ' + row.reason +
-      '\\nFecha: ' + new Date(Number(row.createdAt)).toLocaleString('es-MX')
-    ).join('\\n\\n') : 'Todavía no hay publicaciones rechazadas por los filtros.';
-    await renderPanel('🧾 REGISTRO DE FILTROS\\n\\n' + report, [
-      [{ text: '🔄 Actualizar', callback_data: 'admin:filterlogs' }],
-      [{ text: '🔙 Volver a filtros', callback_data: 'admin:filters' }],
-    ]);
+      '\nOrigen: ' + row.sourceChatId + ' → Destino: ' + row.destinationChatId +
+      '\nFiltro: ' + row.filterKey + '\nMotivo: ' + row.reason +
+      '\nFecha: ' + new Date(Number(row.createdAt)).toLocaleString('es-MX')
+    ).join('\n\n') : 'Todavía no hay publicaciones rechazadas por los filtros.';
+    const keyboard = [];
+    for (const row of rows.filter(item => item.status === 'pending')) {
+      if (!(await canManageChannel(userId, Number(row.sourceChatId)))) continue;
+      keyboard.push([
+        { text: '✅ Aprobar ' + row.rejectionKey, callback_data: 'admin:filterreview:approve:' + row.rejectionKey },
+        { text: '🗑️ Descartar', callback_data: 'admin:filterreview:discard:' + row.rejectionKey },
+      ]);
+    }
+    keyboard.push([{ text: '🔄 Actualizar', callback_data: 'admin:filterlogs' }]);
+    keyboard.push([{ text: '🔙 Volver a filtros', callback_data: 'admin:filters' }]);
+    await renderPanel('🧾 REGISTRO DE FILTROS\n\n' + report, keyboard);
     return;
   }
   if (section === 'filterroutes') {
