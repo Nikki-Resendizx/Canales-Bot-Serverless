@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { defaultFilterConfig, evaluateFilters, localDateKey, mergeFilterConfigs } from '../tgcloud/lib/message_filters.js';
+import { defaultForwardConfig, normalizeForwardConfig, parseForwardDelays } from '../tgcloud/lib/forwarding.js';
 
 test('whitelist requires a configured phrase and ignores case by default', () => {
   const config = defaultFilterConfig();
@@ -90,4 +91,17 @@ test('case-sensitive exact matching preserves capitalization', () => {
   config.blockedWords = { enabled: true, words: ['Promo'], match: 'exact', caseSensitive: true };
   assert.equal(evaluateFilters({ text: 'promo' }, config).accepted, true);
   assert.equal(evaluateFilters({ text: 'Promo' }, config).key, 'blockedWords');
+});
+
+
+test('forward settings are normalized and delays are bounded', () => {
+  assert.deepEqual(normalizeForwardConfig({ notifyOwner: 1, pinPost: true, initialDelaySeconds: 90, intervalSeconds: -2 }), {
+    ...defaultForwardConfig(), pinPost: true, initialDelaySeconds: 30, intervalSeconds: 0,
+  });
+});
+
+test('forward delay parser requires exactly two bounded integers', () => {
+  assert.deepEqual(parseForwardDelays('5\n2'), { valid: true, initialDelaySeconds: 5, intervalSeconds: 2 });
+  assert.equal(parseForwardDelays('5\n31').valid, false);
+  assert.equal(parseForwardDelays('5').valid, false);
 });
