@@ -617,7 +617,7 @@ export default async function (message) {
         }
       } else if (field === 'limits' || field === 'quota') {
         const values = text.split('|').map(value => Number(value.trim()));
-        if (values.length !== 2 || values.some(value => !Number.isInteger(value) || value < 0)) {
+        if ((field === 'limits' && values.length !== 2) || (field === 'quota' && (values.length < 2 || values.length > 3)) || values.some(value => !Number.isInteger(value) || value < 0)) {
           await say(chatId, field === 'limits' ? 'Formato: MAX_CARACTERES | MAX_LINEAS (0 desactiva cada límite).' : 'Formato: MAX_MENSAJES | MINUTOS (ejemplo: 5 | 25).');
           return;
         }
@@ -626,7 +626,8 @@ export default async function (message) {
           rule.enabled = values.some(value => value > 0);
         } else {
           rule.maxMessages = values[0]; rule.windowMinutes = Math.max(1, values[1] || 25);
-          rule.enabled = values[0] > 0;
+          if (values.length === 3) rule.dailyMaxMessages = values[2];
+          rule.enabled = values[0] > 0 || Number(rule.dailyMaxMessages) > 0;
         }
       } else if (field === 'time') {
         if (clear) { rule.ranges = []; rule.enabled = false; }
