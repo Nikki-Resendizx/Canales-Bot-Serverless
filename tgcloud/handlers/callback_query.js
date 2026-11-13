@@ -5,7 +5,9 @@ import {
   templates, globalBans, publications, purchases, reactionReports, botTexts, joinRequests, filterConfigs, filterRejections,
 } from '../schema.js';
 
-const OWNER_ID = 8624574996;\nimport { defaultFilterConfig, mergeFilterConfigs } from '../lib/message_filters.js';
+import { defaultFilterConfig, mergeFilterConfigs } from '../lib/message_filters.js';
+
+const OWNER_ID = 8624574996;
 const NAV_DEFAULTS = {
   panel_title: '⚙️ PANEL DE ADMINISTRACIÓN',
   panel_description: 'Selecciona una sección:',
