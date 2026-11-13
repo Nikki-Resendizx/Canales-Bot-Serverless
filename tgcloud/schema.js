@@ -199,6 +199,7 @@ export const filterSeenContent = table('filter_seen_content', {
 export const filterDeliveryEvents = table('filter_delivery_events', {
   eventKey: text('event_key').primaryKey(),
   scopeKey: text('scope_key').notNull(),
+  publicationKey: text('publication_key').notNull().default(''),
   createdAt: integer('created_at').notNull(),
 });
 
