@@ -617,13 +617,17 @@ export default async function (message) {
       } else if (field === 'time') {
         if (clear) { rule.ranges = []; rule.enabled = false; }
         else {
-          const ranges = lines.map(line => {
+          const rangeLines = lines.filter(line => !/^TZ:/i.test(line));
+          const timezoneLine = lines.find(line => /^TZ:/i.test(line));
+          const timezone = timezoneLine ? timezoneLine.slice(3).trim() : rule.timezone || 'America/Mexico_City';
+          try { new Intl.DateTimeFormat('es-MX', { timeZone: timezone }); } catch { await say(chatId, '⚠️ Zona horaria no válida. Usa un identificador IANA, por ejemplo America/Mexico_City.'); return; }
+          const ranges = rangeLines.map(line => {
             const match = /^(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})$/.exec(line);
             if (!match) return null;
             return { start: match[1], end: match[2] };
           });
-          if (ranges.some(range => !range)) { await say(chatId, '⚠️ Usa HH:MM-HH:MM, una franja por línea.'); return; }
-          rule.ranges = ranges.slice(0, 20); rule.timezone = rule.timezone || 'America/Mexico_City'; rule.enabled = true;
+          if (!ranges.length || ranges.some(range => !range)) { await say(chatId, '⚠️ Usa HH:MM-HH:MM, una franja por línea. También puedes añadir TZ:America/Mexico_City.'); return; }
+          rule.ranges = ranges.slice(0, 20); rule.timezone = timezone; rule.enabled = true;
         }
       } else if (field === 'days') {
         const names = { lunes:1, martes:2, miercoles:3, miércoles:3, jueves:4, viernes:5, sabado:6, sábado:6, domingo:7 };
@@ -644,18 +648,29 @@ export default async function (message) {
       } else if (field === 'specific') {
         const value = text.trim();
         if (/^FORWARDED$/i.test(value)) { rule.blockForwarded = true; rule.enabled = true; }
+        else if (/^BOTS$/i.test(value)) { rule.blockBots = true; rule.enabled = true; }
         else if (/^REPEAT:\d+$/i.test(value)) { rule.blockRepeated = true; rule.repeatMinutes = Math.max(1, Math.min(10080, Number(value.split(':')[1]))); rule.enabled = true; }
         else if (/^PATTERN:/i.test(value)) {
           const pattern = value.replace(/^PATTERN:/i, '').trim();
           if (!pattern) { await say(chatId, 'Añade el texto del patrón después de PATTERN:.'); return; }
           rule.blockedPatterns = [...new Set([...(rule.blockedPatterns || []), pattern])].slice(0, 100); rule.enabled = true;
         } else if (clear) {
-          rule.blockForwarded = false; rule.blockRepeated = false; rule.blockedPatterns = []; rule.enabled = false;
+          rule.blockForwarded = false; rule.blockBots = false; rule.blockRepeated = false; rule.blockedPatterns = []; rule.enabled = false;
         } else { await say(chatId, 'Usa FORWARDED, REPEAT:MINUTOS, PATTERN: texto o CLEAR.'); return; }
       } else if (field === 'signatures') {
         if (/^REQUIRE$/i.test(text.trim())) { rule.requireSignature = true; rule.enabled = true; }
         else if (clear) { rule.allowed = []; rule.requireSignature = false; rule.enabled = false; }
-        else { rule.allowed = lines.slice(0, 100); rule.enabled = true; }
+        else {
+          const allowed = lines.filter(line => {
+            const match = /^MATCH:(EXACT|PARTIAL)$/i.exec(line);
+            const casing = /^CASE:(SENSITIVE|INSENSITIVE)$/i.exec(line);
+            if (match) { rule.match = match[1].toLowerCase(); return false; }
+            if (casing) { rule.caseSensitive = casing[1].toLowerCase() === 'sensitive'; return false; }
+            return true;
+          });
+          if (!allowed.length) { await say(chatId, '⚠️ Añade al menos una firma autorizada.'); return; }
+          rule.allowed = allowed.slice(0, 100); rule.enabled = true;
+        }
       }
       stored[field] = rule;
       const values = {
