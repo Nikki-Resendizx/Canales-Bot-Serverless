@@ -532,7 +532,9 @@ export default async function (message) {
     const routeMatch = /^route:(-?\d+):(-?\d+)$/.exec(scopeKey);
     const channelId = channelMatch ? Number(channelMatch[1]) : routeMatch ? Number(routeMatch[1]) : null;
     const routeDestinationId = routeMatch ? Number(routeMatch[2]) : null;
-    if ((channelId != null && (!Number.isSafeInteger(channelId) || !(await canManageChannel(userId, channelId)))) || (routeDestinationId != null && (!Number.isSafeInteger(routeDestinationId) || !(await canManageChannel(userId, routeDestinationId)))) {
+    const channelAllowed = channelId == null || (Number.isSafeInteger(channelId) && await canManageChannel(userId, channelId));
+    const routeAllowed = routeDestinationId == null || (Number.isSafeInteger(routeDestinationId) && await canManageChannel(userId, routeDestinationId));
+    if (!channelAllowed || !routeAllowed) {
       await say(chatId, '⛔ No tienes permiso para modificar los filtros de ese canal.');
       return;
     }
