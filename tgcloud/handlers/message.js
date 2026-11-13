@@ -525,12 +525,14 @@ export default async function (message) {
 
   // Los formularios del panel se completan respondiendo al mensaje solicitado; no requieren comandos.
   const filterPrompt = String(message.reply_to_message?.text ?? '');
-  const filterInputMatch = filterPrompt.match(/\[CBFILTERINPUT:(global|channel:-?\d+):([a-zA-Z]+)\]/i);
+  const filterInputMatch = filterPrompt.match(/\[CBFILTERINPUT:(global|channel:-?\d+|route:-?\d+:-?\d+):([a-zA-Z]+)\]/i);
   if (filterInputMatch && isPrivate && await isAdmin(userId) && text && !text.startsWith('/')) {
     const [, scopeKey, field] = filterInputMatch;
     const channelMatch = /^channel:(-?\d+)$/.exec(scopeKey);
-    const channelId = channelMatch ? Number(channelMatch[1]) : null;
-    if (channelId != null && (!Number.isSafeInteger(channelId) || !(await canManageChannel(userId, channelId)))) {
+    const routeMatch = /^route:(-?\d+):(-?\d+)$/.exec(scopeKey);
+    const channelId = channelMatch ? Number(channelMatch[1]) : routeMatch ? Number(routeMatch[1]) : null;
+    const routeDestinationId = routeMatch ? Number(routeMatch[2]) : null;
+    if ((channelId != null && (!Number.isSafeInteger(channelId) || !(await canManageChannel(userId, channelId)))) || (routeDestinationId != null && (!Number.isSafeInteger(routeDestinationId) || !(await canManageChannel(userId, routeDestinationId)))) {
       await say(chatId, '⛔ No tienes permiso para modificar los filtros de ese canal.');
       return;
     }
@@ -626,7 +628,8 @@ export default async function (message) {
       }
       stored[field] = rule;
       const values = {
-        scopeKey, scopeType: channelId == null ? 'global' : 'channel', channelId,
+        scopeKey, scopeType: routeMatch ? 'route' : channelId == null ? 'global' : 'channel', channelId,
+        routeKey: routeMatch ? routeMatch[1] + ':' + routeMatch[2] : null,
         configJson: JSON.stringify(stored), updatedBy: userId, updatedAt: now(),
       };
       await db.insert(filterConfigs).values(values).onConflictDoUpdate({
