@@ -861,6 +861,7 @@ export default async function (message) {
           for (const route of routes) {
             const destination = chatById.get(Number(route.destinationChatId));
             if (Number(route.destinationChatId) === chatId || !destination || !Number(destination.active)) continue;
+            if (route.mode === 'manual') continue;
             let filterCheck = null;
             try {
               filterCheck = await evaluateGroupRouteFilters(message, route, chatId);
