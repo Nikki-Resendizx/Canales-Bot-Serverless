@@ -185,7 +185,8 @@ function filterSettingsKeyboard(scope, config) {
   for (const [key,label] of labels) {
     keyboard.push([{ text: '✏️ Configurar ' + label.replace(/^\S+\s+/, ''), callback_data: 'admin:filterinput:' + scope.type + (scope.channelId == null ? '' : ':' + scope.channelId) + ':' + key }]);
   }
-  keyboard.push([{ text: '⚙️ Rechazos: ' + (config.rejection?.default === 'review' ? '⏳ Revisión' : '🚫 Descartar'), callback_data: 'admin:filterbehavior:' + scope.type + (scope.channelId == null ? '' : ':' + scope.channelId) }]);
+  keyboard.push([{ text: '⚖️ Comportamiento por filtro', callback_data: 'admin:filterbehaviors:' + scope.type + (scope.channelId == null ? '' : ':' + scope.channelId) }]);
+  keyboard.push([{ text: '⚙️ Comportamiento predeterminado: ' + (config.rejection?.default === 'review' ? '⏳ Revisión' : '🚫 Descartar'), callback_data: 'admin:filterbehavior:' + scope.type + (scope.channelId == null ? '' : ':' + scope.channelId) }]);
   if (scope.type === 'channel') keyboard.push([{ text: '♻️ Heredar configuración global', callback_data: 'admin:filterreset:' + scope.channelId }]);
   keyboard.push([{ text: '🔙 Volver', callback_data: scope.type === 'global' ? 'admin:filters' : 'admin:filterchannels' }]);
   return keyboard;
@@ -476,6 +477,43 @@ export default async function (query) {
     await answer(query);
     await api.sendMessage({ chat_id: chatId, text: '[CBFILTERINPUT:' + scope.key + ':' + field + ']\n' + prompts[field], reply_markup: { force_reply: true, selective: true } });
     await renderPanel('Esperando la configuración de ' + field + ' para ' + scope.label + '.', [[{ text: '🔙 Volver', callback_data: scope.type === 'global' ? 'admin:filterglobal' : 'admin:filterchannel:' + scope.channelId }]]);
+    return;
+  }
+  if (section === 'filterbehaviors') {
+    const scope = filterScopeFromParts(parts);
+    if (!scope || (scope.type === 'channel' && !(await canManageChannel(userId, scope.channelId)))) { await answer(query, 'Sin permisos.', true); return; }
+    const stored = await loadFilterScope(scope.key);
+    const globalConfig = scope.type === 'channel' ? await loadFilterScope('global') : {};
+    const config = mergeFilterConfigs(defaultFilterConfig(), globalConfig, stored);
+    const names = [
+      ['whitelist','Lista blanca'], ['blockedWords','Palabras bloqueadas'], ['regex','Regex'],
+      ['limits','Caracteres y líneas'], ['time','Franjas horarias'], ['days','Días excluidos'],
+      ['links','Enlaces'], ['media','Medios'], ['specific','Bloqueos específicos'],
+      ['signatures','Firmas'], ['quota','Límite de publicaciones'],
+    ];
+    const keyboard = names.map(([key,label]) => [{
+      text: label + ': ' + ((config.rejection?.perFilter?.[key] || config.rejection?.default) === 'review' ? '⏳ Revisión' : '🚫 Descartar'),
+      callback_data: 'admin:filterbehavioritem:' + scope.type + (scope.channelId == null ? '' : ':' + scope.channelId) + ':' + key,
+    }]);
+    keyboard.push([{ text: '🔙 Volver', callback_data: scope.type === 'global' ? 'admin:filterglobal' : 'admin:filterchannel:' + scope.channelId }]);
+    await renderPanel('⚖️ RECHAZO INDIVIDUAL POR FILTRO\\n\\nElige qué debe ocurrir cuando cada filtro rechace una publicación.', keyboard);
+    return;
+  }
+  if (section === 'filterbehavioritem') {
+    const scope = filterScopeFromParts(parts);
+    const field = String(parts[scope?.type === 'channel' ? 4 : 3] || '');
+    const allowed = ['whitelist','blockedWords','regex','limits','time','days','links','media','specific','signatures','quota'];
+    if (!scope || !allowed.includes(field) || (scope.type === 'channel' && !(await canManageChannel(userId, scope.channelId)))) { await answer(query, 'Sin permisos.', true); return; }
+    const stored = await loadFilterScope(scope.key);
+    const globalConfig = scope.type === 'channel' ? await loadFilterScope('global') : {};
+    const effective = mergeFilterConfigs(defaultFilterConfig(), globalConfig, stored);
+    const current = effective.rejection?.perFilter?.[field] || effective.rejection?.default || 'discard';
+    const next = current === 'review' ? 'discard' : 'review';
+    stored.rejection = { ...(stored.rejection || {}), perFilter: { ...(stored.rejection?.perFilter || {}), [field]: next } };
+    await saveFilterScope(scope.key, scope.type, scope.channelId, stored, userId);
+    await answer(query, next === 'review' ? 'Este filtro enviará los rechazos a revisión.' : 'Este filtro descartará automáticamente.');
+    const keyboard = [[{ text: '🔙 Volver a comportamientos', callback_data: 'admin:filterbehaviors:' + scope.type + (scope.channelId == null ? '' : ':' + scope.channelId) }]];
+    await renderPanel('⚖️ ' + field + ': ' + (next === 'review' ? '⏳ REVISIÓN' : '🚫 DESCARTAR'), keyboard);
     return;
   }
   if (section === 'filterbehavior') {
