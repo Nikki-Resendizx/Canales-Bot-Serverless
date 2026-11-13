@@ -1,5 +1,4 @@
 const DEFAULT_FILTERS = Object.freeze({
-  enabled: false,
   whitelist: { enabled: false, words: [], mode: 'any', caseSensitive: false, match: 'partial', searchText: true, searchCaption: true },
   blockedWords: { enabled: false, words: [], caseSensitive: false, match: 'partial', searchText: true, searchCaption: true },
   regex: { enabled: false, pattern: '', flags: 'i' },
@@ -41,7 +40,7 @@ function wordMatches(haystack, needle, mode, caseSensitive) {
   const term = normalize(needle, caseSensitive).trim();
   if (!term) return false;
   if (mode !== 'exact') return source.includes(term);
-  const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const escaped = [...term].map(char => '.^$*+?()[]{}|\\'.includes(char) ? '\\' + char : char).join('');
   return new RegExp('(^|[^\\p{L}\\p{N}_])' + escaped + '($|[^\\p{L}\\p{N}_])', 'u').test(source);
 }
 
@@ -49,7 +48,7 @@ function getText(post, rule) {
   const chunks = [];
   if (rule.searchText !== false && post?.text) chunks.push(String(post.text));
   if (rule.searchCaption !== false && post?.caption) chunks.push(String(post.caption));
-  return chunks.join('\\n');
+  return chunks.join('\n');
 }
 
 function mediaTypes(post) {
@@ -70,7 +69,7 @@ function mediaTypes(post) {
 function hasTextLinks(post) {
   const entities = [...(post?.entities || []), ...(post?.caption_entities || [])];
   if (entities.some(entity => entity?.type === 'url' || entity?.type === 'text_link')) return true;
-  return /(?:https?:\\/\\/|www\\.|t\\.me\\/)[^\\s]+/i.test(String(post?.text ?? '') + '\\n' + String(post?.caption ?? ''));
+  return /(?:https?:\/\/|www\.|t\.me\/)[^\s]+/i.test(String(post?.text ?? '') + '\n' + String(post?.caption ?? ''));
 }
 
 function hasButtonLinks(post) {
@@ -90,7 +89,7 @@ function localClock(date, timezone) {
 
 function inTimeRange(minute, range) {
   const parse = value => {
-    const match = /^(\\d{1,2}):(\\d{2})$/.exec(String(value ?? ''));
+    const match = /^(\d{1,2}):(\d{2})$/.exec(String(value ?? ''));
     if (!match) return NaN;
     const h = Number(match[1]); const m = Number(match[2]);
     return h <= 23 && m <= 59 ? h * 60 + m : NaN;
@@ -139,7 +138,7 @@ export function evaluateFilters(post, config, options = {}) {
       const maxCharacters = Number(rule.maxCharacters) || 0;
       const maxLines = Number(rule.maxLines) || 0;
       if (maxCharacters > 0 && [...text].length > maxCharacters) return { key: 'limits', reason: 'El mensaje supera el máximo de ' + maxCharacters + ' caracteres.' };
-      const lines = text ? text.split(/\\r?\\n/).length : 0;
+      const lines = text ? text.split(/\r?\n/).length : 0;
       if (maxLines > 0 && lines > maxLines) return { key: 'limits', reason: 'El mensaje supera el máximo de ' + maxLines + ' líneas.' };
       return null;
     },
@@ -202,10 +201,11 @@ export function evaluateFilters(post, config, options = {}) {
 }
 
 export function filterFingerprint(post) {
+  const photo = Array.isArray(post?.photo) ? post.photo[post.photo.length - 1] : null;
   const payload = [
     String(post?.text ?? post?.caption ?? '').normalize('NFC').trim().toLocaleLowerCase('es-MX'),
     mediaTypes(post).join(','),
-    String(post?.photo?.at?.(-1)?.file_unique_id ?? post?.video?.file_unique_id ?? post?.document?.file_unique_id ?? ''),
+    String(photo?.file_unique_id ?? post?.video?.file_unique_id ?? post?.document?.file_unique_id ?? ''),
   ].join('|');
   let hash = 2166136261;
   for (let i = 0; i < payload.length; i++) {
