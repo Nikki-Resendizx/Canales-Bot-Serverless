@@ -203,3 +203,62 @@ export const filterDeliveryEvents = table('filter_delivery_events', {
   createdAt: integer('created_at').notNull(),
 });
 
+
+
+// Opciones adicionales por ruta de distribución; se mantienen separadas
+// de channel_routes para no alterar las rutas existentes.
+export const routeForwardSettings = table('route_forward_settings', {
+  routeKey: text('route_key').primaryKey(),
+  configJson: text('config_json').notNull().default('{}'),
+  updatedBy: integer('updated_by').notNull().default(0),
+  updatedAt: integer('updated_at').notNull(),
+});
+
+// Listas reutilizables de destinatarios para futuras campañas manuales/programadas.
+export const recipientLists = table('recipient_lists', {
+  listKey: text('list_key').primaryKey(),
+  name: text('name').notNull(),
+  createdBy: integer('created_by').notNull(),
+  createdAt: integer('created_at').notNull(),
+});
+
+export const recipientListItems = table('recipient_list_items', {
+  itemKey: text('item_key').primaryKey(),
+  listKey: text('list_key').notNull(),
+  chatId: integer('chat_id').notNull(),
+  addedAt: integer('added_at').notNull(),
+});
+
+// Cola persistente: nunca depende de setTimeout ni de memoria del proceso.
+export const scheduledPublications = table('scheduled_publications', {
+  scheduleKey: text('schedule_key').primaryKey(),
+  sourceChatId: integer('source_chat_id').notNull(),
+  sourceMessageId: integer('source_message_id').notNull(),
+  destinationChatId: integer('destination_chat_id').notNull(),
+  routeKey: text('route_key').notNull().default(''),
+  dueAt: integer('due_at').notNull(),
+  status: text('status').notNull().default('pending'),
+  payloadJson: text('payload_json').notNull().default('{}'),
+  createdBy: integer('created_by').notNull(),
+  createdAt: integer('created_at').notNull(),
+  processedAt: integer('processed_at'),
+});
+
+export const repeatJobs = table('repeat_jobs', {
+  repeatKey: text('repeat_key').primaryKey(),
+  scheduleKey: text('schedule_key').notNull(),
+  intervalMinutes: integer('interval_minutes').notNull(),
+  nextRunAt: integer('next_run_at').notNull(),
+  remainingRuns: integer('remaining_runs').notNull().default(0),
+  active: integer('active').notNull().default(1),
+  createdAt: integer('created_at').notNull(),
+});
+
+export const forwardHistory = table('forward_history', {
+  historyKey: text('history_key').primaryKey(),
+  routeKey: text('route_key').notNull(),
+  sourceMessageId: integer('source_message_id').notNull(),
+  destinationMessageId: integer('destination_message_id'),
+  status: text('status').notNull().default('sent'),
+  createdAt: integer('created_at').notNull(),
+});
