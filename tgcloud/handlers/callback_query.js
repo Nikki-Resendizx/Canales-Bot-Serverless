@@ -137,7 +137,7 @@ async function loadFilterScope(scopeKey) {
   const row = await db.select().from(filterConfigs).where(eq(filterConfigs.scopeKey, scopeKey)).get();
   let stored = null;
   try { stored = row ? JSON.parse(row.configJson || '{}') : null; } catch {}
-  return mergeFilterConfigs(defaultFilterConfig(), stored);
+  return stored || {};
 }
 async function saveFilterScope(scopeKey, scopeType, channelId, config, userId) {
   const values = {
@@ -432,7 +432,7 @@ export default async function (query) {
     const channel = await db.select().from(channels).where(eq(channels.chatId, channelId)).get();
     const scope = { key: 'channel:' + channelId, type: 'channel', channelId, label: String(channel?.title || channelId) };
     const [globalConfig, ownConfig] = await Promise.all([loadFilterScope('global'), loadFilterScope(scope.key)]);
-    const config = mergeFilterConfigs(globalConfig, ownConfig);
+    const config = mergeFilterConfigs(defaultFilterConfig(), globalConfig, ownConfig);
     await renderPanel('📢 FILTROS DEL CANAL\\n' + scope.label + '\\n\\n' + filterSummary(config) + '\\n\\nLos cambios aquí solo afectan a este canal.', filterSettingsKeyboard(scope, config));
     return;
   }
