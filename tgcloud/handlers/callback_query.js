@@ -442,13 +442,14 @@ export default async function (query) {
     const allowed = ['whitelist','blockedWords','regex','limits','time','days','links','media','specific','signatures','quota'];
     if (!scope || !allowed.includes(field) || (scope.type === 'channel' && !(await canManageChannel(userId, scope.channelId)))) { await answer(query, 'Configuración no válida o sin permisos.', true); return; }
     const stored = await loadFilterScope(scope.key);
-    const config = mergeFilterConfigs(defaultFilterConfig(), stored);
-    config[field].enabled = !config[field].enabled;
-    stored[field] = { ...(stored[field] || {}), enabled: config[field].enabled };
+    const globalConfig = scope.type === 'channel' ? await loadFilterScope('global') : {};
+    const effective = mergeFilterConfigs(defaultFilterConfig(), globalConfig, stored);
+    const enabled = !effective[field].enabled;
+    stored[field] = { ...(stored[field] || {}), enabled };
     await saveFilterScope(scope.key, scope.type, scope.channelId, stored, userId);
-    await answer(query, field + (config[field].enabled ? ' activado.' : ' desactivado.'));
-    const parent = scope.type === 'global' ? 'filterglobal' : 'filterchannel:' + scope.channelId;
-    await renderPanel('🔏 FILTROS · ' + scope.label + '\\n\\n' + filterSummary(config), filterSettingsKeyboard(scope, config));
+    await answer(query, field + (enabled ? ' activado.' : ' desactivado.'));
+    const nextEffective = mergeFilterConfigs(defaultFilterConfig(), globalConfig, stored);
+    await renderPanel('🔏 FILTROS · ' + scope.label + '\\n\\n' + filterSummary(nextEffective), filterSettingsKeyboard(scope, nextEffective));
     return;
   }
   if (section === 'filterinput') {
@@ -478,12 +479,14 @@ export default async function (query) {
     const scope = filterScopeFromParts(parts);
     if (!scope || (scope.type === 'channel' && !(await canManageChannel(userId, scope.channelId)))) { await answer(query, 'Sin permisos.', true); return; }
     const stored = await loadFilterScope(scope.key);
-    const config = mergeFilterConfigs(defaultFilterConfig(), stored);
-    config.rejection.default = config.rejection.default === 'review' ? 'discard' : 'review';
-    stored.rejection = { ...(stored.rejection || {}), default: config.rejection.default };
+    const globalConfig = scope.type === 'channel' ? await loadFilterScope('global') : {};
+    const effective = mergeFilterConfigs(defaultFilterConfig(), globalConfig, stored);
+    const nextBehavior = effective.rejection.default === 'review' ? 'discard' : 'review';
+    stored.rejection = { ...(stored.rejection || {}), default: nextBehavior };
     await saveFilterScope(scope.key, scope.type, scope.channelId, stored, userId);
-    await answer(query, config.rejection.default === 'review' ? 'Los rechazos irán a revisión.' : 'Los rechazos se descartarán.');
-    await renderPanel('🔏 FILTROS · ' + scope.label + '\\n\\n' + filterSummary(config), filterSettingsKeyboard(scope, config));
+    await answer(query, nextBehavior === 'review' ? 'Los rechazos irán a revisión.' : 'Los rechazos se descartarán.');
+    const nextEffective = mergeFilterConfigs(defaultFilterConfig(), globalConfig, stored);
+    await renderPanel('🔏 FILTROS · ' + scope.label + '\\n\\n' + filterSummary(nextEffective), filterSettingsKeyboard(scope, nextEffective));
     return;
   }
   if (section === 'filterreset') {
