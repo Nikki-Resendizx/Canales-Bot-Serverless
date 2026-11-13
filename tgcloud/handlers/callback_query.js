@@ -478,16 +478,18 @@ export default async function (query) {
     const scope = filterScopeFromParts(parts);
     const field = String(parts[scope?.type === 'channel' ? 4 : scope?.type === 'route' ? 5 : 3] || '');
     const allowed = ['whitelist','blockedWords','regex','limits','time','days','links','media','specific','signatures','quota'];
-    if (!scope || !allowed.includes(field) || (scope.type === 'channel' && !(await canManageChannel(userId, scope.channelId))) || (scope.type === 'route' && (!(await canManageChannel(userId, scope.sourceId)) || !(await canManageChannel(userId, scope.destinationId))))) { await answer(query, 'Configuración no válida o sin permisos.', true); return; }
+    const permitted = scope && (scope.type === 'global' || (scope.type === 'channel' && await canManageChannel(userId, scope.channelId)) || (scope.type === 'route' && await canManageChannel(userId, scope.sourceId) && await canManageChannel(userId, scope.destinationId)));
+    if (!permitted || !allowed.includes(field)) { await answer(query, 'Configuración no válida o sin permisos.', true); return; }
     const stored = await loadFilterScope(scope.key);
-    const globalConfig = scope.type === 'channel' ? await loadFilterScope('global') : scope.type === 'route' ? await loadFilterScope('global') : {};
-    const channelConfig = scope.type === 'route' ? await loadFilterScope('channel:' + scope.sourceId) : {};\n    const effective = mergeFilterConfigs(defaultFilterConfig(), globalConfig, channelConfig, stored);
+    const globalConfig = scope.type === 'global' ? {} : await loadFilterScope('global');
+    const channelConfig = scope.type === 'route' ? await loadFilterScope('channel:' + scope.sourceId) : {};
+    const effective = mergeFilterConfigs(defaultFilterConfig(), globalConfig, channelConfig, stored);
     const enabled = !effective[field].enabled;
     stored[field] = { ...(stored[field] || {}), enabled };
     await saveFilterScope(scope.key, scope.type, scope.channelId, stored, userId);
     await answer(query, field + (enabled ? ' activado.' : ' desactivado.'));
-    const channelConfig = scope.type === 'route' ? await loadFilterScope('channel:' + scope.sourceId) : {};\n    const nextEffective = mergeFilterConfigs(defaultFilterConfig(), globalConfig, channelConfig, stored);
-    await renderPanel('🔏 FILTROS · ' + scope.label + '\\n\\n' + filterSummary(nextEffective), filterSettingsKeyboard(scope, nextEffective));
+    const nextEffective = mergeFilterConfigs(defaultFilterConfig(), globalConfig, channelConfig, stored);
+    await renderPanel('🔏 FILTROS · ' + scope.label + '\n\n' + filterSummary(nextEffective), filterSettingsKeyboard(scope, nextEffective));
     return;
   }
   if (section === 'filterinput') {
@@ -515,53 +517,61 @@ export default async function (query) {
   }
   if (section === 'filterbehaviors') {
     const scope = filterScopeFromParts(parts);
-    if (!scope || (scope.type === 'channel' && !(await canManageChannel(userId, scope.channelId)))) { await answer(query, 'Sin permisos.', true); return; }
+    const permitted = scope && (scope.type === 'global' || (scope.type === 'channel' && await canManageChannel(userId, scope.channelId)) || (scope.type === 'route' && await canManageChannel(userId, scope.sourceId) && await canManageChannel(userId, scope.destinationId)));
+    if (!permitted) { await answer(query, 'Sin permisos.', true); return; }
     const stored = await loadFilterScope(scope.key);
-    const globalConfig = scope.type === 'channel' ? await loadFilterScope('global') : {};
-    const config = mergeFilterConfigs(defaultFilterConfig(), globalConfig, stored);
+    const globalConfig = scope.type === 'global' ? {} : await loadFilterScope('global');
+    const channelConfig = scope.type === 'route' ? await loadFilterScope('channel:' + scope.sourceId) : {};
+    const config = mergeFilterConfigs(defaultFilterConfig(), globalConfig, channelConfig, stored);
     const names = [
       ['whitelist','Lista blanca'], ['blockedWords','Palabras bloqueadas'], ['regex','Regex'],
       ['limits','Caracteres y líneas'], ['time','Franjas horarias'], ['days','Días excluidos'],
       ['links','Enlaces'], ['media','Medios'], ['specific','Bloqueos específicos'],
       ['signatures','Firmas'], ['quota','Límite de publicaciones'],
     ];
+    const scopePath = scope.type === 'route' ? 'route:' + scope.sourceId + ':' + scope.destinationId : scope.type + (scope.channelId == null ? '' : ':' + scope.channelId);
     const keyboard = names.map(([key,label]) => [{
       text: label + ': ' + ((config.rejection?.perFilter?.[key] || config.rejection?.default) === 'review' ? '⏳ Revisión' : '🚫 Descartar'),
-      callback_data: 'admin:filterbehavioritem:' + scope.type + (scope.channelId == null ? '' : ':' + scope.channelId) + ':' + key,
+      callback_data: 'admin:filterbehavioritem:' + scopePath + ':' + key,
     }]);
-    keyboard.push([{ text: '🔙 Volver', callback_data: scope.type === 'global' ? 'admin:filterglobal' : 'admin:filterchannel:' + scope.channelId }]);
-    await renderPanel('⚖️ RECHAZO INDIVIDUAL POR FILTRO\\n\\nElige qué debe ocurrir cuando cada filtro rechace una publicación.', keyboard);
+    keyboard.push([{ text: '🔙 Volver', callback_data: scope.type === 'global' ? 'admin:filterglobal' : scope.type === 'route' ? 'admin:filterroute:' + scope.sourceId + ':' + scope.destinationId : 'admin:filterchannel:' + scope.channelId }]);
+    await renderPanel('⚖️ RECHAZO INDIVIDUAL POR FILTRO\n\nElige qué debe ocurrir cuando cada filtro rechace una publicación.', keyboard);
     return;
   }
   if (section === 'filterbehavioritem') {
     const scope = filterScopeFromParts(parts);
-    const field = String(parts[scope?.type === 'channel' ? 4 : 3] || '');
+    const field = String(parts[scope?.type === 'channel' ? 4 : scope?.type === 'route' ? 5 : 3] || '');
     const allowed = ['whitelist','blockedWords','regex','limits','time','days','links','media','specific','signatures','quota'];
-    if (!scope || !allowed.includes(field) || (scope.type === 'channel' && !(await canManageChannel(userId, scope.channelId)))) { await answer(query, 'Sin permisos.', true); return; }
+    const permitted = scope && (scope.type === 'global' || (scope.type === 'channel' && await canManageChannel(userId, scope.channelId)) || (scope.type === 'route' && await canManageChannel(userId, scope.sourceId) && await canManageChannel(userId, scope.destinationId)));
+    if (!permitted || !allowed.includes(field)) { await answer(query, 'Sin permisos.', true); return; }
     const stored = await loadFilterScope(scope.key);
-    const globalConfig = scope.type === 'channel' ? await loadFilterScope('global') : {};
-    const effective = mergeFilterConfigs(defaultFilterConfig(), globalConfig, stored);
+    const globalConfig = scope.type === 'global' ? {} : await loadFilterScope('global');
+    const channelConfig = scope.type === 'route' ? await loadFilterScope('channel:' + scope.sourceId) : {};
+    const effective = mergeFilterConfigs(defaultFilterConfig(), globalConfig, channelConfig, stored);
     const current = effective.rejection?.perFilter?.[field] || effective.rejection?.default || 'discard';
     const next = current === 'review' ? 'discard' : 'review';
     stored.rejection = { ...(stored.rejection || {}), perFilter: { ...(stored.rejection?.perFilter || {}), [field]: next } };
     await saveFilterScope(scope.key, scope.type, scope.channelId, stored, userId);
     await answer(query, next === 'review' ? 'Este filtro enviará los rechazos a revisión.' : 'Este filtro descartará automáticamente.');
-    const scopePath = scope.type === 'route' ? 'route:' + scope.sourceId + ':' + scope.destinationId : scope.type + (scope.channelId == null ? '' : ':' + scope.channelId);\n    const keyboard = [[{ text: '🔙 Volver a comportamientos', callback_data: 'admin:filterbehaviors:' + scopePath }]];
+    const scopePath = scope.type === 'route' ? 'route:' + scope.sourceId + ':' + scope.destinationId : scope.type + (scope.channelId == null ? '' : ':' + scope.channelId);
+    const keyboard = [[{ text: '🔙 Volver a comportamientos', callback_data: 'admin:filterbehaviors:' + scopePath }]];
     await renderPanel('⚖️ ' + field + ': ' + (next === 'review' ? '⏳ REVISIÓN' : '🚫 DESCARTAR'), keyboard);
     return;
   }
   if (section === 'filterbehavior') {
     const scope = filterScopeFromParts(parts);
-    if (!scope || (scope.type === 'channel' && !(await canManageChannel(userId, scope.channelId)))) { await answer(query, 'Sin permisos.', true); return; }
+    const permitted = scope && (scope.type === 'global' || (scope.type === 'channel' && await canManageChannel(userId, scope.channelId)) || (scope.type === 'route' && await canManageChannel(userId, scope.sourceId) && await canManageChannel(userId, scope.destinationId)));
+    if (!permitted) { await answer(query, 'Sin permisos.', true); return; }
     const stored = await loadFilterScope(scope.key);
-    const globalConfig = scope.type === 'channel' ? await loadFilterScope('global') : {};
-    const effective = mergeFilterConfigs(defaultFilterConfig(), globalConfig, stored);
+    const globalConfig = scope.type === 'global' ? {} : await loadFilterScope('global');
+    const channelConfig = scope.type === 'route' ? await loadFilterScope('channel:' + scope.sourceId) : {};
+    const effective = mergeFilterConfigs(defaultFilterConfig(), globalConfig, channelConfig, stored);
     const nextBehavior = effective.rejection.default === 'review' ? 'discard' : 'review';
     stored.rejection = { ...(stored.rejection || {}), default: nextBehavior };
     await saveFilterScope(scope.key, scope.type, scope.channelId, stored, userId);
     await answer(query, nextBehavior === 'review' ? 'Los rechazos irán a revisión.' : 'Los rechazos se descartarán.');
-    const channelConfig = scope.type === 'route' ? await loadFilterScope('channel:' + scope.sourceId) : {};\n    const nextEffective = mergeFilterConfigs(defaultFilterConfig(), globalConfig, channelConfig, stored);
-    await renderPanel('🔏 FILTROS · ' + scope.label + '\\n\\n' + filterSummary(nextEffective), filterSettingsKeyboard(scope, nextEffective));
+    const nextEffective = mergeFilterConfigs(defaultFilterConfig(), globalConfig, channelConfig, stored);
+    await renderPanel('🔏 FILTROS · ' + scope.label + '\n\n' + filterSummary(nextEffective), filterSettingsKeyboard(scope, nextEffective));
     return;
   }
   if (section === 'filterresetroute') {
