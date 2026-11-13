@@ -2,8 +2,10 @@ import { api, db } from 'sdk';
 import { eq } from 'sdk/db';
 import {
   admins, captchaSessions, channels, channelSettings, channelRoutes,
-  templates, globalBans, publications, purchases, reactionReports, botTexts, joinRequests,
+  templates, globalBans, publications, purchases, reactionReports, botTexts, joinRequests, filterConfigs, filterRejections, routeForwardSettings,
 } from '../schema.js';
+
+import { defaultFilterConfig, mergeFilterConfigs } from '../lib/message_filters.js';
 
 const OWNER_ID = 8624574996;
 const NAV_DEFAULTS = {
@@ -15,7 +17,7 @@ const NAV_DEFAULTS = {
   publications: '💰 PUBLICACIONES', buttons: '🔘 BOTONES', formats: '🎨 FORMATOS',
   reactions: '🔔 REACCIONES', stars: '⭐ PREMIUM / ESTRELLAS', admins: '👥 ADMINISTRADORES',
   stats: '📊 ESTADÍSTICAS', settings: '⚙️ CONFIGURACIÓN', close: '❌ CERRAR', navigation: '🧭 NAVEGACIÓN',
-  requests: '📥 SOLICITUDES DE INGRESO', back: '🔙 VOLVER',
+  requests: '📥 SOLICITUDES DE INGRESO', filters: '🔏 FILTROS', back: '🔙 VOLVER',
 };
 async function navText(key) {
   // El menú principal debe poder abrirse incluso si la migración de bot_texts aún no terminó.
@@ -31,6 +33,7 @@ async function buildMainMenu() {
   const keys = [
     ['channels', 'templates', 'hashtags'],
     ['buttons', 'formats', 'rules'],
+    ['filters'],
     ['welcome', 'captcha', 'blacklist'],
     ['requests', 'routes', 'reactions'],
     ['publications'],
@@ -130,6 +133,69 @@ function sanitizeInlineKeyboard(keyboard) {
         button.callback_game || button.pay === true
       )))
     .filter(row => row.length > 0);
+}
+
+
+async function loadFilterScope(scopeKey) {
+  const row = await db.select().from(filterConfigs).where(eq(filterConfigs.scopeKey, scopeKey)).get();
+  let stored = null;
+  try { stored = row ? JSON.parse(row.configJson || '{}') : null; } catch {}
+  return stored || {};
+}
+async function saveFilterScope(scopeKey, scopeType, channelId, config, userId) {
+  const values = {
+    scopeKey, scopeType, channelId: channelId == null ? null : Number(channelId), routeKey: scopeType === 'route' ? scopeKey.slice('route:'.length) : null,
+    configJson: JSON.stringify(config), updatedBy: Number(userId), updatedAt: Date.now(),
+  };
+  await db.insert(filterConfigs).values(values).onConflictDoUpdate({
+    target: filterConfigs.scopeKey,
+    set: { configJson: values.configJson, updatedBy: values.updatedBy, updatedAt: values.updatedAt },
+  }).run();
+}
+function filterScopeFromParts(parts) {
+  if (parts[2] === 'global') return { key: 'global', type: 'global', channelId: null, label: 'GLOBAL' };
+  if (parts[2] === 'channel') {
+    const channelId = Number(parts[3]);
+    if (Number.isSafeInteger(channelId)) return { key: 'channel:' + channelId, type: 'channel', channelId, label: 'CANAL ' + channelId };
+  }
+  if (parts[2] === 'route') {
+    const sourceId = Number(parts[3]); const destinationId = Number(parts[4]);
+    if (Number.isSafeInteger(sourceId) && Number.isSafeInteger(destinationId)) return { key: 'route:' + sourceId + ':' + destinationId, type: 'route', sourceId, destinationId, routeKey: sourceId + ':' + destinationId, label: sourceId + ' → ' + destinationId };
+  }
+  return null;
+}
+function filterSummary(config) {
+  const labels = [
+    ['whitelist','Lista blanca'], ['blockedWords','Palabras bloqueadas'], ['regex','Regex'],
+    ['limits','Límites de texto'], ['time','Franja horaria'], ['days','Días excluidos'],
+    ['links','Enlaces'], ['media','Tipos de medios'], ['specific','Bloqueos específicos'],
+    ['signatures','Firmas autorizadas'], ['quota','Límite de publicaciones'],
+  ];
+  return labels.map(([key,label]) => '• ' + label + ': ' + (config[key]?.enabled ? '🟢 ACTIVO' : '⚪ Inactivo')).join('\n');
+}
+function filterSettingsKeyboard(scope, config) {
+  const labels = [
+    ['whitelist','📗 Lista blanca'], ['blockedWords','🗯 Palabras bloqueadas'],
+    ['regex','🔎 Filtro Regex'], ['limits','📏 Caracteres y líneas'],
+    ['time','🕟 Franjas horarias'], ['days','📅 Días excluidos'],
+    ['links','🔗 Bloqueo de enlaces'], ['media','🖼 Tipos de medios'],
+    ['specific','🚫 Bloqueo específico'], ['signatures','✍️ Firmas autorizadas'],
+    ['quota','⏱ Límite de publicaciones'],
+  ];
+  const scopePath = scope.type === 'route' ? 'route:' + scope.sourceId + ':' + scope.destinationId : scope.type + (scope.channelId == null ? '' : ':' + scope.channelId);
+  const keyboard = labels.map(([key,label]) => [{
+    text: (config[key]?.enabled ? '🟢 ' : '⚪ ') + label,
+    callback_data: 'admin:filtertoggle:' + scopePath + ':' + key,
+  }]);
+  for (const [key,label] of labels) {
+    keyboard.push([{ text: '✏️ Configurar ' + label.replace(/^\S+\s+/, ''), callback_data: 'admin:filterinput:' + scopePath + ':' + key }]);
+  }
+  keyboard.push([{ text: '⚖️ Comportamiento por filtro', callback_data: 'admin:filterbehaviors:' + scopePath }]);
+  keyboard.push([{ text: '⚙️ Comportamiento predeterminado: ' + (config.rejection?.default === 'review' ? '⏳ Revisión' : '🚫 Descartar'), callback_data: 'admin:filterbehavior:' + scopePath }]);
+  if (scope.type === 'channel') keyboard.push([{ text: '♻️ Heredar configuración global', callback_data: 'admin:filterreset:' + scope.channelId }]);
+  if (scope.type === 'route') keyboard.push([{ text: '♻️ Heredar configuración del canal', callback_data: 'admin:filterresetroute:' + scope.sourceId + ':' + scope.destinationId }]);
+  keyboard.push([{ text: '🔙 Volver', callback_data: scope.type === 'global' ? 'admin:filters' : scope.type === 'route' ? 'admin:filterroutes' : 'admin:filterchannels' }]);
+  return keyboard;
 }
 
 async function sendPanel(chatId, text, keyboard = null, messageId = null) {
@@ -312,6 +378,35 @@ export default async function (query) {
     }
     return;
   }
+
+  if (data.startsWith('admin:filterreview:')) {
+    const [, , action, rejectionKey] = data.split(':');
+    if (!['approve','discard'].includes(action) || !rejectionKey) { await answer(query, 'Acción de revisión no válida.', true); return; }
+    const pending = await db.select().from(filterRejections).where(eq(filterRejections.rejectionKey, rejectionKey)).get();
+    if (!pending || pending.status !== 'pending' || !(await canManageChannel(userId, Number(pending.sourceChatId)))) {
+      await answer(query, 'La revisión ya no está disponible o no tienes permiso.', true); return;
+    }
+    if (action === 'approve') {
+      try {
+        await api.copyMessage({
+          chat_id: Number(pending.destinationChatId),
+          from_chat_id: Number(pending.sourceChatId),
+          message_id: Number(pending.sourceMessageId),
+        });
+      } catch (error) {
+        await answer(query, 'No se pudo reenviar: ' + String(error?.message || error).slice(0, 120), true);
+        return;
+      }
+    }
+    await db.update(filterRejections).set({
+      status: action === 'approve' ? 'approved' : 'rejected',
+      reviewedBy: userId, reviewedAt: Date.now(),
+    }).where(eq(filterRejections.rejectionKey, rejectionKey)).run();
+    await answer(query, action === 'approve' ? 'Publicación reenviada.' : 'Publicación descartada.');
+    try { await api.editMessageText({ chat_id: chatId, message_id: message.message_id, text: (message.text || 'Revisión') + '\\n\\n' + (action === 'approve' ? '✅ APROBADA Y REENVIADA' : '🗑️ DESCARTADA') }); } catch {}
+    return;
+  }
+
   if (!data.startsWith('admin:')) { await answer(query, 'Acción desconocida.'); return; }
   if (!userId || chatId !== userId || !(await isAdmin(userId))) {
     await answer(query, 'No tienes permiso para usar este panel.', true);
@@ -320,6 +415,213 @@ export default async function (query) {
 
   const parts = data.split(':');
   const section = parts[1];
+
+
+  if (section === 'filters') {
+    const keyboard = [];
+    if (userId === OWNER_ID) keyboard.push([{ text: '🌐 Configuración global', callback_data: 'admin:filterglobal' }]);
+    keyboard.push([{ text: '📢 Personalizar por canal', callback_data: 'admin:filterchannels' }]);
+    keyboard.push([{ text: '🔀 Personalizar por ruta', callback_data: 'admin:filterroutes' }]);
+    keyboard.push([{ text: '🧾 Registro de rechazos', callback_data: 'admin:filterlogs' }]);
+    keyboard.push(await backRow());
+    await renderPanel('🔏 FILTROS DE MENSAJES\\n\\nElige dónde quieres administrar los filtros. La configuración global sirve como base; cada canal puede sobrescribirla sin afectar a los demás.', keyboard);
+    return;
+  }
+  if (section === 'filterlogs') {
+    const allRows = (await db.select().from(filterRejections).all()).sort((a, b) => Number(b.createdAt) - Number(a.createdAt)).slice(0, 100);
+    const visibleRows = [];
+    for (const row of allRows) if (await canManageChannel(userId, Number(row.sourceChatId))) visibleRows.push(row);
+    const rows = visibleRows.slice(0, 20);
+    const report = rows.length ? rows.map(row =>
+      (row.status === 'pending' ? '⏳ PENDIENTE' : row.status === 'approved' ? '✅ APROBADA' : '🚫 DESCARTADA') +
+      '\nOrigen: ' + row.sourceChatId + ' → Destino: ' + row.destinationChatId +
+      '\nFiltro: ' + row.filterKey + '\nMotivo: ' + row.reason +
+      '\nFecha: ' + new Date(Number(row.createdAt)).toLocaleString('es-MX')
+    ).join('\n\n') : 'Todavía no hay publicaciones rechazadas por los filtros.';
+    const safeReport = report.slice(0, 3500);
+    const keyboard = [];
+    for (const row of rows.filter(item => item.status === 'pending')) {
+      if (!(await canManageChannel(userId, Number(row.sourceChatId)))) continue;
+      keyboard.push([
+        { text: '✅ Aprobar ' + row.rejectionKey, callback_data: 'admin:filterreview:approve:' + row.rejectionKey },
+        { text: '🗑️ Descartar', callback_data: 'admin:filterreview:discard:' + row.rejectionKey },
+      ]);
+    }
+    keyboard.push([{ text: '🔄 Actualizar', callback_data: 'admin:filterlogs' }]);
+    keyboard.push([{ text: '🔙 Volver a filtros', callback_data: 'admin:filters' }]);
+    await renderPanel('🧾 REGISTRO DE FILTROS\n\n' + safeReport, keyboard);
+    return;
+  }
+  if (section === 'filterroutes') {
+    const routes = await db.select().from(channelRoutes).all();
+    const visible = [];
+    for (const route of routes) {
+      if (await canManageChannel(userId, Number(route.sourceChatId)) && await canManageChannel(userId, Number(route.destinationChatId))) visible.push(route);
+    }
+    const keyboard = visible.map(route => [{
+      text: Number(route.sourceChatId) + ' → ' + Number(route.destinationChatId),
+      callback_data: 'admin:filterroute:' + route.sourceChatId + ':' + route.destinationChatId,
+    }]);
+    keyboard.push(await backRow());
+    await renderPanel('🔀 FILTROS POR RUTA\\n\\nSelecciona una ruta para aplicar reglas adicionales solo a ese destino. La prioridad será ruta → canal origen → global.', keyboard);
+    return;
+  }
+  if (section === 'filterroute') {
+    const sourceId = Number(parts[2]); const destinationId = Number(parts[3]);
+    const routeKey = sourceId + ':' + destinationId;
+    const route = await db.select().from(channelRoutes).where(eq(channelRoutes.routeKey, routeKey)).get();
+    if (!route || !(await canManageChannel(userId, sourceId)) || !(await canManageChannel(userId, destinationId))) { await answer(query, 'La ruta no existe o no tienes permisos.', true); return; }
+    const [globalConfig, channelConfig, ownConfig] = await Promise.all([
+      loadFilterScope('global'), loadFilterScope('channel:' + sourceId), loadFilterScope('route:' + routeKey),
+    ]);
+    const config = mergeFilterConfigs(defaultFilterConfig(), globalConfig, channelConfig, ownConfig);
+    const scope = { key: 'route:' + routeKey, type: 'route', sourceId, destinationId, routeKey, label: sourceId + ' → ' + destinationId };
+    await renderPanel('🔀 FILTROS DE RUTA\\n' + scope.label + '\\n\\n' + filterSummary(config) + '\\n\\nEsta configuración tiene prioridad sobre el canal y la configuración global.', filterSettingsKeyboard(scope, config));
+    return;
+  }
+  if (section === 'filterglobal') {
+    if (userId !== OWNER_ID) { await answer(query, 'Solo el propietario puede modificar los filtros globales.', true); return; }
+    const scope = { key: 'global', type: 'global', channelId: null, label: 'GLOBAL' };
+    const config = mergeFilterConfigs(defaultFilterConfig(), await loadFilterScope(scope.key));
+    await renderPanel('🌐 FILTROS GLOBALES\\n\\n' + filterSummary(config) + '\\n\\nLos canales heredan estos valores mientras no tengan una personalización individual.', filterSettingsKeyboard(scope, config));
+    return;
+  }
+  if (section === 'filterchannels') {
+    const rows = await managedChannels(userId);
+    const keyboard = rows.map(row => [{ text: String(row.title || row.chatId).slice(0, 42), callback_data: 'admin:filterchannel:' + row.chatId }]);
+    keyboard.push(await backRow());
+    await renderPanel('📢 FILTROS POR CANAL\\n\\nSelecciona un canal para crear excepciones. Los valores no configurados seguirán heredándose de la configuración global.', keyboard);
+    return;
+  }
+  if (section === 'filterchannel') {
+    const channelId = Number(parts[2]);
+    if (!Number.isSafeInteger(channelId) || !(await canManageChannel(userId, channelId))) { await answer(query, 'No tienes permiso para configurar este canal.', true); return; }
+    const channel = await db.select().from(channels).where(eq(channels.chatId, channelId)).get();
+    const scope = { key: 'channel:' + channelId, type: 'channel', channelId, label: String(channel?.title || channelId) };
+    const [globalConfig, ownConfig] = await Promise.all([loadFilterScope('global'), loadFilterScope(scope.key)]);
+    const config = mergeFilterConfigs(defaultFilterConfig(), globalConfig, ownConfig);
+    await renderPanel('📢 FILTROS DEL CANAL\\n' + scope.label + '\\n\\n' + filterSummary(config) + '\\n\\nLos cambios aquí solo afectan a este canal.', filterSettingsKeyboard(scope, config));
+    return;
+  }
+  if (section === 'filtertoggle') {
+    const scope = filterScopeFromParts(parts);
+    const field = String(parts[scope?.type === 'channel' ? 4 : scope?.type === 'route' ? 5 : 3] || '');
+    const allowed = ['whitelist','blockedWords','regex','limits','time','days','links','media','specific','signatures','quota'];
+    const permitted = scope && (scope.type === 'global' && userId === OWNER_ID || (scope.type === 'channel' && await canManageChannel(userId, scope.channelId)) || (scope.type === 'route' && await canManageChannel(userId, scope.sourceId) && await canManageChannel(userId, scope.destinationId)));
+    if (!permitted || !allowed.includes(field)) { await answer(query, 'Configuración no válida o sin permisos.', true); return; }
+    const stored = await loadFilterScope(scope.key);
+    const globalConfig = scope.type === 'global' ? {} : await loadFilterScope('global');
+    const channelConfig = scope.type === 'route' ? await loadFilterScope('channel:' + scope.sourceId) : {};
+    const effective = mergeFilterConfigs(defaultFilterConfig(), globalConfig, channelConfig, stored);
+    const enabled = !effective[field].enabled;
+    stored[field] = { ...(stored[field] || {}), enabled };
+    await saveFilterScope(scope.key, scope.type, scope.channelId, stored, userId);
+    await answer(query, field + (enabled ? ' activado.' : ' desactivado.'));
+    const nextEffective = mergeFilterConfigs(defaultFilterConfig(), globalConfig, channelConfig, stored);
+    await renderPanel('🔏 FILTROS · ' + scope.label + '\n\n' + filterSummary(nextEffective), filterSettingsKeyboard(scope, nextEffective));
+    return;
+  }
+  if (section === 'filterinput') {
+    const scope = filterScopeFromParts(parts);
+    const field = String(parts[scope?.type === 'channel' ? 4 : scope?.type === 'route' ? 5 : 3] || '');
+    const allowed = ['whitelist','blockedWords','regex','limits','time','days','links','media','specific','signatures','quota'];
+    const permitted = scope && (scope.type === 'global' && userId === OWNER_ID || (scope.type === 'channel' && await canManageChannel(userId, scope.channelId)) || (scope.type === 'route' && await canManageChannel(userId, scope.sourceId) && await canManageChannel(userId, scope.destinationId)));
+    if (!permitted || !allowed.includes(field)) { await answer(query, 'Configuración no válida o sin permisos.', true); return; }
+    const prompts = {
+      whitelist: 'Envía palabras o frases permitidas, una por línea. Opciones: ANY o ALL; MATCH:EXACT o MATCH:PARTIAL; CASE:SENSITIVE o CASE:INSENSITIVE; SEARCH:TEXT, SEARCH:CAPTION o SEARCH:BOTH. Después escribe las frases.',
+      blockedWords: 'Envía palabras o frases bloqueadas, una por línea. Opciones: MATCH:EXACT o MATCH:PARTIAL; CASE:SENSITIVE o CASE:INSENSITIVE; SEARCH:TEXT, SEARCH:CAPTION o SEARCH:BOTH. Después escribe las frases.',
+      regex: 'Envía la expresión regular. Ejemplo: \\b(promo|gratis)\\b. Puedes usar /expresión/flags.',
+      limits: 'Envía MAX_CARACTERES | MAX_LINEAS. Usa 0 para desactivar uno de los límites. Ejemplo: 1000 | 12.',
+      time: 'Envía una franja por línea en formato HH:MM-HH:MM. Ejemplo: 09:00-13:00\n16:00-21:00. Puedes añadir TZ:America/Mexico_City. Usa CLEAR para quitar franjas.',
+      days: 'Envía los días que se omitirán separados por coma: 1=lunes, 2=martes, … 7=domingo. Ejemplo: 6,7. CLEAR para ninguno.',
+      links: 'Escribe TEXT, BUTTONS o BOTH para bloquear enlaces en texto/descripción, botones inline o ambos.',
+      media: 'Envía los tipos de medios que quieres bloquear separados por coma: text, photo, video, gif, audio, voice, document, video_note, sticker, album.',
+      specific: 'Envía FORWARDED para bloquear reenvíos, BOTS para bloquear mensajes identificados como enviados por bots, REPEAT:MINUTOS para bloquear duplicados, o PATTERN: texto para añadir patrones repetitivos excluidos.',
+      signatures: 'Envía las firmas de administradores autorizadas, una por línea. Opciones: MATCH:EXACT o MATCH:PARTIAL; CASE:SENSITIVE o CASE:INSENSITIVE. Escribe REQUIRE para exigir una firma no vacía.',
+      quota: 'Envía MAX_MENSAJES | MINUTOS | MAX_DIARIO (opcional). Ejemplo: 5 | 25 | 50. Usa 0 | 25 | 0 para desactivar ambos límites.',
+    };
+    await answer(query);
+    await api.sendMessage({ chat_id: chatId, text: '[CBFILTERINPUT:' + scope.key + ':' + field + ']\n' + prompts[field], reply_markup: { force_reply: true, selective: true } });
+    await renderPanel('Esperando la configuración de ' + field + ' para ' + scope.label + '.', [[{ text: '🔙 Volver', callback_data: scope.type === 'global' ? 'admin:filterglobal' : scope.type === 'route' ? 'admin:filterroute:' + scope.sourceId + ':' + scope.destinationId : 'admin:filterchannel:' + scope.channelId }]]);
+    return;
+  }
+  if (section === 'filterbehaviors') {
+    const scope = filterScopeFromParts(parts);
+    const permitted = scope && (scope.type === 'global' && userId === OWNER_ID || (scope.type === 'channel' && await canManageChannel(userId, scope.channelId)) || (scope.type === 'route' && await canManageChannel(userId, scope.sourceId) && await canManageChannel(userId, scope.destinationId)));
+    if (!permitted) { await answer(query, 'Sin permisos.', true); return; }
+    const stored = await loadFilterScope(scope.key);
+    const globalConfig = scope.type === 'global' ? {} : await loadFilterScope('global');
+    const channelConfig = scope.type === 'route' ? await loadFilterScope('channel:' + scope.sourceId) : {};
+    const config = mergeFilterConfigs(defaultFilterConfig(), globalConfig, channelConfig, stored);
+    const names = [
+      ['whitelist','Lista blanca'], ['blockedWords','Palabras bloqueadas'], ['regex','Regex'],
+      ['limits','Caracteres y líneas'], ['time','Franjas horarias'], ['days','Días excluidos'],
+      ['links','Enlaces'], ['media','Medios'], ['specific','Bloqueos específicos'],
+      ['signatures','Firmas'], ['quota','Límite de publicaciones'],
+    ];
+    const scopePath = scope.type === 'route' ? 'route:' + scope.sourceId + ':' + scope.destinationId : scope.type + (scope.channelId == null ? '' : ':' + scope.channelId);
+    const keyboard = names.map(([key,label]) => [{
+      text: label + ': ' + ((config.rejection?.perFilter?.[key] || config.rejection?.default) === 'review' ? '⏳ Revisión' : '🚫 Descartar'),
+      callback_data: 'admin:filterbehavioritem:' + scopePath + ':' + key,
+    }]);
+    keyboard.push([{ text: '🔙 Volver', callback_data: scope.type === 'global' ? 'admin:filterglobal' : scope.type === 'route' ? 'admin:filterroute:' + scope.sourceId + ':' + scope.destinationId : 'admin:filterchannel:' + scope.channelId }]);
+    await renderPanel('⚖️ RECHAZO INDIVIDUAL POR FILTRO\n\nElige qué debe ocurrir cuando cada filtro rechace una publicación.', keyboard);
+    return;
+  }
+  if (section === 'filterbehavioritem') {
+    const scope = filterScopeFromParts(parts);
+    const field = String(parts[scope?.type === 'channel' ? 4 : scope?.type === 'route' ? 5 : 3] || '');
+    const allowed = ['whitelist','blockedWords','regex','limits','time','days','links','media','specific','signatures','quota'];
+    const permitted = scope && (scope.type === 'global' && userId === OWNER_ID || (scope.type === 'channel' && await canManageChannel(userId, scope.channelId)) || (scope.type === 'route' && await canManageChannel(userId, scope.sourceId) && await canManageChannel(userId, scope.destinationId)));
+    if (!permitted || !allowed.includes(field)) { await answer(query, 'Sin permisos.', true); return; }
+    const stored = await loadFilterScope(scope.key);
+    const globalConfig = scope.type === 'global' ? {} : await loadFilterScope('global');
+    const channelConfig = scope.type === 'route' ? await loadFilterScope('channel:' + scope.sourceId) : {};
+    const effective = mergeFilterConfigs(defaultFilterConfig(), globalConfig, channelConfig, stored);
+    const current = effective.rejection?.perFilter?.[field] || effective.rejection?.default || 'discard';
+    const next = current === 'review' ? 'discard' : 'review';
+    stored.rejection = { ...(stored.rejection || {}), perFilter: { ...(stored.rejection?.perFilter || {}), [field]: next } };
+    await saveFilterScope(scope.key, scope.type, scope.channelId, stored, userId);
+    await answer(query, next === 'review' ? 'Este filtro enviará los rechazos a revisión.' : 'Este filtro descartará automáticamente.');
+    const scopePath = scope.type === 'route' ? 'route:' + scope.sourceId + ':' + scope.destinationId : scope.type + (scope.channelId == null ? '' : ':' + scope.channelId);
+    const keyboard = [[{ text: '🔙 Volver a comportamientos', callback_data: 'admin:filterbehaviors:' + scopePath }]];
+    await renderPanel('⚖️ ' + field + ': ' + (next === 'review' ? '⏳ REVISIÓN' : '🚫 DESCARTAR'), keyboard);
+    return;
+  }
+  if (section === 'filterbehavior') {
+    const scope = filterScopeFromParts(parts);
+    const permitted = scope && (scope.type === 'global' && userId === OWNER_ID || (scope.type === 'channel' && await canManageChannel(userId, scope.channelId)) || (scope.type === 'route' && await canManageChannel(userId, scope.sourceId) && await canManageChannel(userId, scope.destinationId)));
+    if (!permitted) { await answer(query, 'Sin permisos.', true); return; }
+    const stored = await loadFilterScope(scope.key);
+    const globalConfig = scope.type === 'global' ? {} : await loadFilterScope('global');
+    const channelConfig = scope.type === 'route' ? await loadFilterScope('channel:' + scope.sourceId) : {};
+    const effective = mergeFilterConfigs(defaultFilterConfig(), globalConfig, channelConfig, stored);
+    const nextBehavior = effective.rejection.default === 'review' ? 'discard' : 'review';
+    stored.rejection = { ...(stored.rejection || {}), default: nextBehavior };
+    await saveFilterScope(scope.key, scope.type, scope.channelId, stored, userId);
+    await answer(query, nextBehavior === 'review' ? 'Los rechazos irán a revisión.' : 'Los rechazos se descartarán.');
+    const nextEffective = mergeFilterConfigs(defaultFilterConfig(), globalConfig, channelConfig, stored);
+    await renderPanel('🔏 FILTROS · ' + scope.label + '\n\n' + filterSummary(nextEffective), filterSettingsKeyboard(scope, nextEffective));
+    return;
+  }
+  if (section === 'filterresetroute') {
+    const sourceId = Number(parts[2]); const destinationId = Number(parts[3]);
+    const routeKey = sourceId + ':' + destinationId;
+    const route = await db.select().from(channelRoutes).where(eq(channelRoutes.routeKey, routeKey)).get();
+    if (!route || !(await canManageChannel(userId, sourceId)) || !(await canManageChannel(userId, destinationId))) { await answer(query, 'Sin permisos.', true); return; }
+    await db.delete(filterConfigs).where(eq(filterConfigs.scopeKey, 'route:' + routeKey)).run();
+    await answer(query, 'La ruta vuelve a heredar del canal y de la configuración global.');
+    await renderPanel('♻️ Se eliminó la personalización de filtros de esta ruta.', [[{ text: '🔙 Volver a filtros de ruta', callback_data: 'admin:filterroute:' + sourceId + ':' + destinationId }]]);
+    return;
+  }
+  if (section === 'filterreset') {
+    const channelId = Number(parts[2]);
+    if (!Number.isSafeInteger(channelId) || !(await canManageChannel(userId, channelId))) { await answer(query, 'Sin permisos.', true); return; }
+    await db.delete(filterConfigs).where(eq(filterConfigs.scopeKey, 'channel:' + channelId)).run();
+    await answer(query, 'El canal vuelve a heredar la configuración global.');
+    await renderPanel('♻️ Se eliminó la personalización de filtros del canal. Ahora hereda la configuración global.', [[{ text: '🔙 Volver a filtros del canal', callback_data: 'admin:filterchannel:' + channelId }]]);
+    return;
+  }
 
   if (section === 'open') {
     await answer(query);
@@ -672,11 +974,7 @@ export default async function (query) {
         if (!Number.isSafeInteger(sourceId) || !Number.isSafeInteger(destinationId)) continue;
         if (!channelNames.has(sourceId) || !channelNames.has(destinationId)) continue;
 
-        const modeLabel = route.mode === 'copy'
-          ? 'Copiar'
-          : route.mode === 'forward'
-            ? 'Reenviar'
-            : 'Auto';
+        const modeLabel = route.mode === 'manual' ? 'Manual' : route.mode === 'copy' ? 'Copiar' : route.mode === 'forward' ? 'Reenviar' : 'Auto';
         const label = '⚙️ ' + channelNames.get(sourceId).slice(0, 16)
           + ' → ' + channelNames.get(destinationId).slice(0, 16)
           + ' · ' + modeLabel;
@@ -833,23 +1131,28 @@ export default async function (query) {
       return;
     }
 
+    const forwardSettings = await db.select().from(routeForwardSettings).where(eq(routeForwardSettings.routeKey, route.routeKey)).get();
+    let forwardConfig = {};
+    try { forwardConfig = JSON.parse(forwardSettings?.configJson || '{}'); } catch { forwardConfig = {}; }
     const mode = ['copy', 'forward'].includes(route.mode) ? route.mode : 'auto';
-    const modeLabel = mode === 'copy'
-      ? '📄 Copiar (sin encabezado de reenvío)'
-      : mode === 'forward'
-        ? '↪️ Reenviar (con encabezado de canal)'
-        : '🔄 Automático (comportamiento predeterminado)';
+    const modeLabel = route.mode === 'manual' ? '✋ Solo manual (sin distribución automática)' : mode === 'copy' ? '📄 Copiar (sin encabezado de reenvío)' : mode === 'forward' ? '↪️ Reenviar (con encabezado de canal)' : '🔄 Automático (comportamiento predeterminado)';
 
     await answer(query);
     await renderPanel(
       '🔀 CONFIGURAR DISTRIBUCIÓN\n\nOrigen: ' + sourceId
         + '\nDestino: ' + destinationId
         + '\nModo actual: ' + modeLabel
+        + '\nAvisos al propietario: ' + (forwardConfig.notifyOwner ? 'Sí' : 'No')
+        + '\nFijar publicación: ' + (forwardConfig.pinPost ? 'Sí' : 'No')
+        + '\nEspera inicial: ' + Number(forwardConfig.initialDelaySeconds || 0) + ' s'
+        + '\nIntervalo entre rutas: ' + Number(forwardConfig.intervalSeconds || 0) + ' s'
         + '\n\nElige cómo se distribuirán las publicaciones nuevas.',
       [
         [{ text: (mode === 'auto' ? '✅ ' : '') + '🔄 Automático', callback_data: 'admin:routemode:' + sourceId + ':' + destinationId + ':auto' }],
         [{ text: (mode === 'copy' ? '✅ ' : '') + '📄 Copiar publicación', callback_data: 'admin:routemode:' + sourceId + ':' + destinationId + ':copy' }],
         [{ text: (mode === 'forward' ? '✅ ' : '') + '↪️ Reenviar publicación', callback_data: 'admin:routemode:' + sourceId + ':' + destinationId + ':forward' }],
+        [{ text: (route.mode === 'manual' ? '✅ ' : '') + '✋ Solo manual', callback_data: 'admin:routemode:' + sourceId + ':' + destinationId + ':manual' }],
+        [{ text: '📨 Opciones de reenvío', callback_data: 'admin:routeforward:' + sourceId + ':' + destinationId }],
         [{ text: '🗑️ Eliminar distribución', callback_data: 'admin:routedelete:' + sourceId + ':' + destinationId }],
         [{ text: '🔙 Volver a distribuciones', callback_data: 'admin:routes' }],
       ],
@@ -862,7 +1165,7 @@ export default async function (query) {
     const destinationId = Number(parts[3]);
     const mode = String(parts[4] || '');
     if (!Number.isSafeInteger(sourceId) || !Number.isSafeInteger(destinationId)
-        || !['auto', 'copy', 'forward'].includes(mode)
+        || !['auto', 'copy', 'forward', 'manual'].includes(mode)
         || !(await canManageChannel(userId, sourceId))
         || !(await canManageChannel(userId, destinationId))) {
       await answer(query, 'La ruta, el modo o los permisos no son válidos.', true);
@@ -887,12 +1190,85 @@ export default async function (query) {
           ? 'Copiar sin encabezado de reenvío'
           : mode === 'forward'
             ? 'Reenviar con encabezado de canal'
-            : 'Automático'),
+            : mode === 'manual' ? 'Solo manual (sin distribución automática)' : 'Automático'),
       [
         [{ text: '⚙️ Configurar distribución', callback_data: 'admin:routedetail:' + sourceId + ':' + destinationId }],
         [{ text: '🔀 Ver distribuciones', callback_data: 'admin:routes' }],
       ],
     );
+    return;
+  }
+
+
+  if (section === 'routeforward') {
+    const sourceId = Number(parts[2]);
+    const destinationId = Number(parts[3]);
+    const routeKey = sourceId + ':' + destinationId;
+    if (!Number.isSafeInteger(sourceId) || !Number.isSafeInteger(destinationId)
+        || !(await canManageChannel(userId, sourceId)) || !(await canManageChannel(userId, destinationId))) {
+      await answer(query, 'No tienes permiso para modificar esta ruta.', true);
+      return;
+    }
+    const route = await db.select().from(channelRoutes).where(eq(channelRoutes.routeKey, routeKey)).get();
+    if (!route) { await answer(query, 'La ruta ya no existe.', true); return; }
+    const row = await db.select().from(routeForwardSettings).where(eq(routeForwardSettings.routeKey, routeKey)).get();
+    let config = {};
+    try { config = JSON.parse(row?.configJson || '{}'); } catch { config = {}; }
+    await answer(query);
+    await renderPanel('📨 OPCIONES DE REENVÍO\n\nRuta: ' + sourceId + ' → ' + destinationId
+      + '\nAvisar al propietario: ' + (config.notifyOwner ? 'Activado' : 'Desactivado')
+      + '\nFijar publicación: ' + (config.pinPost ? 'Activado' : 'Desactivado')
+      + '\nEspera inicial: ' + Number(config.initialDelaySeconds || 0) + ' segundos'
+      + '\nIntervalo: ' + Number(config.intervalSeconds || 0) + ' segundos'
+      + '\n\nPuedes activar/desactivar opciones o editar los tiempos.',
+      [
+        [{ text: (config.notifyOwner ? '✅ ' : '') + '🔔 Avisos al propietario', callback_data: 'admin:routeforwardtoggle:' + sourceId + ':' + destinationId + ':notifyOwner' }],
+        [{ text: (config.pinPost ? '✅ ' : '') + '📌 Fijar publicación', callback_data: 'admin:routeforwardtoggle:' + sourceId + ':' + destinationId + ':pinPost' }],
+        [{ text: '⏱️ Configurar tiempos', callback_data: 'admin:routeforwardinput:' + sourceId + ':' + destinationId }],
+        [{ text: '🔙 Volver a ruta', callback_data: 'admin:routedetail:' + sourceId + ':' + destinationId }],
+      ]);
+    return;
+  }
+
+  if (section === 'routeforwardtoggle') {
+    const sourceId = Number(parts[2]);
+    const destinationId = Number(parts[3]);
+    const field = String(parts[4] || '');
+    const routeKey = sourceId + ':' + destinationId;
+    if (!['notifyOwner', 'pinPost'].includes(field)
+        || !(await canManageChannel(userId, sourceId)) || !(await canManageChannel(userId, destinationId))) {
+      await answer(query, 'Opción o permisos no válidos.', true);
+      return;
+    }
+    const route = await db.select().from(channelRoutes).where(eq(channelRoutes.routeKey, routeKey)).get();
+    if (!route) { await answer(query, 'La ruta ya no existe.', true); return; }
+    const row = await db.select().from(routeForwardSettings).where(eq(routeForwardSettings.routeKey, routeKey)).get();
+    let config = {};
+    try { config = JSON.parse(row?.configJson || '{}'); } catch { config = {}; }
+    config[field] = !Boolean(config[field]);
+    await db.insert(routeForwardSettings).values({ routeKey, configJson: JSON.stringify(config), updatedBy: userId, updatedAt: Date.now() })
+      .onConflictDoUpdate({ target: routeForwardSettings.routeKey, set: { configJson: JSON.stringify(config), updatedBy: userId, updatedAt: Date.now() } }).run();
+    await answer(query, 'Opción actualizada.');
+    await renderPanel('✅ Preferencias de reenvío guardadas.', [
+      [{ text: '📨 Volver a opciones de reenvío', callback_data: 'admin:routeforward:' + sourceId + ':' + destinationId }],
+    ]);
+    return;
+  }
+
+  if (section === 'routeforwardinput') {
+    const sourceId = Number(parts[2]);
+    const destinationId = Number(parts[3]);
+    if (!(await canManageChannel(userId, sourceId)) || !(await canManageChannel(userId, destinationId))) {
+      await answer(query, 'No tienes permiso para modificar esta ruta.', true);
+      return;
+    }
+    await answer(query);
+    await api.sendMessage({ chat_id: chatId,
+      text: '[CBFORWARD:' + sourceId + ':' + destinationId + ']\nEnvía dos valores en segundos, uno por línea:\nESPERA_INICIAL\nINTERVALO_ENTRE_DESTINOS\nEjemplo:\n5\n2\nMáximo permitido: 30 segundos por valor. Usa 0 para desactivar.',
+      reply_markup: { force_reply: true, selective: true } });
+    await renderPanel('Responde al mensaje anterior con los tiempos de esta ruta.', [
+      [{ text: '🔙 Volver', callback_data: 'admin:routeforward:' + sourceId + ':' + destinationId }],
+    ]);
     return;
   }
 
