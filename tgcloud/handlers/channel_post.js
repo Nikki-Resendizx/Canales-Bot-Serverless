@@ -30,7 +30,7 @@ async function effectiveFilterConfig(sourceId, route) {
 }
 
 async function recordFilterRejection(post, route, sourceId, result, scopeKey) {
-  const rejectionKey = [scopeKey, sourceId, post.message_id, result.key].join(':');
+  const rawKey = [scopeKey, sourceId, post.message_id, result.key].join(':');\n  let hash = 2166136261; for (let i = 0; i < rawKey.length; i++) { hash ^= rawKey.charCodeAt(i); hash = Math.imul(hash, 16777619); }\n  const rejectionKey = 'fr_' + (hash >>> 0).toString(36);
   const behavior = result.behavior === 'review' ? 'review' : 'discard';
   try {
     await db.insert(filterRejections).values({
@@ -110,7 +110,7 @@ async function checkRouteFilters(post, route, sourceId) {
     await recordFilterRejection(post, route, sourceId, result, scopeKey);
     return { accepted: false, config, scopeKey, result };
   }
-  return { accepted: true, config, scopeKey, eventKey, fingerprint: sourceId + ':' + filterFingerprint(post) };
+  return { accepted: true, config, scopeKey, eventKey, fingerprint: config.specific?.enabled && config.specific?.blockRepeated ? sourceId + ':' + filterFingerprint(post) : '' };
 }
 
 async function recordRouteDelivery(check) {
