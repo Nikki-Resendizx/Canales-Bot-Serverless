@@ -496,9 +496,10 @@ export default async function (query) {
   }
   if (section === 'filterinput') {
     const scope = filterScopeFromParts(parts);
-    const field = String(parts[scope?.type === 'channel' ? 4 : 3] || '');
+    const field = String(parts[scope?.type === 'channel' ? 4 : scope?.type === 'route' ? 5 : 3] || '');
     const allowed = ['whitelist','blockedWords','regex','limits','time','days','links','media','specific','signatures','quota'];
-    if (!scope || !allowed.includes(field) || (scope.type === 'channel' && !(await canManageChannel(userId, scope.channelId)))) { await answer(query, 'Configuración no válida o sin permisos.', true); return; }
+    const permitted = scope && (scope.type === 'global' || (scope.type === 'channel' && await canManageChannel(userId, scope.channelId)) || (scope.type === 'route' && await canManageChannel(userId, scope.sourceId) && await canManageChannel(userId, scope.destinationId)));
+    if (!permitted || !allowed.includes(field)) { await answer(query, 'Configuración no válida o sin permisos.', true); return; }
     const prompts = {
       whitelist: 'Envía palabras o frases permitidas, una por línea. Puedes escribir ANY o ALL en la primera línea para indicar si basta una coincidencia o deben aparecer todas.',
       blockedWords: 'Envía las palabras o frases bloqueadas, una por línea.',
@@ -514,7 +515,7 @@ export default async function (query) {
     };
     await answer(query);
     await api.sendMessage({ chat_id: chatId, text: '[CBFILTERINPUT:' + scope.key + ':' + field + ']\n' + prompts[field], reply_markup: { force_reply: true, selective: true } });
-    await renderPanel('Esperando la configuración de ' + field + ' para ' + scope.label + '.', [[{ text: '🔙 Volver', callback_data: scope.type === 'global' ? 'admin:filterglobal' : 'admin:filterchannel:' + scope.channelId }]]);
+    await renderPanel('Esperando la configuración de ' + field + ' para ' + scope.label + '.', [[{ text: '🔙 Volver', callback_data: scope.type === 'global' ? 'admin:filterglobal' : scope.type === 'route' ? 'admin:filterroute:' + scope.sourceId + ':' + scope.destinationId : 'admin:filterchannel:' + scope.channelId }]]);
     return;
   }
   if (section === 'filterbehaviors') {
