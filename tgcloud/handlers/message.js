@@ -161,7 +161,7 @@ async function evaluateGroupRouteFilters(message, route, sourceId) {
   let result = evaluateFilters(message, config);
   let fingerprint = '';
   if (result.accepted && !message.media_group_id && config.specific?.enabled && config.specific?.blockRepeated) {
-    fingerprint = sourceId + ':' + filterFingerprint(message);
+    fingerprint = sourceId + ':' + route.routeKey + ':' + filterFingerprint(message);
     const seen = await db.select().from(filterSeenContent).where(eq(filterSeenContent.fingerprint, fingerprint)).get();
     if (isRepeatedContent(message, config, seen?.createdAt, Date.now())) {
       result = { accepted: false, key: 'specific', reason: 'Se detectó una publicación repetida dentro del periodo configurado.', behavior: config.rejection?.perFilter?.specific || config.rejection?.default || 'discard' };
