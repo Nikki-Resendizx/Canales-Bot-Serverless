@@ -964,11 +964,7 @@ export default async function (query) {
         if (!Number.isSafeInteger(sourceId) || !Number.isSafeInteger(destinationId)) continue;
         if (!channelNames.has(sourceId) || !channelNames.has(destinationId)) continue;
 
-        const modeLabel = route.mode === 'copy'
-          ? 'Copiar'
-          : route.mode === 'forward'
-            ? 'Reenviar'
-            : 'Auto';
+        const modeLabel = route.mode === 'manual' ? 'Manual' : route.mode === 'copy' ? 'Copiar' : route.mode === 'forward' ? 'Reenviar' : 'Auto';
         const label = '⚙️ ' + channelNames.get(sourceId).slice(0, 16)
           + ' → ' + channelNames.get(destinationId).slice(0, 16)
           + ' · ' + modeLabel;
@@ -1142,6 +1138,8 @@ export default async function (query) {
         [{ text: (mode === 'auto' ? '✅ ' : '') + '🔄 Automático', callback_data: 'admin:routemode:' + sourceId + ':' + destinationId + ':auto' }],
         [{ text: (mode === 'copy' ? '✅ ' : '') + '📄 Copiar publicación', callback_data: 'admin:routemode:' + sourceId + ':' + destinationId + ':copy' }],
         [{ text: (mode === 'forward' ? '✅ ' : '') + '↪️ Reenviar publicación', callback_data: 'admin:routemode:' + sourceId + ':' + destinationId + ':forward' }],
+        [{ text: (route.mode === 'manual' ? '✅ ' : '') + '✋ Solo manual', callback_data: 'admin:routemode:' + sourceId + ':' + destinationId + ':manual' }],
+        [{ text: (route.mode === 'manual' ? '✅ ' : '') + '✋ Solo manual', callback_data: 'admin:routemode:' + sourceId + ':' + destinationId + ':manual' }],
         [{ text: '🗑️ Eliminar distribución', callback_data: 'admin:routedelete:' + sourceId + ':' + destinationId }],
         [{ text: '🔙 Volver a distribuciones', callback_data: 'admin:routes' }],
       ],
@@ -1154,7 +1152,7 @@ export default async function (query) {
     const destinationId = Number(parts[3]);
     const mode = String(parts[4] || '');
     if (!Number.isSafeInteger(sourceId) || !Number.isSafeInteger(destinationId)
-        || !['auto', 'copy', 'forward'].includes(mode)
+        || !['auto', 'copy', 'forward', 'manual'].includes(mode)
         || !(await canManageChannel(userId, sourceId))
         || !(await canManageChannel(userId, destinationId))) {
       await answer(query, 'La ruta, el modo o los permisos no son válidos.', true);
@@ -1179,7 +1177,7 @@ export default async function (query) {
           ? 'Copiar sin encabezado de reenvío'
           : mode === 'forward'
             ? 'Reenviar con encabezado de canal'
-            : 'Automático'),
+            : mode === 'manual' ? 'Solo manual (sin distribución automática)' : 'Automático'),
       [
         [{ text: '⚙️ Configurar distribución', callback_data: 'admin:routedetail:' + sourceId + ':' + destinationId }],
         [{ text: '🔀 Ver distribuciones', callback_data: 'admin:routes' }],
