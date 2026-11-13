@@ -2,7 +2,7 @@ import { api, db } from 'sdk';
 import { eq } from 'sdk/db';
 import {
   admins, captchaSessions, channels, channelSettings, channelRoutes,
-  templates, globalBans, publications, purchases, reactionReports, botTexts, joinRequests, filterConfigs, filterRejections,
+  templates, globalBans, publications, purchases, reactionReports, botTexts, joinRequests, filterConfigs, filterRejections, routeForwardSettings,
 } from '../schema.js';
 
 import { defaultFilterConfig, mergeFilterConfigs } from '../lib/message_filters.js';
@@ -1131,6 +1131,9 @@ export default async function (query) {
       return;
     }
 
+    const forwardSettings = await db.select().from(routeForwardSettings).where(eq(routeForwardSettings.routeKey, route.routeKey)).get();
+    let forwardConfig = {};
+    try { forwardConfig = JSON.parse(forwardSettings?.configJson || '{}'); } catch { forwardConfig = {}; }
     const mode = ['copy', 'forward'].includes(route.mode) ? route.mode : 'auto';
     const modeLabel = route.mode === 'manual' ? '✋ Solo manual (sin distribución automática)' : mode === 'copy' ? '📄 Copiar (sin encabezado de reenvío)' : mode === 'forward' ? '↪️ Reenviar (con encabezado de canal)' : '🔄 Automático (comportamiento predeterminado)';
 
@@ -1145,6 +1148,7 @@ export default async function (query) {
         [{ text: (mode === 'copy' ? '✅ ' : '') + '📄 Copiar publicación', callback_data: 'admin:routemode:' + sourceId + ':' + destinationId + ':copy' }],
         [{ text: (mode === 'forward' ? '✅ ' : '') + '↪️ Reenviar publicación', callback_data: 'admin:routemode:' + sourceId + ':' + destinationId + ':forward' }],
         [{ text: (route.mode === 'manual' ? '✅ ' : '') + '✋ Solo manual', callback_data: 'admin:routemode:' + sourceId + ':' + destinationId + ':manual' }],
+        [{ text: '📨 Opciones de reenvío', callback_data: 'admin:routeforward:' + sourceId + ':' + destinationId }],
         [{ text: '🗑️ Eliminar distribución', callback_data: 'admin:routedelete:' + sourceId + ':' + destinationId }],
         [{ text: '🔙 Volver a distribuciones', callback_data: 'admin:routes' }],
       ],
@@ -1188,6 +1192,79 @@ export default async function (query) {
         [{ text: '🔀 Ver distribuciones', callback_data: 'admin:routes' }],
       ],
     );
+    return;
+  }
+
+
+  if (section === 'routeforward') {
+    const sourceId = Number(parts[2]);
+    const destinationId = Number(parts[3]);
+    const routeKey = sourceId + ':' + destinationId;
+    if (!Number.isSafeInteger(sourceId) || !Number.isSafeInteger(destinationId)
+        || !(await canManageChannel(userId, sourceId)) || !(await canManageChannel(userId, destinationId))) {
+      await answer(query, 'No tienes permiso para modificar esta ruta.', true);
+      return;
+    }
+    const route = await db.select().from(channelRoutes).where(eq(channelRoutes.routeKey, routeKey)).get();
+    if (!route) { await answer(query, 'La ruta ya no existe.', true); return; }
+    const row = await db.select().from(routeForwardSettings).where(eq(routeForwardSettings.routeKey, routeKey)).get();
+    let config = {};
+    try { config = JSON.parse(row?.configJson || '{}'); } catch { config = {}; }
+    await answer(query);
+    await renderPanel('📨 OPCIONES DE REENVÍO\n\nRuta: ' + sourceId + ' → ' + destinationId
+      + '\nAvisar al propietario: ' + (config.notifyOwner ? 'Activado' : 'Desactivado')
+      + '\nFijar publicación: ' + (config.pinPost ? 'Activado' : 'Desactivado')
+      + '\nEspera inicial: ' + Number(config.initialDelaySeconds || 0) + ' segundos'
+      + '\nIntervalo: ' + Number(config.intervalSeconds || 0) + ' segundos'
+      + '\n\nPuedes activar/desactivar opciones o editar los tiempos.',
+      [
+        [{ text: (config.notifyOwner ? '✅ ' : '') + '🔔 Avisos al propietario', callback_data: 'admin:routeforwardtoggle:' + sourceId + ':' + destinationId + ':notifyOwner' }],
+        [{ text: (config.pinPost ? '✅ ' : '') + '📌 Fijar publicación', callback_data: 'admin:routeforwardtoggle:' + sourceId + ':' + destinationId + ':pinPost' }],
+        [{ text: '⏱️ Configurar tiempos', callback_data: 'admin:routeforwardinput:' + sourceId + ':' + destinationId }],
+        [{ text: '🔙 Volver a ruta', callback_data: 'admin:routedetail:' + sourceId + ':' + destinationId }],
+      ]);
+    return;
+  }
+
+  if (section === 'routeforwardtoggle') {
+    const sourceId = Number(parts[2]);
+    const destinationId = Number(parts[3]);
+    const field = String(parts[4] || '');
+    const routeKey = sourceId + ':' + destinationId;
+    if (!['notifyOwner', 'pinPost'].includes(field)
+        || !(await canManageChannel(userId, sourceId)) || !(await canManageChannel(userId, destinationId))) {
+      await answer(query, 'Opción o permisos no válidos.', true);
+      return;
+    }
+    const route = await db.select().from(channelRoutes).where(eq(channelRoutes.routeKey, routeKey)).get();
+    if (!route) { await answer(query, 'La ruta ya no existe.', true); return; }
+    const row = await db.select().from(routeForwardSettings).where(eq(routeForwardSettings.routeKey, routeKey)).get();
+    let config = {};
+    try { config = JSON.parse(row?.configJson || '{}'); } catch { config = {}; }
+    config[field] = !Boolean(config[field]);
+    await db.insert(routeForwardSettings).values({ routeKey, configJson: JSON.stringify(config), updatedBy: userId, updatedAt: Date.now() })
+      .onConflictDoUpdate({ target: routeForwardSettings.routeKey, set: { configJson: JSON.stringify(config), updatedBy: userId, updatedAt: Date.now() } }).run();
+    await answer(query, 'Opción actualizada.');
+    await renderPanel('✅ Preferencias de reenvío guardadas.', [
+      [{ text: '📨 Volver a opciones de reenvío', callback_data: 'admin:routeforward:' + sourceId + ':' + destinationId }],
+    ]);
+    return;
+  }
+
+  if (section === 'routeforwardinput') {
+    const sourceId = Number(parts[2]);
+    const destinationId = Number(parts[3]);
+    if (!(await canManageChannel(userId, sourceId)) || !(await canManageChannel(userId, destinationId))) {
+      await answer(query, 'No tienes permiso para modificar esta ruta.', true);
+      return;
+    }
+    await answer(query);
+    await api.sendMessage({ chat_id: chatId,
+      text: '[CBFORWARD:' + sourceId + ':' + destinationId + ']\nEnvía dos valores en segundos, uno por línea:\nESPERA_INICIAL\nINTERVALO_ENTRE_DESTINOS\nEjemplo:\n5\n2\nMáximo permitido: 30 segundos por valor. Usa 0 para desactivar.',
+      reply_markup: { force_reply: true, selective: true } });
+    await renderPanel('Responde al mensaje anterior con los tiempos de esta ruta.', [
+      [{ text: '🔙 Volver', callback_data: 'admin:routeforward:' + sourceId + ':' + destinationId }],
+    ]);
     return;
   }
 
