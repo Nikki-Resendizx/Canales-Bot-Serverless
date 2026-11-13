@@ -1,10 +1,141 @@
 import { api, db } from 'sdk';
 import { eq } from 'sdk/db';
-import { channels, channelRoutes, channelSettings, templates, postAlertKeys } from '../schema.js';
+import { channels, channelRoutes, channelSettings, templates, postAlertKeys, filterConfigs, filterRejections, filterSeenContent, filterDeliveryEvents } from '../schema.js';
+import { defaultFilterConfig, mergeFilterConfigs, evaluateFilters, filterFingerprint, isRepeatedContent } from '../lib/message_filters.js';
+
+const OWNER_ID = 8624574996;
 
 const ALERTS_CHAT_ID = -1004424261064;
 const REACTION_REPORT_CHAT_ID = -1004456932813;
 
+
+
+async function readFilterConfig(scopeKey) {
+  try {
+    const row = await db.select().from(filterConfigs).where(eq(filterConfigs.scopeKey, scopeKey)).get();
+    return row ? JSON.parse(row.configJson || '{}') : null;
+  } catch (error) {
+    console.log('No se pudo leer la configuración de filtros', scopeKey, String(error));
+    return null;
+  }
+}
+
+async function effectiveFilterConfig(sourceId, route) {
+  const [globalConfig, channelConfig, routeConfig] = await Promise.all([
+    readFilterConfig('global'),
+    readFilterConfig('channel:' + sourceId),
+    readFilterConfig('route:' + route.routeKey),
+  ]);
+  return mergeFilterConfigs(defaultFilterConfig(), globalConfig, channelConfig, routeConfig);
+}
+
+async function recordFilterRejection(post, route, sourceId, result, scopeKey) {
+  const rejectionKey = [scopeKey, sourceId, post.message_id, result.key].join(':');
+  const behavior = result.behavior === 'review' ? 'review' : 'discard';
+  try {
+    await db.insert(filterRejections).values({
+      rejectionKey,
+      sourceChatId: sourceId,
+      destinationChatId: Number(route.destinationChatId),
+      sourceMessageId: Number(post.message_id),
+      routeKey: String(route.routeKey),
+      filterKey: String(result.key),
+      reason: String(result.reason).slice(0, 500),
+      behavior,
+      status: behavior === 'review' ? 'pending' : 'rejected',
+      createdAt: Date.now(),
+    }).onConflictDoNothing().run();
+  } catch (error) {
+    console.log('No se pudo registrar el rechazo del filtro', rejectionKey, String(error));
+  }
+
+  if (behavior === 'review') {
+    try {
+      await api.sendMessage({
+        chat_id: OWNER_ID,
+        text: [
+          '⏳ PUBLICACIÓN EN REVISIÓN',
+          'Origen: ' + String(post.chat?.title || sourceId),
+          'Destino: ' + Number(route.destinationChatId),
+          'Motivo: ' + String(result.reason),
+          'Mensaje: ' + Number(post.message_id),
+        ].join('\\n'),
+        reply_markup: { inline_keyboard: [[
+          { text: '✅ Aprobar y reenviar', callback_data: 'admin:filterreview:approve:' + rejectionKey },
+          { text: '🗑️ Descartar', callback_data: 'admin:filterreview:discard:' + rejectionKey },
+        ]] },
+      });
+    } catch (error) {
+      console.log('No se pudo notificar revisión pendiente; quedó guardada en la base de datos', rejectionKey, String(error));
+    }
+  }
+}
+
+async function checkRouteFilters(post, route, sourceId) {
+  const config = await effectiveFilterConfig(sourceId, route);
+  if (!config.enabled) return { accepted: true, config, scopeKey: 'route:' + route.routeKey };
+  const scopeKey = 'route:' + route.routeKey;
+  const eventKey = scopeKey + ':' + sourceId + ':' + String(post.media_group_id || post.message_id);
+  const existingEvent = await db.select().from(filterDeliveryEvents).where(eq(filterDeliveryEvents.eventKey, eventKey)).get();
+  if (existingEvent) return { accepted: false, alreadyDelivered: true, config, scopeKey };
+
+  let result = evaluateFilters(post, config);
+  if (result.accepted && config.specific?.enabled && config.specific?.blockRepeated) {
+    const fingerprint = sourceId + ':' + filterFingerprint(post);
+    const seen = await db.select().from(filterSeenContent).where(eq(filterSeenContent.fingerprint, fingerprint)).get();
+    if (isRepeatedContent(post, config, seen?.createdAt, Date.now())) {
+      result = {
+        accepted: false, key: 'specific',
+        reason: 'Se detectó una publicación repetida dentro del periodo configurado.',
+        behavior: config.rejection?.perFilter?.specific || config.rejection?.default || 'discard',
+      };
+    }
+  }
+
+  if (result.accepted && config.quota?.enabled && Number(config.quota.maxMessages) > 0) {
+    const minutes = Math.max(1, Math.min(10080, Number(config.quota.windowMinutes) || 25));
+    const cutoff = Date.now() - minutes * 60 * 1000;
+    const events = await db.select().from(filterDeliveryEvents).all();
+    const count = events.filter(row => row.scopeKey === scopeKey && Number(row.createdAt) >= cutoff).length;
+    if (count >= Number(config.quota.maxMessages)) {
+      result = {
+        accepted: false, key: 'quota',
+        reason: 'Se alcanzó el límite de ' + Number(config.quota.maxMessages) + ' publicaciones cada ' + minutes + ' minutos.',
+        behavior: config.rejection?.perFilter?.quota || config.rejection?.default || 'discard',
+      };
+    }
+  }
+
+  if (!result.accepted) {
+    await recordFilterRejection(post, route, sourceId, result, scopeKey);
+    return { accepted: false, config, scopeKey, result };
+  }
+  return { accepted: true, config, scopeKey, eventKey, fingerprint: sourceId + ':' + filterFingerprint(post) };
+}
+
+async function recordRouteDelivery(check) {
+  if (check.eventKey) {
+    try {
+      await db.insert(filterDeliveryEvents).values({
+        eventKey: check.eventKey, scopeKey: check.scopeKey, createdAt: Date.now(),
+      }).onConflictDoNothing().run();
+    } catch (error) {
+      console.log('No se pudo registrar el contador de entregas', check.eventKey, String(error));
+    }
+  }
+  if (check.fingerprint) {
+    try {
+      await db.insert(filterSeenContent).values({
+        fingerprint: check.fingerprint, sourceChatId: Number(check.fingerprint.split(':')[0]), createdAt: Date.now(),
+      }).onConflictDoUpdate({
+        target: filterSeenContent.fingerprint,
+        set: { createdAt: Date.now() },
+      }).run();
+    } catch (error) {
+      console.log('No se pudo registrar la huella de contenido', check.fingerprint, String(error));
+    }
+  }
+}
 
 function publicationKind(post) {
   // Los reenvíos tienen su propia plantilla aunque incluyan texto o multimedia.
@@ -387,6 +518,13 @@ export default async function (post) {
     if (Number(route.destinationChatId) === sourceId) continue;
     if (!destination || !Number(destination.active)) continue;
     try {
+      const filterCheck = await checkRouteFilters(post, route, sourceId);
+      if (!filterCheck.accepted) {
+        if (!filterCheck.alreadyDelivered) {
+          console.log('Publicación detenida por filtros', route.routeKey, filterCheck.result?.key, filterCheck.result?.reason);
+        }
+        continue;
+      }
       const mode = ['copy', 'forward'].includes(route.mode) ? route.mode : 'auto';
       const shouldForward = mode === 'forward' ||
         (mode === 'auto' && Boolean(post.forward_origin || post.forward_from || post.forward_from_chat || post.forward_sender_name));
@@ -403,6 +541,7 @@ export default async function (post) {
           message_id: post.message_id,
         });
       }
+      await recordRouteDelivery(filterCheck);
     } catch (error) {
       // No bloquear otras rutas si un destino rechaza la copia.
       console.log('No se pudo copiar la publicación a la ruta', route.routeKey, String(error));
