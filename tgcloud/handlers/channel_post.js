@@ -1,7 +1,7 @@
 import { api, db } from 'sdk';
 import { eq } from 'sdk/db';
 import { channels, channelRoutes, channelSettings, templates, postAlertKeys, filterConfigs, filterRejections, filterSeenContent, filterDeliveryEvents } from '../schema.js';
-import { defaultFilterConfig, mergeFilterConfigs, evaluateFilters, filterFingerprint, isRepeatedContent } from '../lib/message_filters.js';
+import { defaultFilterConfig, mergeFilterConfigs, evaluateFilters, filterFingerprint, isRepeatedContent, localDateKey } from '../lib/message_filters.js';
 
 const OWNER_ID = 8624574996;
 const ALERTS_CHAT_ID = -1004424261064;
@@ -126,6 +126,25 @@ async function checkRouteFilters(post, route, sourceId) {
         accepted: false,
         key: 'quota',
         reason: 'Se alcanzó el límite de ' + Number(config.quota.maxMessages) + ' publicaciones cada ' + minutes + ' minutos.',
+        behavior: config.rejection?.perFilter?.quota || config.rejection?.default || 'discard',
+      };
+    }
+  }
+
+  if (result.accepted && config.quota?.enabled && Number(config.quota.dailyMaxMessages) > 0) {
+    const timezone = config.time?.timezone || 'America/Mexico_City';
+    const today = localDateKey(new Date(), timezone);
+    const events = await db.select().from(filterDeliveryEvents).all();
+    const dailyPublications = new Set(events
+      .filter(row => row.scopeKey === scopeKey && localDateKey(new Date(Number(row.createdAt)), timezone) === today)
+      .map(row => row.publicationKey || row.eventKey));
+    if (dailyPublications.size > Number(config.quota.dailyMaxMessages)) {
+      if (eventKey) await db.delete(filterDeliveryEvents).where(eq(filterDeliveryEvents.eventKey, eventKey)).run();
+      reserved = false;
+      result = {
+        accepted: false,
+        key: 'quota',
+        reason: 'Se alcanzó el límite diario de ' + Number(config.quota.dailyMaxMessages) + ' publicaciones.',
         behavior: config.rejection?.perFilter?.quota || config.rejection?.default || 'discard',
       };
     }
