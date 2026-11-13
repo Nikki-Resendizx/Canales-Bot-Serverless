@@ -159,3 +159,46 @@ export const joinRequests = table('join_requests', {
   decidedBy: integer('decided_by'),
   decidedAt: integer('decided_at'),
 });
+
+// Configuración heredable de filtros: global -> canal -> ruta.
+// Un JSON por ámbito mantiene los filtros extensibles sin alterar channel_settings.
+export const filterConfigs = table('filter_configs', {
+  scopeKey: text('scope_key').primaryKey(),
+  scopeType: text('scope_type').notNull().default('global'),
+  channelId: integer('channel_id'),
+  routeKey: text('route_key'),
+  configJson: text('config_json').notNull().default('{}'),
+  updatedBy: integer('updated_by').notNull().default(0),
+  updatedAt: integer('updated_at').notNull(),
+});
+
+// Registro de rechazos y elementos pendientes de revisión.
+export const filterRejections = table('filter_rejections', {
+  rejectionKey: text('rejection_key').primaryKey(),
+  sourceChatId: integer('source_chat_id').notNull(),
+  destinationChatId: integer('destination_chat_id').notNull(),
+  sourceMessageId: integer('source_message_id').notNull(),
+  routeKey: text('route_key').notNull().default(''),
+  filterKey: text('filter_key').notNull(),
+  reason: text('reason').notNull(),
+  behavior: text('behavior').notNull().default('discard'),
+  status: text('status').notNull().default('rejected'),
+  createdAt: integer('created_at').notNull(),
+  reviewedBy: integer('reviewed_by'),
+  reviewedAt: integer('reviewed_at'),
+});
+
+// Huellas recientes para bloquear publicaciones repetidas sin depender de memoria local.
+export const filterSeenContent = table('filter_seen_content', {
+  fingerprint: text('fingerprint').primaryKey(),
+  sourceChatId: integer('source_chat_id').notNull(),
+  createdAt: integer('created_at').notNull(),
+});
+
+// Registro idempotente de entregas usado para aplicar límites por ventana.
+export const filterDeliveryEvents = table('filter_delivery_events', {
+  eventKey: text('event_key').primaryKey(),
+  scopeKey: text('scope_key').notNull(),
+  createdAt: integer('created_at').notNull(),
+});
+
