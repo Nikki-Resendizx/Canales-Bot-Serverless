@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { defaultFilterConfig, evaluateFilters } from '../tgcloud/lib/message_filters.js';
+import { defaultFilterConfig, evaluateFilters, localDateKey, mergeFilterConfigs } from '../tgcloud/lib/message_filters.js';
 
 test('whitelist requires a configured phrase and ignores case by default', () => {
   const config = defaultFilterConfig();
@@ -67,4 +67,27 @@ test('a required signature accepts any non-empty signature when no allowlist is 
   config.signatures = { enabled: true, requireSignature: true, allowed: [] };
   assert.equal(evaluateFilters({ text: 'post', author_signature: 'Admin' }, config).accepted, true);
   assert.equal(evaluateFilters({ text: 'post' }, config).key, 'signatures');
+});
+
+test('configuration merges route overrides over channel and global values', () => {
+  const merged = mergeFilterConfigs(
+    { whitelist: { enabled: true, words: ['global'] }, quota: { maxMessages: 5 } },
+    { whitelist: { words: ['channel'] } },
+    { whitelist: { mode: 'all' } },
+  );
+  assert.deepEqual(merged.whitelist.words, ['channel']);
+  assert.equal(merged.whitelist.enabled, true);
+  assert.equal(merged.whitelist.mode, 'all');
+  assert.equal(merged.quota.maxMessages, 5);
+});
+
+test('local date keys use the selected timezone', () => {
+  assert.equal(localDateKey(new Date('2026-11-13T05:30:00Z'), 'America/Mexico_City'), '2026-11-12');
+});
+
+test('case-sensitive exact matching preserves capitalization', () => {
+  const config = defaultFilterConfig();
+  config.blockedWords = { enabled: true, words: ['Promo'], match: 'exact', caseSensitive: true };
+  assert.equal(evaluateFilters({ text: 'promo' }, config).accepted, true);
+  assert.equal(evaluateFilters({ text: 'Promo' }, config).key, 'blockedWords');
 });
