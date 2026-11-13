@@ -54,3 +54,17 @@ test('regex filters validate the configured expression at runtime', () => {
   assert.equal(evaluateFilters({ text: 'Daily update' }, config).key, 'regex');
   assert.equal(evaluateFilters({ text: 'Daily digest' }, config).accepted, true);
 });
+
+test('blocked words take priority over whitelist failures', () => {
+  const config = defaultFilterConfig();
+  config.whitelist = { enabled: true, words: ['approved'] };
+  config.blockedWords = { enabled: true, words: ['blocked'] };
+  assert.equal(evaluateFilters({ text: 'blocked content' }, config).key, 'blockedWords');
+});
+
+test('a required signature accepts any non-empty signature when no allowlist is supplied', () => {
+  const config = defaultFilterConfig();
+  config.signatures = { enabled: true, requireSignature: true, allowed: [] };
+  assert.equal(evaluateFilters({ text: 'post', author_signature: 'Admin' }, config).accepted, true);
+  assert.equal(evaluateFilters({ text: 'post' }, config).key, 'signatures');
+});
