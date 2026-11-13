@@ -7,7 +7,7 @@ const DEFAULT_FILTERS = Object.freeze({
   days: { enabled: false, excluded: [] },
   links: { enabled: false, text: false, buttons: false },
   media: { enabled: false, blockedTypes: [] },
-  specific: { enabled: false, blockForwarded: false, blockedPatterns: [], blockRepeated: false, repeatMinutes: 60 },
+  specific: { enabled: false, blockForwarded: false, blockBots: false, blockedPatterns: [], blockRepeated: false, repeatMinutes: 60 },
   signatures: { enabled: false, allowed: [], requireSignature: false, caseSensitive: false, match: 'exact' },
   quota: { enabled: false, maxMessages: 0, windowMinutes: 25 },
   rejection: { default: 'discard', perFilter: {} },
@@ -177,6 +177,7 @@ export function evaluateFilters(post, config, options = {}) {
       if (!rule.enabled) return null;
       const forwarded = Boolean(post?.forward_origin || post?.forward_from || post?.forward_from_chat || post?.forward_sender_name);
       if (rule.blockForwarded && forwarded) return { key: 'specific', reason: 'Las publicaciones reenviadas están bloqueadas.' };
+      if (rule.blockBots && post?.from?.is_bot) return { key: 'specific', reason: 'Las publicaciones enviadas por bots están bloqueadas.' };
       const found = (Array.isArray(rule.blockedPatterns) ? rule.blockedPatterns : []).find(pattern => wordMatches(text, pattern, 'partial', false));
       return found ? { key: 'specific', reason: 'Se detectó un patrón de contenido excluido.' } : null;
     },
@@ -187,6 +188,7 @@ export function evaluateFilters(post, config, options = {}) {
       const allowed = (Array.isArray(rule.allowed) ? rule.allowed : []).map(String).filter(Boolean);
       if (!allowed.length && !rule.requireSignature) return null;
       if (!signature) return { key: 'signatures', reason: 'La publicación no incluye una firma de administrador autorizada.' };
+      if (rule.requireSignature && !allowed.length) return null;
       const found = allowed.some(value => rule.match === 'partial'
         ? normalize(signature, rule.caseSensitive).includes(normalize(value, rule.caseSensitive))
         : normalize(signature, rule.caseSensitive) === normalize(value, rule.caseSensitive));
@@ -205,7 +207,7 @@ export function filterFingerprint(post) {
   const payload = [
     String(post?.text ?? post?.caption ?? '').normalize('NFC').trim().toLocaleLowerCase('es-MX'),
     mediaTypes(post).join(','),
-    String(photo?.file_unique_id ?? post?.video?.file_unique_id ?? post?.document?.file_unique_id ?? ''),
+    String(photo?.file_unique_id ?? post?.video?.file_unique_id ?? post?.document?.file_unique_id ?? post?.animation?.file_unique_id ?? post?.audio?.file_unique_id ?? post?.voice?.file_unique_id ?? post?.sticker?.file_unique_id ?? post?.video_note?.file_unique_id ?? ''),
   ].join('|');
   let hash = 2166136261;
   for (let i = 0; i < payload.length; i++) {
