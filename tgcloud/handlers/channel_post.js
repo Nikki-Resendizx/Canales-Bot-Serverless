@@ -1,6 +1,6 @@
 import { api, db } from 'sdk';
 import { eq } from 'sdk/db';
-import { channels, channelRoutes, channelSettings, templates, postAlertKeys, filterConfigs, filterRejections, filterSeenContent, filterDeliveryEvents } from '../schema.js';
+import { channels, channelRoutes, channelSettings, templates, postAlertKeys, filterConfigs, filterRejections, filterSeenContent, filterDeliveryEvents, routeForwardSettings } from '../schema.js';
 import { defaultFilterConfig, mergeFilterConfigs, evaluateFilters, filterFingerprint, isRepeatedContent, localDateKey } from '../lib/message_filters.js';
 
 const OWNER_ID = 8624574996;
@@ -556,6 +556,7 @@ export default async function (post) {
   const registeredChannels = await db.select().from(channels).all();
   const channelById = new Map(registeredChannels.map(channel => [Number(channel.chatId), channel]));
 
+  let deliveredRoutes = 0;
   for (const route of routes) {
     const destination = channelById.get(Number(route.destinationChatId));
     if (Number(route.destinationChatId) === sourceId) continue;
@@ -570,21 +571,51 @@ export default async function (post) {
         }
         continue;
       }
+      const routeSettingsRow = await db.select().from(routeForwardSettings)
+        .where(eq(routeForwardSettings.routeKey, route.routeKey)).get();
+      let routeSettings = {};
+      try { routeSettings = JSON.parse(routeSettingsRow?.configJson || '{}'); } catch { routeSettings = {}; }
+      const delaySeconds = Math.min(30, Math.max(0, Number(routeSettings.initialDelaySeconds || 0)));
+      const intervalSeconds = Math.min(30, Math.max(0, Number(routeSettings.intervalSeconds || 0)));
+      if (deliveredRoutes > 0 && intervalSeconds > 0) await new Promise(resolve => setTimeout(resolve, intervalSeconds * 1000));
+      if (delaySeconds > 0) await new Promise(resolve => setTimeout(resolve, delaySeconds * 1000));
       const mode = ['copy', 'forward'].includes(route.mode) ? route.mode : 'auto';
       const shouldForward = mode === 'forward' ||
         (mode === 'auto' && Boolean(post.forward_origin || post.forward_from || post.forward_from_chat || post.forward_sender_name));
+      let sentMessage;
       if (shouldForward) {
-        await api.forwardMessage({
+        sentMessage = await api.forwardMessage({
           chat_id: route.destinationChatId,
           from_chat_id: post.chat.id,
           message_id: post.message_id,
         });
       } else {
-        await api.copyMessage({
+        sentMessage = await api.copyMessage({
           chat_id: route.destinationChatId,
           from_chat_id: post.chat.id,
           message_id: post.message_id,
         });
+      }
+      deliveredRoutes++;
+      if (routeSettings.pinPost && sentMessage?.message_id) {
+        try {
+          await api.pinChatMessage({ chat_id: route.destinationChatId, message_id: sentMessage.message_id, disable_notification: true });
+        } catch (pinError) {
+          console.log('No se pudo fijar la publicación reenviada', route.routeKey, String(pinError));
+        }
+      }
+      if (routeSettings.notifyOwner) {
+        try {
+          await api.sendMessage({
+            chat_id: OWNER_ID,
+            text: '📨 Publicación distribuida\nRuta: ' + sourceId + ' → ' + route.destinationChatId
+              + '\nMensaje de origen: ' + post.message_id
+              + '\nDestino: ' + (sentMessage?.message_id || 'enviado'),
+            disable_notification: true,
+          });
+        } catch (notifyError) {
+          console.log('No se pudo notificar al propietario sobre la distribución', route.routeKey, String(notifyError));
+        }
       }
       await recordRouteDelivery(filterCheck);
     } catch (error) {
