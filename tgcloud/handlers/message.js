@@ -2,10 +2,10 @@ import { api, db } from 'sdk';
 import { eq } from 'sdk/db';
 import {
   admins, channels, channelSettings, globalBans, channelRoutes,
-  templates, publications, purchases, reactionReports, knownUsers, botTexts, notificationTopics, filterConfigs,
+  templates, publications, purchases, reactionReports, knownUsers, botTexts, notificationTopics, filterConfigs, filterRejections, filterSeenContent, filterDeliveryEvents,
 } from '../schema.js';
 
-import { defaultFilterConfig, mergeFilterConfigs } from '../lib/message_filters.js';
+import { defaultFilterConfig, mergeFilterConfigs, evaluateFilters, filterFingerprint, isRepeatedContent } from '../lib/message_filters.js';
 
 const OWNER_ID = 8624574996;
 const DEFAULT_REACTION_REPORT_CHAT_ID = -1004456932813;
@@ -128,6 +128,90 @@ async function buildMainMenu() {
     menu.push(buttons);
   }
   return menu;
+}
+
+function compactFilterKey(value) {
+  let hash = 2166136261;
+  for (let i = 0; i < value.length; i++) { hash ^= value.charCodeAt(i); hash = Math.imul(hash, 16777619); }
+  return 'fr_' + (hash >>> 0).toString(36);
+}
+
+async function evaluateGroupRouteFilters(message, route, sourceId) {
+  const [globalRow, channelRow, routeRow] = await Promise.all([
+    db.select().from(filterConfigs).where(eq(filterConfigs.scopeKey, 'global')).get(),
+    db.select().from(filterConfigs).where(eq(filterConfigs.scopeKey, 'channel:' + sourceId)).get(),
+    db.select().from(filterConfigs).where(eq(filterConfigs.scopeKey, 'route:' + route.routeKey)).get(),
+  ]);
+  const parse = row => { try { return row ? JSON.parse(row.configJson || '{}') : null; } catch { return null; } };
+  const config = mergeFilterConfigs(defaultFilterConfig(), parse(globalRow), parse(channelRow), parse(routeRow));
+  const scopeKey = 'route:' + route.routeKey;
+  const shouldTrack = Boolean(config.quota?.enabled || (config.specific?.enabled && config.specific?.blockRepeated));
+  const eventKey = shouldTrack ? scopeKey + ':' + sourceId + ':' + String(message.media_group_id || message.message_id) : '';
+  if (eventKey && await db.select().from(filterDeliveryEvents).where(eq(filterDeliveryEvents.eventKey, eventKey)).get()) {
+    return { accepted: false, alreadyDelivered: true };
+  }
+
+  let result = evaluateFilters(message, config);
+  let fingerprint = '';
+  if (result.accepted && config.specific?.enabled && config.specific?.blockRepeated) {
+    fingerprint = sourceId + ':' + filterFingerprint(message);
+    const seen = await db.select().from(filterSeenContent).where(eq(filterSeenContent.fingerprint, fingerprint)).get();
+    if (isRepeatedContent(message, config, seen?.createdAt, Date.now())) {
+      result = { accepted: false, key: 'specific', reason: 'Se detectó una publicación repetida dentro del periodo configurado.', behavior: config.rejection?.perFilter?.specific || config.rejection?.default || 'discard' };
+    }
+  }
+  if (result.accepted && config.quota?.enabled && Number(config.quota.maxMessages) > 0) {
+    const minutes = Math.max(1, Math.min(10080, Number(config.quota.windowMinutes) || 25));
+    const cutoff = Date.now() - minutes * 60 * 1000;
+    const events = await db.select().from(filterDeliveryEvents).all();
+    const count = events.filter(row => row.scopeKey === scopeKey && Number(row.createdAt) >= cutoff).length;
+    if (count >= Number(config.quota.maxMessages)) {
+      result = { accepted: false, key: 'quota', reason: 'Se alcanzó el límite de ' + Number(config.quota.maxMessages) + ' publicaciones cada ' + minutes + ' minutos.', behavior: config.rejection?.perFilter?.quota || config.rejection?.default || 'discard' };
+    }
+  }
+  if (!result.accepted) {
+    const rejectionKey = compactFilterKey([scopeKey, sourceId, message.message_id, result.key].join(':'));
+    try {
+      await db.insert(filterRejections).values({
+        rejectionKey, sourceChatId: sourceId, destinationChatId: Number(route.destinationChatId),
+        sourceMessageId: Number(message.message_id), routeKey: String(route.routeKey),
+        filterKey: String(result.key), reason: String(result.reason).slice(0, 500),
+        behavior: result.behavior === 'review' ? 'review' : 'discard',
+        status: result.behavior === 'review' ? 'pending' : 'rejected', createdAt: Date.now(),
+      }).onConflictDoNothing().run();
+    } catch (error) { console.log('No se pudo registrar el rechazo de ruta de grupo', rejectionKey, String(error)); }
+    if (result.behavior === 'review') {
+      try {
+        await api.sendMessage({
+          chat_id: OWNER_ID,
+          text: ['⏳ PUBLICACIÓN EN REVISIÓN', 'Origen: ' + String(message.chat?.title || sourceId), 'Destino: ' + Number(route.destinationChatId), 'Motivo: ' + String(result.reason)].join('\n'),
+          reply_markup: { inline_keyboard: [[
+            { text: '✅ Aprobar y reenviar', callback_data: 'admin:filterreview:approve:' + rejectionKey },
+            { text: '🗑️ Descartar', callback_data: 'admin:filterreview:discard:' + rejectionKey },
+          ]] },
+        });
+      } catch (error) { console.log('No se pudo notificar revisión de mensaje de grupo', rejectionKey, String(error)); }
+    }
+    return { accepted: false, result };
+  }
+  return { accepted: true, scopeKey, eventKey, fingerprint };
+}
+
+async function recordGroupRouteDelivery(check) {
+  if (check.eventKey) {
+    try {
+      await db.insert(filterDeliveryEvents).values({ eventKey: check.eventKey, scopeKey: check.scopeKey, createdAt: Date.now() }).onConflictDoNothing().run();
+    } catch (error) { console.log('No se pudo registrar entrega de ruta de grupo', String(error)); }
+  }
+  if (check.fingerprint) {
+    try {
+      await db.insert(filterSeenContent).values({
+        fingerprint: check.fingerprint,
+        sourceChatId: Number(check.fingerprint.split(':')[0]),
+        createdAt: Date.now(),
+      }).onConflictDoUpdate({ target: filterSeenContent.fingerprint, set: { createdAt: Date.now() } }).run();
+    } catch (error) { console.log('No se pudo guardar huella de grupo', String(error)); }
+  }
 }
 
 function parseButtonSyntax(source, rulesUrl = '') {
@@ -729,6 +813,8 @@ export default async function (message) {
             const destination = chatById.get(Number(route.destinationChatId));
             if (Number(route.destinationChatId) === chatId || !destination || !Number(destination.active)) continue;
             try {
+              const filterCheck = await evaluateGroupRouteFilters(message, route, chatId);
+              if (!filterCheck.accepted) continue;
               const mode = ['copy', 'forward'].includes(route.mode) ? route.mode : 'auto';
               const isForwarded = Boolean(message.forward_origin || message.forward_from || message.forward_from_chat || message.forward_sender_name);
               const shouldForward = mode === 'forward' || (mode === 'auto' && isForwarded);
@@ -737,6 +823,7 @@ export default async function (message) {
               } else {
                 await api.copyMessage({ chat_id: Number(route.destinationChatId), from_chat_id: chatId, message_id: message.message_id });
               }
+              await recordGroupRouteDelivery(filterCheck);
             } catch (error) {
               console.log('No se pudo distribuir el mensaje de grupo a la ruta', route.routeKey, String(error));
             }
