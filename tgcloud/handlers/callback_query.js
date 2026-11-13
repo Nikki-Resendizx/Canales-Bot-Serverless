@@ -197,7 +197,8 @@ function filterSettingsKeyboard(scope, config) {
   keyboard.push([{ text: '🔙 Volver', callback_data: scope.type === 'global' ? 'admin:filters' : scope.type === 'route' ? 'admin:filterroutes' : 'admin:filterchannels' }]);
   return keyboard;
 }
-\nasync function sendPanel(chatId, text, keyboard = null, messageId = null) {
+
+async function sendPanel(chatId, text, keyboard = null, messageId = null) {
   const safeKeyboard = sanitizeInlineKeyboard(keyboard);
   // El SDK recibe reply_markup como objeto estructurado; serializarlo aquí puede
   // convertir el teclado en una cadena y provocar el rechazo de Telegram.
@@ -405,7 +406,8 @@ export default async function (query) {
     try { await api.editMessageText({ chat_id: chatId, message_id: message.message_id, text: (message.text || 'Revisión') + '\\n\\n' + (action === 'approve' ? '✅ APROBADA Y REENVIADA' : '🗑️ DESCARTADA') }); } catch {}
     return;
   }
-\n  if (!data.startsWith('admin:')) { await answer(query, 'Acción desconocida.'); return; }
+
+  if (!data.startsWith('admin:')) { await answer(query, 'Acción desconocida.'); return; }
   if (!userId || chatId !== userId || !(await isAdmin(userId))) {
     await answer(query, 'No tienes permiso para usar este panel.', true);
     return;
@@ -592,7 +594,8 @@ export default async function (query) {
     await renderPanel('♻️ Se eliminó la personalización de filtros del canal. Ahora hereda la configuración global.', [[{ text: '🔙 Volver a filtros del canal', callback_data: 'admin:filterchannel:' + channelId }]]);
     return;
   }
-\n  if (section === 'open') {
+
+  if (section === 'open') {
     await answer(query);
     await renderPanel((await navText('panel_title')) + '\nCANALES-BOT\n' + (await navText('panel_description')));
     return;
