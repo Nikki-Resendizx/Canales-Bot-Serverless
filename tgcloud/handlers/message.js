@@ -2,7 +2,7 @@ import { api, db } from 'sdk';
 import { eq } from 'sdk/db';
 import {
   admins, channels, channelSettings, globalBans, channelRoutes,
-  templates, publications, purchases, reactionReports, knownUsers, botTexts, notificationTopics, filterConfigs, filterRejections, filterSeenContent, filterDeliveryEvents,
+  templates, publications, purchases, reactionReports, knownUsers, botTexts, notificationTopics, filterConfigs, filterRejections, filterSeenContent, filterDeliveryEvents, routeForwardSettings,
 } from '../schema.js';
 
 import { defaultFilterConfig, mergeFilterConfigs, evaluateFilters, filterFingerprint, isRepeatedContent, localDateKey } from '../lib/message_filters.js';
@@ -485,6 +485,34 @@ export default async function (message) {
       }
       await say(chatId, '✅ Usuario eliminado de la blacklist. Desbaneos solicitados en ' + count + '/' + rows.length + ' canales administrados.');
     }
+    return;
+  }
+
+  const forwardInputPrompt = String(message.reply_to_message?.text ?? '');
+  const forwardInputMatch = forwardInputPrompt.match(/\[CBFORWARD:(-?\d+):(-?\d+)\]/i);
+  if (forwardInputMatch && isPrivate && await isAdmin(userId) && text && !text.startsWith('/')) {
+    const sourceId = Number(forwardInputMatch[1]);
+    const destinationId = Number(forwardInputMatch[2]);
+    const routeKey = sourceId + ':' + destinationId;
+    if (!(await canManageChannel(userId, sourceId)) || !(await canManageChannel(userId, destinationId))) {
+      await say(chatId, '⛔ No tienes permiso para modificar esa ruta.');
+      return;
+    }
+    const route = await db.select().from(channelRoutes).where(eq(channelRoutes.routeKey, routeKey)).get();
+    if (!route) { await say(chatId, '⚠️ La ruta ya no existe.'); return; }
+    const values = text.split(/\r?\n/).map(value => value.trim()).filter(Boolean).map(Number);
+    if (values.length !== 2 || values.some(value => !Number.isInteger(value) || value < 0 || value > 30)) {
+      await say(chatId, '⚠️ Envía exactamente dos números enteros entre 0 y 30, uno por línea.');
+      return;
+    }
+    const row = await db.select().from(routeForwardSettings).where(eq(routeForwardSettings.routeKey, routeKey)).get();
+    let config = {};
+    try { config = JSON.parse(row?.configJson || '{}'); } catch { config = {}; }
+    config.initialDelaySeconds = values[0];
+    config.intervalSeconds = values[1];
+    await db.insert(routeForwardSettings).values({ routeKey, configJson: JSON.stringify(config), updatedBy: userId, updatedAt: now() })
+      .onConflictDoUpdate({ target: routeForwardSettings.routeKey, set: { configJson: JSON.stringify(config), updatedBy: userId, updatedAt: now() } }).run();
+    await say(chatId, '✅ Tiempos guardados para la ruta ' + sourceId + ' → ' + destinationId + '.');
     return;
   }
 
