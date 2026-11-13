@@ -9,7 +9,7 @@ const DEFAULT_FILTERS = Object.freeze({
   media: { enabled: false, blockedTypes: [] },
   specific: { enabled: false, blockForwarded: false, blockBots: false, blockedPatterns: [], blockRepeated: false, repeatMinutes: 60 },
   signatures: { enabled: false, allowed: [], requireSignature: false, caseSensitive: false, match: 'exact' },
-  quota: { enabled: false, maxMessages: 0, windowMinutes: 25 },
+  quota: { enabled: false, maxMessages: 0, windowMinutes: 25, dailyMaxMessages: 0 },
   rejection: { default: 'discard', perFilter: {} },
 });
 
@@ -222,4 +222,16 @@ export function isRepeatedContent(post, config, seenAt, now = Date.now()) {
   if (!rule.enabled || !rule.blockRepeated || !seenAt) return false;
   const minutes = Math.max(1, Math.min(10080, Number(rule.repeatMinutes) || 60));
   return Number(now) - Number(seenAt) <= minutes * 60 * 1000;
+}
+
+
+export function localDateKey(date, timezone = 'America/Mexico_City') {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date);
+  const map = Object.fromEntries(parts.map(part => [part.type, part.value]));
+  return map.year + '-' + map.month + '-' + map.day;
 }
