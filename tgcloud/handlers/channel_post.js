@@ -92,7 +92,7 @@ async function checkRouteFilters(post, route, sourceId) {
   let result = evaluateFilters(post, config);
   let fingerprint = '';
   if (result.accepted && !post.media_group_id && config.specific?.enabled && config.specific?.blockRepeated) {
-    fingerprint = sourceId + ':' + filterFingerprint(post);
+    fingerprint = sourceId + ':' + route.routeKey + ':' + filterFingerprint(post);
     const seen = await db.select().from(filterSeenContent).where(eq(filterSeenContent.fingerprint, fingerprint)).get();
     if (isRepeatedContent(post, config, seen?.createdAt, Date.now())) {
       result = {
