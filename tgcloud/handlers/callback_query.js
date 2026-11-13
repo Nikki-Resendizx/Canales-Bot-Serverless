@@ -415,7 +415,7 @@ export default async function (query) {
   }
   if (section === 'filterglobal') {
     const scope = { key: 'global', type: 'global', channelId: null, label: 'GLOBAL' };
-    const config = await loadFilterScope(scope.key);
+    const config = mergeFilterConfigs(defaultFilterConfig(), await loadFilterScope(scope.key));
     await renderPanel('🌐 FILTROS GLOBALES\\n\\n' + filterSummary(config) + '\\n\\nLos canales heredan estos valores mientras no tengan una personalización individual.', filterSettingsKeyboard(scope, config));
     return;
   }
@@ -441,9 +441,11 @@ export default async function (query) {
     const field = String(parts[scope?.type === 'channel' ? 4 : 3] || '');
     const allowed = ['whitelist','blockedWords','regex','limits','time','days','links','media','specific','signatures','quota'];
     if (!scope || !allowed.includes(field) || (scope.type === 'channel' && !(await canManageChannel(userId, scope.channelId)))) { await answer(query, 'Configuración no válida o sin permisos.', true); return; }
-    const config = await loadFilterScope(scope.key);
+    const stored = await loadFilterScope(scope.key);
+    const config = mergeFilterConfigs(defaultFilterConfig(), stored);
     config[field].enabled = !config[field].enabled;
-    await saveFilterScope(scope.key, scope.type, scope.channelId, config, userId);
+    stored[field] = { ...(stored[field] || {}), enabled: config[field].enabled };
+    await saveFilterScope(scope.key, scope.type, scope.channelId, stored, userId);
     await answer(query, field + (config[field].enabled ? ' activado.' : ' desactivado.'));
     const parent = scope.type === 'global' ? 'filterglobal' : 'filterchannel:' + scope.channelId;
     await renderPanel('🔏 FILTROS · ' + scope.label + '\\n\\n' + filterSummary(config), filterSettingsKeyboard(scope, config));
@@ -475,9 +477,11 @@ export default async function (query) {
   if (section === 'filterbehavior') {
     const scope = filterScopeFromParts(parts);
     if (!scope || (scope.type === 'channel' && !(await canManageChannel(userId, scope.channelId)))) { await answer(query, 'Sin permisos.', true); return; }
-    const config = await loadFilterScope(scope.key);
+    const stored = await loadFilterScope(scope.key);
+    const config = mergeFilterConfigs(defaultFilterConfig(), stored);
     config.rejection.default = config.rejection.default === 'review' ? 'discard' : 'review';
-    await saveFilterScope(scope.key, scope.type, scope.channelId, config, userId);
+    stored.rejection = { ...(stored.rejection || {}), default: config.rejection.default };
+    await saveFilterScope(scope.key, scope.type, scope.channelId, stored, userId);
     await answer(query, config.rejection.default === 'review' ? 'Los rechazos irán a revisión.' : 'Los rechazos se descartarán.');
     await renderPanel('🔏 FILTROS · ' + scope.label + '\\n\\n' + filterSummary(config), filterSettingsKeyboard(scope, config));
     return;
