@@ -541,6 +541,7 @@ export default async function (post) {
     const destination = channelById.get(Number(route.destinationChatId));
     if (Number(route.destinationChatId) === sourceId) continue;
     if (!destination || !Number(destination.active)) continue;
+    if (route.mode === 'manual') continue;
     let filterCheck = null;
     try {
       filterCheck = await checkRouteFilters(post, route, sourceId);
