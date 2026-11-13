@@ -130,11 +130,6 @@ async function buildMainMenu() {
   return menu;
 }
 
-function compactFilterKey(value) {
-  let hash = 2166136261;
-  for (let i = 0; i < value.length; i++) { hash ^= value.charCodeAt(i); hash = Math.imul(hash, 16777619); }
-  return 'fr_' + (hash >>> 0).toString(36);
-}
 
 function compactFilterKey(value) {
   let hash = 2166136261;
