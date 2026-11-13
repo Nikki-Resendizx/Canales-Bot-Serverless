@@ -89,3 +89,17 @@ El panel **Registro de rechazos** muestra los últimos 20 eventos. Los filtros s
 ## Datos
 
 Las tablas \`filter_configs\`, \`filter_rejections\`, \`filter_seen_content\` y \`filter_delivery_events\` son aditivas. No sustituyen las tablas actuales de canales, rutas, plantillas o publicaciones.
+
+
+# Reenvíos por ruta
+
+En **Distribución → seleccionar ruta → Opciones de reenvío** puedes ajustar cada destino por separado:
+
+- **Avisos al propietario:** envía un aviso privado al propietario después de cada entrega confirmada. El bot debe poder iniciar conversación con el propietario.
+- **Fijar publicación:** intenta fijar la copia o reenvío en el destino. El bot debe tener permiso para fijar mensajes.
+- **Espera inicial:** pausa de 0 a 30 segundos antes de enviar a esa ruta.
+- **Intervalo:** pausa de 0 a 30 segundos entre rutas atendidas por el mismo mensaje.
+
+Los ajustes se guardan en \`route_forward_settings\`; no modifican el modo ni la definición de las rutas existentes. Los fallos de aviso o fijado no cancelan una distribución ya realizada.
+
+Las tablas \`recipient_lists\`, \`recipient_list_items\`, \`scheduled_publications\`, \`repeat_jobs\` y \`forward_history\` preparan almacenamiento persistente para listas, historial y trabajos programados. **La ejecución automática de tareas programadas todavía requiere conectar un disparador compatible con TGCloud**; no se activa un temporizador en memoria, porque no sería fiable en un entorno serverless.
