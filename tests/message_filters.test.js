@@ -50,7 +50,7 @@ test('excluded weekdays are evaluated in the configured local timezone', () => {
 
 test('regex filters validate the configured expression at runtime', () => {
   const config = defaultFilterConfig();
-  config.regex = { enabled: true, pattern: '\\\\b(news|update)\\\\b', flags: 'i' };
+  config.regex = { enabled: true, pattern: '\\b(news|update)\\b', flags: 'i' };
   assert.equal(evaluateFilters({ text: 'Daily update' }, config).accepted, true);
   assert.equal(evaluateFilters({ text: 'Daily digest' }, config).key, 'regex');
 });
