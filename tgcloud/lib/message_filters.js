@@ -103,7 +103,6 @@ function inTimeRange(minute, range) {
 
 export function evaluateFilters(post, config, options = {}) {
   const cfg = mergeFilterConfigs(config);
-  if (!cfg.enabled) return { accepted: true };
   const now = options.now instanceof Date ? options.now : new Date(options.now ?? Date.now());
   const text = String(post?.text ?? post?.caption ?? '');
   const checks = [
