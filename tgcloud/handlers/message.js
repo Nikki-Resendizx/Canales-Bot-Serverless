@@ -554,11 +554,24 @@ export default async function (message) {
           rule.words = [];
           rule.enabled = false;
         } else {
-          let words = lines;
-          if (field === 'whitelist' && /^(ANY|ALL)$/i.test(lines[0] || '')) {
-            rule.mode = lines[0].toLowerCase();
-            words = lines.slice(1);
+          let words = [...lines];
+          if (field === 'whitelist' && /^(ANY|ALL)$/i.test(words[0] || '')) {
+            rule.mode = words[0].toLowerCase();
+            words.shift();
           }
+          words = words.filter(line => {
+            const match = /^MATCH:(EXACT|PARTIAL)$/i.exec(line);
+            const casing = /^CASE:(SENSITIVE|INSENSITIVE)$/i.exec(line);
+            const search = /^SEARCH:(TEXT|CAPTION|BOTH)$/i.exec(line);
+            if (match) { rule.match = match[1].toLowerCase(); return false; }
+            if (casing) { rule.caseSensitive = casing[1].toLowerCase() === 'sensitive'; return false; }
+            if (search) {
+              rule.searchText = search[1] !== 'CAPTION';
+              rule.searchCaption = search[1] !== 'TEXT';
+              return false;
+            }
+            return true;
+          });
           if (!words.length) { await say(chatId, '⚠️ Añade al menos una palabra o frase, una por línea.'); return; }
           rule.words = words.slice(0, 200);
           rule.enabled = true;
