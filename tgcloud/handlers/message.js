@@ -6,6 +6,7 @@ import {
 } from '../schema.js';
 
 import { defaultFilterConfig, mergeFilterConfigs, evaluateFilters, filterFingerprint, isRepeatedContent, localDateKey } from '../lib/message_filters.js';
+import { parseForwardDelays } from '../lib/forwarding.js';
 
 const OWNER_ID = 8624574996;
 const DEFAULT_REACTION_REPORT_CHAT_ID = -1004456932813;
@@ -500,16 +501,16 @@ export default async function (message) {
     }
     const route = await db.select().from(channelRoutes).where(eq(channelRoutes.routeKey, routeKey)).get();
     if (!route) { await say(chatId, '⚠️ La ruta ya no existe.'); return; }
-    const values = text.split(/\r?\n/).map(value => value.trim()).filter(Boolean).map(Number);
-    if (values.length !== 2 || values.some(value => !Number.isInteger(value) || value < 0 || value > 30)) {
-      await say(chatId, '⚠️ Envía exactamente dos números enteros entre 0 y 30, uno por línea.');
+    const parsedDelays = parseForwardDelays(text);
+    if (!parsedDelays.valid) {
+      await say(chatId, '⚠️ ' + parsedDelays.reason + ' Uno por línea.');
       return;
     }
     const row = await db.select().from(routeForwardSettings).where(eq(routeForwardSettings.routeKey, routeKey)).get();
     let config = {};
     try { config = JSON.parse(row?.configJson || '{}'); } catch { config = {}; }
-    config.initialDelaySeconds = values[0];
-    config.intervalSeconds = values[1];
+    config.initialDelaySeconds = parsedDelays.initialDelaySeconds;
+    config.intervalSeconds = parsedDelays.intervalSeconds;
     await db.insert(routeForwardSettings).values({ routeKey, configJson: JSON.stringify(config), updatedBy: userId, updatedAt: now() })
       .onConflictDoUpdate({ target: routeForwardSettings.routeKey, set: { configJson: JSON.stringify(config), updatedBy: userId, updatedAt: now() } }).run();
     await say(chatId, '✅ Tiempos guardados para la ruta ' + sourceId + ' → ' + destinationId + '.');
