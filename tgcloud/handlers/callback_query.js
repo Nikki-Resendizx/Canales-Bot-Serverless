@@ -428,7 +428,7 @@ export default async function (query) {
     return;
   }
   if (section === 'filterlogs') {
-    const allRows = (await db.select().from(filterRejections).all()).sort((a, b) => Number(b.createdAt) - Number(a.createdAt));
+    const allRows = (await db.select().from(filterRejections).all()).sort((a, b) => Number(b.createdAt) - Number(a.createdAt)).slice(0, 100);
     const visibleRows = [];
     for (const row of allRows) if (await canManageChannel(userId, Number(row.sourceChatId))) visibleRows.push(row);
     const rows = visibleRows.slice(0, 20);
@@ -438,6 +438,7 @@ export default async function (query) {
       '\nFiltro: ' + row.filterKey + '\nMotivo: ' + row.reason +
       '\nFecha: ' + new Date(Number(row.createdAt)).toLocaleString('es-MX')
     ).join('\n\n') : 'Todavía no hay publicaciones rechazadas por los filtros.';
+    const safeReport = report.slice(0, 3500);
     const keyboard = [];
     for (const row of rows.filter(item => item.status === 'pending')) {
       if (!(await canManageChannel(userId, Number(row.sourceChatId)))) continue;
@@ -448,7 +449,7 @@ export default async function (query) {
     }
     keyboard.push([{ text: '🔄 Actualizar', callback_data: 'admin:filterlogs' }]);
     keyboard.push([{ text: '🔙 Volver a filtros', callback_data: 'admin:filters' }]);
-    await renderPanel('🧾 REGISTRO DE FILTROS\n\n' + report, keyboard);
+    await renderPanel('🧾 REGISTRO DE FILTROS\n\n' + safeReport, keyboard);
     return;
   }
   if (section === 'filterroutes') {
@@ -527,17 +528,17 @@ export default async function (query) {
     const permitted = scope && (scope.type === 'global' && userId === OWNER_ID || (scope.type === 'channel' && await canManageChannel(userId, scope.channelId)) || (scope.type === 'route' && await canManageChannel(userId, scope.sourceId) && await canManageChannel(userId, scope.destinationId)));
     if (!permitted || !allowed.includes(field)) { await answer(query, 'Configuración no válida o sin permisos.', true); return; }
     const prompts = {
-      whitelist: 'Envía palabras o frases permitidas, una por línea. Puedes escribir ANY o ALL en la primera línea para indicar si basta una coincidencia o deben aparecer todas.',
-      blockedWords: 'Envía las palabras o frases bloqueadas, una por línea.',
+      whitelist: 'Envía palabras o frases permitidas, una por línea. Opciones: ANY o ALL; MATCH:EXACT o MATCH:PARTIAL; CASE:SENSITIVE o CASE:INSENSITIVE; SEARCH:TEXT, SEARCH:CAPTION o SEARCH:BOTH. Después escribe las frases.',
+      blockedWords: 'Envía palabras o frases bloqueadas, una por línea. Opciones: MATCH:EXACT o MATCH:PARTIAL; CASE:SENSITIVE o CASE:INSENSITIVE; SEARCH:TEXT, SEARCH:CAPTION o SEARCH:BOTH. Después escribe las frases.',
       regex: 'Envía la expresión regular. Ejemplo: \\b(promo|gratis)\\b. Puedes usar /expresión/flags.',
       limits: 'Envía MAX_CARACTERES | MAX_LINEAS. Usa 0 para desactivar uno de los límites. Ejemplo: 1000 | 12.',
-      time: 'Envía una franja por línea en formato HH:MM-HH:MM. Ejemplo: 09:00-13:00\n16:00-21:00. Usa CLEAR para quitar franjas.',
+      time: 'Envía una franja por línea en formato HH:MM-HH:MM. Ejemplo: 09:00-13:00\n16:00-21:00. Puedes añadir TZ:America/Mexico_City. Usa CLEAR para quitar franjas.',
       days: 'Envía los días que se omitirán separados por coma: 1=lunes, 2=martes, … 7=domingo. Ejemplo: 6,7. CLEAR para ninguno.',
       links: 'Escribe TEXT, BUTTONS o BOTH para bloquear enlaces en texto/descripción, botones inline o ambos.',
       media: 'Envía los tipos de medios que quieres bloquear separados por coma: text, photo, video, gif, audio, voice, document, video_note, sticker, album.',
-      specific: 'Envía FORWARDED para bloquear reenvíos, REPEAT:MINUTOS para bloquear duplicados, o PATTERN: texto para añadir patrones repetitivos excluidos.',
-      signatures: 'Envía las firmas de administradores autorizadas, una por línea. Escribe REQUIRE para rechazar publicaciones sin firma.',
-      quota: 'Envía MAX_MENSAJES | MINUTOS. Ejemplo: 5 | 25. Usa 0 | 25 para desactivar el límite.',
+      specific: 'Envía FORWARDED para bloquear reenvíos, BOTS para bloquear mensajes identificados como enviados por bots, REPEAT:MINUTOS para bloquear duplicados, o PATTERN: texto para añadir patrones repetitivos excluidos.',
+      signatures: 'Envía las firmas de administradores autorizadas, una por línea. Opciones: MATCH:EXACT o MATCH:PARTIAL; CASE:SENSITIVE o CASE:INSENSITIVE. Escribe REQUIRE para exigir una firma no vacía.',
+      quota: 'Envía MAX_MENSAJES | MINUTOS | MAX_DIARIO (opcional). Ejemplo: 5 | 25 | 50. Usa 0 | 25 | 0 para desactivar ambos límites.',
     };
     await answer(query);
     await api.sendMessage({ chat_id: chatId, text: '[CBFILTERINPUT:' + scope.key + ':' + field + ']\n' + prompts[field], reply_markup: { force_reply: true, selective: true } });
