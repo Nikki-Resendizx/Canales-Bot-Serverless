@@ -2,6 +2,7 @@ import { api, db } from 'sdk';
 import { eq } from 'sdk/db';
 import { channels, channelRoutes, channelSettings, templates, postAlertKeys, filterConfigs, filterRejections, filterSeenContent, filterDeliveryEvents, routeForwardSettings } from '../schema.js';
 import { defaultFilterConfig, mergeFilterConfigs, evaluateFilters, filterFingerprint, isRepeatedContent, localDateKey } from '../lib/message_filters.js';
+import { normalizeForwardConfig } from '../lib/forwarding.js';
 
 const OWNER_ID = 8624574996;
 const ALERTS_CHAT_ID = -1004424261064;
@@ -574,7 +575,7 @@ export default async function (post) {
       const routeSettingsRow = await db.select().from(routeForwardSettings)
         .where(eq(routeForwardSettings.routeKey, route.routeKey)).get();
       let routeSettings = {};
-      try { routeSettings = JSON.parse(routeSettingsRow?.configJson || '{}'); } catch { routeSettings = {}; }
+      try { routeSettings = normalizeForwardConfig(JSON.parse(routeSettingsRow?.configJson || '{}')); } catch { routeSettings = normalizeForwardConfig(); }
       const delaySeconds = Math.min(30, Math.max(0, Number(routeSettings.initialDelaySeconds || 0)));
       const intervalSeconds = Math.min(30, Math.max(0, Number(routeSettings.intervalSeconds || 0)));
       if (deliveredRoutes > 0 && intervalSeconds > 0) await new Promise(resolve => setTimeout(resolve, intervalSeconds * 1000));
