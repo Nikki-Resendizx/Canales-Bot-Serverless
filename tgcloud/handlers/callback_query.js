@@ -164,7 +164,7 @@ function filterSummary(config) {
     ['links','Enlaces'], ['media','Tipos de medios'], ['specific','Bloqueos específicos'],
     ['signatures','Firmas autorizadas'], ['quota','Límite de publicaciones'],
   ];
-  return labels.map(([key,label]) => '• ' + label + ': ' + (config[key]?.enabled ? '🟢 ACTIVO' : '⚪ Inactivo')).join('\\n');
+  return labels.map(([key,label]) => '• ' + label + ': ' + (config[key]?.enabled ? '🟢 ACTIVO' : '⚪ Inactivo')).join('\n');
 }
 function filterSettingsKeyboard(scope, config) {
   const labels = [
@@ -462,7 +462,7 @@ export default async function (query) {
       blockedWords: 'Envía las palabras o frases bloqueadas, una por línea.',
       regex: 'Envía la expresión regular. Ejemplo: \\b(promo|gratis)\\b. Puedes usar /expresión/flags.',
       limits: 'Envía MAX_CARACTERES | MAX_LINEAS. Usa 0 para desactivar uno de los límites. Ejemplo: 1000 | 12.',
-      time: 'Envía una franja por línea en formato HH:MM-HH:MM. Ejemplo: 09:00-13:00\\n16:00-21:00. Usa CLEAR para quitar franjas.',
+      time: 'Envía una franja por línea en formato HH:MM-HH:MM. Ejemplo: 09:00-13:00\n16:00-21:00. Usa CLEAR para quitar franjas.',
       days: 'Envía los días que se omitirán separados por coma: 1=lunes, 2=martes, … 7=domingo. Ejemplo: 6,7. CLEAR para ninguno.',
       links: 'Escribe TEXT, BUTTONS o BOTH para bloquear enlaces en texto/descripción, botones inline o ambos.',
       media: 'Envía los tipos de medios que quieres bloquear separados por coma: text, photo, video, gif, audio, voice, document, video_note, sticker, album.',
@@ -471,7 +471,7 @@ export default async function (query) {
       quota: 'Envía MAX_MENSAJES | MINUTOS. Ejemplo: 5 | 25. Usa 0 | 25 para desactivar el límite.',
     };
     await answer(query);
-    await api.sendMessage({ chat_id: chatId, text: '[CBFILTERINPUT:' + scope.key + ':' + field + ']\\n' + prompts[field], reply_markup: { force_reply: true, selective: true } });
+    await api.sendMessage({ chat_id: chatId, text: '[CBFILTERINPUT:' + scope.key + ':' + field + ']\n' + prompts[field], reply_markup: { force_reply: true, selective: true } });
     await renderPanel('Esperando la configuración de ' + field + ' para ' + scope.label + '.', [[{ text: '🔙 Volver', callback_data: scope.type === 'global' ? 'admin:filterglobal' : 'admin:filterchannel:' + scope.channelId }]]);
     return;
   }
