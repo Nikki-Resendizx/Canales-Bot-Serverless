@@ -612,6 +612,7 @@ export default async function (message) {
         if (slash) { pattern = slash[1]; flags = slash[2] || 'i'; }
         if (clear) { rule.pattern = ''; rule.enabled = false; }
         else {
+          if (pattern.length > 300) { await say(chatId, '⚠️ La expresión Regex no puede superar 300 caracteres.'); return; }
           try { new RegExp(pattern, flags); } catch { await say(chatId, '⚠️ La expresión regular no es válida.'); return; }
           rule.pattern = pattern; rule.flags = flags; rule.enabled = true;
         }
@@ -639,6 +640,11 @@ export default async function (message) {
           const ranges = rangeLines.map(line => {
             const match = /^(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})$/.exec(line);
             if (!match) return null;
+            const validTime = value => {
+              const [hour, minute] = value.split(':').map(Number);
+              return hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59;
+            };
+            if (!validTime(match[1]) || !validTime(match[2])) return null;
             return { start: match[1], end: match[2] };
           });
           if (!ranges.length || ranges.some(range => !range)) { await say(chatId, '⚠️ Usa HH:MM-HH:MM, una franja por línea. También puedes añadir TZ:America/Mexico_City.'); return; }
