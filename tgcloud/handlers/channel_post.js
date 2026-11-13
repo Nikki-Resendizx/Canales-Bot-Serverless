@@ -4,11 +4,8 @@ import { channels, channelRoutes, channelSettings, templates, postAlertKeys, fil
 import { defaultFilterConfig, mergeFilterConfigs, evaluateFilters, filterFingerprint, isRepeatedContent } from '../lib/message_filters.js';
 
 const OWNER_ID = 8624574996;
-
 const ALERTS_CHAT_ID = -1004424261064;
 const REACTION_REPORT_CHAT_ID = -1004456932813;
-
-
 
 async function readFilterConfig(scopeKey) {
   try {
@@ -29,8 +26,17 @@ async function effectiveFilterConfig(sourceId, route) {
   return mergeFilterConfigs(defaultFilterConfig(), globalConfig, channelConfig, routeConfig);
 }
 
+function compactRejectionKey(value) {
+  let hash = 2166136261;
+  for (let i = 0; i < value.length; i++) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return 'fr_' + (hash >>> 0).toString(36);
+}
+
 async function recordFilterRejection(post, route, sourceId, result, scopeKey) {
-  const rawKey = [scopeKey, sourceId, post.message_id, result.key].join(':');\n  let hash = 2166136261; for (let i = 0; i < rawKey.length; i++) { hash ^= rawKey.charCodeAt(i); hash = Math.imul(hash, 16777619); }\n  const rejectionKey = 'fr_' + (hash >>> 0).toString(36);
+  const rejectionKey = compactRejectionKey([scopeKey, sourceId, post.message_id, result.key].join(':'));
   const behavior = result.behavior === 'review' ? 'review' : 'discard';
   try {
     await db.insert(filterRejections).values({
@@ -59,7 +65,7 @@ async function recordFilterRejection(post, route, sourceId, result, scopeKey) {
           'Destino: ' + Number(route.destinationChatId),
           'Motivo: ' + String(result.reason),
           'Mensaje: ' + Number(post.message_id),
-        ].join('\\n'),
+        ].join('\n'),
         reply_markup: { inline_keyboard: [[
           { text: '✅ Aprobar y reenviar', callback_data: 'admin:filterreview:approve:' + rejectionKey },
           { text: '🗑️ Descartar', callback_data: 'admin:filterreview:discard:' + rejectionKey },
@@ -73,19 +79,24 @@ async function recordFilterRejection(post, route, sourceId, result, scopeKey) {
 
 async function checkRouteFilters(post, route, sourceId) {
   const config = await effectiveFilterConfig(sourceId, route);
-  if (!config.enabled) return { accepted: true, config, scopeKey: 'route:' + route.routeKey };
   const scopeKey = 'route:' + route.routeKey;
-  const eventKey = scopeKey + ':' + sourceId + ':' + String(post.media_group_id || post.message_id);
-  const existingEvent = await db.select().from(filterDeliveryEvents).where(eq(filterDeliveryEvents.eventKey, eventKey)).get();
-  if (existingEvent) return { accepted: false, alreadyDelivered: true, config, scopeKey };
+  const shouldTrack = Boolean(config.quota?.enabled || (config.specific?.enabled && config.specific?.blockRepeated));
+  const eventKey = shouldTrack ? scopeKey + ':' + sourceId + ':' + String(post.media_group_id || post.message_id) : '';
+
+  if (eventKey) {
+    const existingEvent = await db.select().from(filterDeliveryEvents).where(eq(filterDeliveryEvents.eventKey, eventKey)).get();
+    if (existingEvent) return { accepted: false, alreadyDelivered: true, config, scopeKey };
+  }
 
   let result = evaluateFilters(post, config);
+  let fingerprint = '';
   if (result.accepted && config.specific?.enabled && config.specific?.blockRepeated) {
-    const fingerprint = sourceId + ':' + filterFingerprint(post);
+    fingerprint = sourceId + ':' + filterFingerprint(post);
     const seen = await db.select().from(filterSeenContent).where(eq(filterSeenContent.fingerprint, fingerprint)).get();
     if (isRepeatedContent(post, config, seen?.createdAt, Date.now())) {
       result = {
-        accepted: false, key: 'specific',
+        accepted: false,
+        key: 'specific',
         reason: 'Se detectó una publicación repetida dentro del periodo configurado.',
         behavior: config.rejection?.perFilter?.specific || config.rejection?.default || 'discard',
       };
@@ -99,7 +110,8 @@ async function checkRouteFilters(post, route, sourceId) {
     const count = events.filter(row => row.scopeKey === scopeKey && Number(row.createdAt) >= cutoff).length;
     if (count >= Number(config.quota.maxMessages)) {
       result = {
-        accepted: false, key: 'quota',
+        accepted: false,
+        key: 'quota',
         reason: 'Se alcanzó el límite de ' + Number(config.quota.maxMessages) + ' publicaciones cada ' + minutes + ' minutos.',
         behavior: config.rejection?.perFilter?.quota || config.rejection?.default || 'discard',
       };
@@ -110,14 +122,16 @@ async function checkRouteFilters(post, route, sourceId) {
     await recordFilterRejection(post, route, sourceId, result, scopeKey);
     return { accepted: false, config, scopeKey, result };
   }
-  return { accepted: true, config, scopeKey, eventKey, fingerprint: config.specific?.enabled && config.specific?.blockRepeated ? sourceId + ':' + filterFingerprint(post) : '' };
+  return { accepted: true, config, scopeKey, eventKey, fingerprint };
 }
 
 async function recordRouteDelivery(check) {
   if (check.eventKey) {
     try {
       await db.insert(filterDeliveryEvents).values({
-        eventKey: check.eventKey, scopeKey: check.scopeKey, createdAt: Date.now(),
+        eventKey: check.eventKey,
+        scopeKey: check.scopeKey,
+        createdAt: Date.now(),
       }).onConflictDoNothing().run();
     } catch (error) {
       console.log('No se pudo registrar el contador de entregas', check.eventKey, String(error));
@@ -126,7 +140,9 @@ async function recordRouteDelivery(check) {
   if (check.fingerprint) {
     try {
       await db.insert(filterSeenContent).values({
-        fingerprint: check.fingerprint, sourceChatId: Number(check.fingerprint.split(':')[0]), createdAt: Date.now(),
+        fingerprint: check.fingerprint,
+        sourceChatId: Number(check.fingerprint.split(':')[0]),
+        createdAt: Date.now(),
       }).onConflictDoUpdate({
         target: filterSeenContent.fingerprint,
         set: { createdAt: Date.now() },
