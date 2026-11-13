@@ -422,7 +422,24 @@ export default async function (query) {
       [{ text: '🌐 Configuración global', callback_data: 'admin:filterglobal' }],
       [{ text: '📢 Personalizar por canal', callback_data: 'admin:filterchannels' }],
       [{ text: '🔀 Personalizar por ruta', callback_data: 'admin:filterroutes' }],
+      [{ text: '🧾 Registro de rechazos', callback_data: 'admin:filterlogs' }],
       await backRow(),
+    ]);
+    return;
+  }
+  if (section === 'filterlogs') {
+    const rows = (await db.select().from(filterRejections).all())
+      .sort((a, b) => Number(b.createdAt) - Number(a.createdAt))
+      .slice(0, 20);
+    const report = rows.length ? rows.map(row =>
+      (row.status === 'pending' ? '⏳ PENDIENTE' : row.status === 'approved' ? '✅ APROBADA' : '🚫 DESCARTADA') +
+      '\\nOrigen: ' + row.sourceChatId + ' → Destino: ' + row.destinationChatId +
+      '\\nFiltro: ' + row.filterKey + '\\nMotivo: ' + row.reason +
+      '\\nFecha: ' + new Date(Number(row.createdAt)).toLocaleString('es-MX')
+    ).join('\\n\\n') : 'Todavía no hay publicaciones rechazadas por los filtros.';
+    await renderPanel('🧾 REGISTRO DE FILTROS\\n\\n' + report, [
+      [{ text: '🔄 Actualizar', callback_data: 'admin:filterlogs' }],
+      [{ text: '🔙 Volver a filtros', callback_data: 'admin:filters' }],
     ]);
     return;
   }
