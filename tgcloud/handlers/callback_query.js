@@ -418,19 +418,20 @@ export default async function (query) {
 
 
   if (section === 'filters') {
-    await renderPanel('🔏 FILTROS DE MENSAJES\\n\\nElige dónde quieres administrar los filtros. La configuración global sirve como base; cada canal puede sobrescribirla sin afectar a los demás.', [
-      [{ text: '🌐 Configuración global', callback_data: 'admin:filterglobal' }],
-      [{ text: '📢 Personalizar por canal', callback_data: 'admin:filterchannels' }],
-      [{ text: '🔀 Personalizar por ruta', callback_data: 'admin:filterroutes' }],
-      [{ text: '🧾 Registro de rechazos', callback_data: 'admin:filterlogs' }],
-      await backRow(),
-    ]);
+    const keyboard = [];
+    if (userId === OWNER_ID) keyboard.push([{ text: '🌐 Configuración global', callback_data: 'admin:filterglobal' }]);
+    keyboard.push([{ text: '📢 Personalizar por canal', callback_data: 'admin:filterchannels' }]);
+    keyboard.push([{ text: '🔀 Personalizar por ruta', callback_data: 'admin:filterroutes' }]);
+    keyboard.push([{ text: '🧾 Registro de rechazos', callback_data: 'admin:filterlogs' }]);
+    keyboard.push(await backRow());
+    await renderPanel('🔏 FILTROS DE MENSAJES\\n\\nElige dónde quieres administrar los filtros. La configuración global sirve como base; cada canal puede sobrescribirla sin afectar a los demás.', keyboard);
     return;
   }
   if (section === 'filterlogs') {
-    const rows = (await db.select().from(filterRejections).all())
-      .sort((a, b) => Number(b.createdAt) - Number(a.createdAt))
-      .slice(0, 20);
+    const allRows = (await db.select().from(filterRejections).all()).sort((a, b) => Number(b.createdAt) - Number(a.createdAt));
+    const visibleRows = [];
+    for (const row of allRows) if (await canManageChannel(userId, Number(row.sourceChatId))) visibleRows.push(row);
+    const rows = visibleRows.slice(0, 20);
     const report = rows.length ? rows.map(row =>
       (row.status === 'pending' ? '⏳ PENDIENTE' : row.status === 'approved' ? '✅ APROBADA' : '🚫 DESCARTADA') +
       '\nOrigen: ' + row.sourceChatId + ' → Destino: ' + row.destinationChatId +
@@ -478,6 +479,7 @@ export default async function (query) {
     return;
   }
   if (section === 'filterglobal') {
+    if (userId !== OWNER_ID) { await answer(query, 'Solo el propietario puede modificar los filtros globales.', true); return; }
     const scope = { key: 'global', type: 'global', channelId: null, label: 'GLOBAL' };
     const config = mergeFilterConfigs(defaultFilterConfig(), await loadFilterScope(scope.key));
     await renderPanel('🌐 FILTROS GLOBALES\\n\\n' + filterSummary(config) + '\\n\\nLos canales heredan estos valores mientras no tengan una personalización individual.', filterSettingsKeyboard(scope, config));
@@ -504,7 +506,7 @@ export default async function (query) {
     const scope = filterScopeFromParts(parts);
     const field = String(parts[scope?.type === 'channel' ? 4 : scope?.type === 'route' ? 5 : 3] || '');
     const allowed = ['whitelist','blockedWords','regex','limits','time','days','links','media','specific','signatures','quota'];
-    const permitted = scope && (scope.type === 'global' || (scope.type === 'channel' && await canManageChannel(userId, scope.channelId)) || (scope.type === 'route' && await canManageChannel(userId, scope.sourceId) && await canManageChannel(userId, scope.destinationId)));
+    const permitted = scope && (scope.type === 'global' && userId === OWNER_ID || (scope.type === 'channel' && await canManageChannel(userId, scope.channelId)) || (scope.type === 'route' && await canManageChannel(userId, scope.sourceId) && await canManageChannel(userId, scope.destinationId)));
     if (!permitted || !allowed.includes(field)) { await answer(query, 'Configuración no válida o sin permisos.', true); return; }
     const stored = await loadFilterScope(scope.key);
     const globalConfig = scope.type === 'global' ? {} : await loadFilterScope('global');
