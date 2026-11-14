@@ -1,7 +1,7 @@
 import { api, db } from 'sdk';
 import { eq } from 'sdk/db';
 import {
-  admins, channels, channelSettings, globalBans, channelRoutes,
+  admins, channels, channelSettings, globalBans, channelRoutes, joinRequests,
   templates, publications, purchases, reactionReports, knownUsers, botTexts, notificationTopics, filterConfigs, filterRejections, filterSeenContent, filterDeliveryEvents, routeForwardSettings,
 } from '../schema.js';
 
@@ -486,6 +486,49 @@ export default async function (message) {
       }
       await say(chatId, '✅ Usuario eliminado de la blacklist. Desbaneos solicitados en ' + count + '/' + rows.length + ' canales administrados.');
     }
+    return;
+  }
+
+  const joinCountPrompt = String(message.reply_to_message?.text ?? '');
+  const joinCountMatch = joinCountPrompt.match(/\\[CBJOINCOUNT:(-?\\d+)\\]/i);
+  if (joinCountMatch && isPrivate && await isAdmin(userId) && text && !text.startsWith('/')) {
+    const channelId = Number(joinCountMatch[1]);
+    const count = Number(text.trim());
+    if (!Number.isSafeInteger(channelId) || !(await canManageChannel(userId, channelId))) {
+      await say(chatId, '⛔ No tienes permiso para gestionar las solicitudes de ese chat.');
+      return;
+    }
+    if (!Number.isSafeInteger(count) || count < 1 || count > 100000) {
+      await say(chatId, '⚠️ Envía un número entero entre 1 y 100000.');
+      return;
+    }
+    const pending = (await db.select().from(joinRequests).all())
+      .filter(row => row.status === 'pending' && Number(row.chatId) === channelId)
+      .sort((a, b) => Number(a.requestedAt) - Number(b.requestedAt))
+      .slice(0, count);
+    if (!pending.length) {
+      await say(chatId, 'No hay solicitudes pendientes para aceptar en ese chat.');
+      return;
+    }
+    let approved = 0;
+    let failed = 0;
+    for (const request of pending) {
+      try {
+        await api.approveChatJoinRequest({ chat_id: Number(request.chatId), user_id: Number(request.userId) });
+        await db.update(joinRequests).set({
+          status: 'approved', decidedBy: userId, decidedAt: now(),
+        }).where(eq(joinRequests.requestKey, request.requestKey)).run();
+        approved++;
+      } catch (error) {
+        failed++;
+        console.log('No se pudo aprobar solicitud por cantidad personalizada', request.requestKey, String(error));
+      }
+    }
+    const remaining = (await db.select().from(joinRequests).all())
+      .filter(row => row.status === 'pending' && Number(row.chatId) === channelId).length;
+    await say(chatId, '📥 RESULTADO DE ACEPTACIÓN\\n\\n✅ Aprobadas: ' + approved +
+      '\\n⚠️ No procesadas: ' + failed + '\\n⏳ Pendientes restantes: ' + remaining +
+      '\\n\\nAbre Solicitudes para continuar gestionándolas.');
     return;
   }
 
