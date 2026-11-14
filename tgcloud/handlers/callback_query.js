@@ -3,6 +3,7 @@ import { eq } from 'sdk/db';
 import {
   admins, captchaSessions, channels, channelSettings, channelRoutes,
   templates, globalBans, publications, purchases, reactionReports, botTexts, joinRequests, filterConfigs, filterRejections, routeForwardSettings,
+  knownUsers, postAlertKeys, filterSeenContent, filterDeliveryEvents,
 } from '../schema.js';
 
 import { defaultFilterConfig, mergeFilterConfigs } from '../lib/message_filters.js';
@@ -437,6 +438,191 @@ export default async function (query) {
   const parts = data.split(':');
   const section = parts[1];
 
+  if (section === 'settings') {
+    const keyboard = [
+      [{ text: '🚷 AUTOBAN', callback_data: 'admin:autoban' }],
+      [{ text: '🗑️ LIMPIEZA DE CACHÉ', callback_data: 'admin:cacheclear' }],
+    ];
+    if (userId === OWNER_ID) keyboard.push([{ text: '🛡️ SEGURIDAD', callback_data: 'admin:security' }]);
+    keyboard.push(await backRow());
+    await renderPanel('⚙️ CONFIGURACIONES\n\nAdministra los canales conectados, limpia registros temporales y consulta la actividad de los administradores.', keyboard);
+    return;
+  }
+
+  if (section === 'autoban') {
+    const rows = (await db.select().from(channels).all())
+      .filter(row => userId === OWNER_ID || Number(row.addedBy) === userId)
+      .sort((a, b) => Number(b.createdAt) - Number(a.createdAt));
+    const pageSize = 12;
+    const requestedPage = Number(parts[2] || 0);
+    const pageCount = Math.max(1, Math.ceil(rows.length / pageSize));
+    const page = Number.isSafeInteger(requestedPage) && requestedPage >= 0 ? Math.min(requestedPage, pageCount - 1) : 0;
+    const visible = rows.slice(page * pageSize, (page + 1) * pageSize);
+    const keyboard = visible.map(row => [{
+      text: '🚷 ' + String(row.title || row.chatId).slice(0, 42),
+      callback_data: 'admin:autobanconfirm:' + row.chatId,
+    }]);
+    const nav = [];
+    if (page > 0) nav.push({ text: '⬅️ Anterior', callback_data: 'admin:autoban:' + (page - 1) });
+    if (page + 1 < pageCount) nav.push({ text: 'Siguiente ➡️', callback_data: 'admin:autoban:' + (page + 1) });
+    if (nav.length) keyboard.push(nav);
+    keyboard.push([{ text: '🔄 Actualizar', callback_data: 'admin:autoban:' + page }]);
+    keyboard.push([{ text: '🔙 Configuraciones', callback_data: 'admin:settings' }]);
+    await renderPanel('🚷 AUTOBAN · RETIRAR BOT\n\n' +
+      (rows.length ? 'Selecciona un canal para sacar el bot y retirar su configuración local.\n\n' +
+        visible.map(row => '• ' + String(row.title || 'Sin título') + ' · ' + row.chatId + (Number(row.active) ? ' · activo' : ' · pausado')).join('\n') +
+        '\n\nPágina ' + (page + 1) + '/' + pageCount
+        : 'No hay canales registrados por tu cuenta para retirar.'), keyboard);
+    return;
+  }
+
+  if (section === 'autobanconfirm') {
+    const channelId = Number(parts[2]);
+    const channel = await db.select().from(channels).where(eq(channels.chatId, channelId)).get();
+    if (!channel || !(userId === OWNER_ID || Number(channel.addedBy) === userId || await canManageChannel(userId, channelId))) {
+      await answer(query, 'No tienes permiso para retirar este canal.', true);
+      return;
+    }
+    await renderPanel('⚠️ CONFIRMAR AUTOBAN\n\nSe intentará sacar el bot de «' +
+      String(channel.title || channelId) + '» (' + channelId + '). Después se eliminarán sus ajustes y rutas del registro del bot. Las publicaciones ya enviadas en Telegram no se borrarán.', [
+      [{ text: '🚷 Sí, sacar el bot', callback_data: 'admin:autobando:' + channelId }],
+      [{ text: '🔙 Cancelar', callback_data: 'admin:autoban' }],
+    ]);
+    return;
+  }
+
+  if (section === 'autobando') {
+    const channelId = Number(parts[2]);
+    const channel = await db.select().from(channels).where(eq(channels.chatId, channelId)).get();
+    if (!channel || !(userId === OWNER_ID || Number(channel.addedBy) === userId || await canManageChannel(userId, channelId))) {
+      await answer(query, 'No tienes permiso para retirar este canal.', true);
+      return;
+    }
+    await answer(query, 'Retirando el bot del canal…');
+    try {
+      await api.leaveChat({ chat_id: channelId });
+    } catch (error) {
+      const reason = String(error || '');
+      if (!/(not a member|chat not found|bot was kicked|kicked from|user not found|have no access)/i.test(reason)) {
+        await renderPanel('⚠️ Telegram no permitió sacar el bot de «' + String(channel.title || channelId) +
+          '». No se borró su configuración.\n\nError: ' + reason.slice(0, 500), [
+          [{ text: '🔄 Reintentar', callback_data: 'admin:autobando:' + channelId }],
+          [{ text: '🔙 Volver', callback_data: 'admin:autoban' }],
+        ]);
+        return;
+      }
+    }
+    const routes = (await db.select().from(channelRoutes).all())
+      .filter(route => Number(route.sourceChatId) === channelId || Number(route.destinationChatId) === channelId);
+    for (const route of routes) {
+      await db.delete(routeForwardSettings).where(eq(routeForwardSettings.routeKey, route.routeKey)).run();
+      await db.delete(filterConfigs).where(eq(filterConfigs.scopeKey, 'route:' + route.routeKey)).run();
+      await db.delete(channelRoutes).where(eq(channelRoutes.routeKey, route.routeKey)).run();
+    }
+    await db.delete(templates).where(eq(templates.channelId, channelId)).run();
+    await db.delete(channelSettings).where(eq(channelSettings.channelId, channelId)).run();
+    await db.delete(filterConfigs).where(eq(filterConfigs.scopeKey, 'channel:' + channelId)).run();
+    await db.delete(channels).where(eq(channels.chatId, channelId)).run();
+    await renderPanel('✅ AUTOBAN COMPLETADO\n\nEl bot ya no está conectado a «' +
+      String(channel.title || channelId) + '». Se retiraron sus configuraciones y ' + routes.length +
+      ' rutas relacionadas. El historial de publicaciones se conservó.', [
+      [{ text: '🚷 Revisar otros canales', callback_data: 'admin:autoban' }],
+      [{ text: '🔙 Configuraciones', callback_data: 'admin:settings' }],
+    ]);
+    return;
+  }
+
+  if (section === 'cacheclear') {
+    await renderPanel('🗑️ LIMPIEZA DE CACHÉ\n\nEsta acción elimina únicamente registros temporales vencidos: sesiones CAPTCHA expiradas, huellas de mensajes antiguas y claves de deduplicación antiguas. No borra canales, rutas, plantillas, publicaciones ni configuraciones. En el entorno Serverless no puede vaciar la memoria de otros procesos activos.', [
+      [{ text: '🧹 Limpiar registros temporales', callback_data: 'admin:cacheclearconfirm' }],
+      [{ text: '🔙 Configuraciones', callback_data: 'admin:settings' }],
+    ]);
+    return;
+  }
+
+  if (section === 'cacheclearconfirm') {
+    await answer(query, 'Limpiando registros temporales…');
+    const now = Date.now();
+    const sevenDays = now - 7 * 24 * 60 * 60 * 1000;
+    const thirtyDays = now - 30 * 24 * 60 * 60 * 1000;
+    const [captchaRows, seenRows, deliveryRows, alertRows] = await Promise.all([
+      db.select().from(captchaSessions).all(),
+      db.select().from(filterSeenContent).all(),
+      db.select().from(filterDeliveryEvents).all(),
+      db.select().from(postAlertKeys).all(),
+    ]);
+    const expiredCaptcha = captchaRows.filter(row => Number(row.expiresAt) <= now);
+    const oldSeen = seenRows.filter(row => Number(row.createdAt) < sevenDays);
+    const oldDeliveries = deliveryRows.filter(row => Number(row.createdAt) < thirtyDays);
+    const oldAlerts = alertRows.filter(row => Number(row.createdAt) < thirtyDays);
+    for (const row of expiredCaptcha) await db.delete(captchaSessions).where(eq(captchaSessions.sessionKey, row.sessionKey)).run();
+    for (const row of oldSeen) await db.delete(filterSeenContent).where(eq(filterSeenContent.fingerprint, row.fingerprint)).run();
+    for (const row of oldDeliveries) await db.delete(filterDeliveryEvents).where(eq(filterDeliveryEvents.eventKey, row.eventKey)).run();
+    for (const row of oldAlerts) await db.delete(postAlertKeys).where(eq(postAlertKeys.alertKey, row.alertKey)).run();
+    const total = expiredCaptcha.length + oldSeen.length + oldDeliveries.length + oldAlerts.length;
+    await renderPanel('✅ LIMPIEZA COMPLETADA\n\nRegistros temporales eliminados: ' + total +
+      '\n• CAPTCHA vencidos: ' + expiredCaptcha.length +
+      '\n• Huellas antiguas: ' + oldSeen.length +
+      '\n• Eventos de entrega antiguos: ' + oldDeliveries.length +
+      '\n• Claves de avisos antiguas: ' + oldAlerts.length +
+      '\n\nSe conservaron todos los canales, rutas, plantillas e historiales de publicaciones.', [
+      [{ text: '🗑️ Limpiar nuevamente', callback_data: 'admin:cacheclear' }],
+      [{ text: '🔙 Configuraciones', callback_data: 'admin:settings' }],
+    ]);
+    return;
+  }
+
+  if (section === 'security') {
+    if (userId !== OWNER_ID) {
+      await answer(query, 'Esta sección es exclusiva del propietario.', true);
+      return;
+    }
+    const [adminRows, channelRows, userRows] = await Promise.all([
+      db.select().from(admins).all(), db.select().from(channels).all(), db.select().from(knownUsers).all(),
+    ]);
+    const usersById = new Map(userRows.map(row => [Number(row.userId), row]));
+    const principals = [{ userId: OWNER_ID, role: 'OWNER' }, ...adminRows.filter(row => Number(row.userId) !== OWNER_ID)];
+    const keyboard = principals.map(person => {
+      const count = channelRows.filter(channel => Number(channel.addedBy) === Number(person.userId)).length;
+      const profile = usersById.get(Number(person.userId));
+      const label = profile?.username ? '@' + profile.username : profile?.displayName || String(person.userId);
+      return [{ text: '👤 ' + String(label).slice(0, 28) + ' · ' + count + ' canales', callback_data: 'admin:securityadmin:' + person.userId }];
+    });
+    keyboard.push([{ text: '🔙 Configuraciones', callback_data: 'admin:settings' }]);
+    await renderPanel('🛡️ SEGURIDAD · SOLO OWNER\n\nConsulta qué canales registró cada administrador y cuántos tiene asociados. La información se obtiene del campo de registro «addedBy».', keyboard);
+    return;
+  }
+
+  if (section === 'securityadmin') {
+    if (userId !== OWNER_ID) {
+      await answer(query, 'Esta sección es exclusiva del propietario.', true);
+      return;
+    }
+    const targetId = Number(parts[2]);
+    const isOwner = targetId === OWNER_ID;
+    const principal = isOwner ? { userId: OWNER_ID, role: 'OWNER' } :
+      await db.select().from(admins).where(eq(admins.userId, targetId)).get();
+    if (!principal || !Number.isSafeInteger(targetId)) {
+      await renderPanel('⚠️ Administrador no encontrado.', [[{ text: '🔙 Seguridad', callback_data: 'admin:security' }]]);
+      return;
+    }
+    const [rows, profile] = await Promise.all([
+      db.select().from(channels).all(),
+      db.select().from(knownUsers).where(eq(knownUsers.userId, targetId)).get(),
+    ]);
+    const owned = rows.filter(row => Number(row.addedBy) === targetId).sort((a, b) => Number(b.createdAt) - Number(a.createdAt));
+    await renderPanel('🛡️ CANALES REGISTRADOS POR ' + (profile?.username ? '@' + profile.username : profile?.displayName || targetId) +
+      '\nID: ' + targetId + ' · ' + (isOwner ? 'OWNER' : String(principal.role || 'ADMIN')) +
+      '\nTotal: ' + owned.length + '\n\n' +
+      (owned.length ? owned.map((row, index) => (index + 1) + '. ' + String(row.title || 'Sin título') +
+        '\n   ID: ' + row.chatId + ' · ' + (Number(row.active) ? 'Activo' : 'Pausado') +
+        '\n   Añadido: ' + new Date(Number(row.createdAt)).toLocaleString('es-MX')).join('\n\n')
+        : 'Este administrador no tiene canales registrados actualmente.'), [
+      [{ text: '🔙 Lista de administradores', callback_data: 'admin:security' }],
+      [{ text: '⚙️ Configuraciones', callback_data: 'admin:settings' }],
+    ]);
+    return;
+  }
 
   if (section === 'filters') {
     const keyboard = [];
