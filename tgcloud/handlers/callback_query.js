@@ -297,30 +297,33 @@ export default async function (query) {
     return;
   }
 
-  if (data.startsWith('admin:joinapproveall:')) {
-    const channelId = Number(data.split(':')[2]);
+  if (data.startsWith('admin:joinapprovecount:') || data.startsWith('admin:joinapproveall:')) {
+    const isAll = data.startsWith('admin:joinapproveall:');
+    const [, , rawChatId, rawCount] = data.split(':');
+    const channelId = Number(rawChatId);
+    const requestedCount = isAll ? Number.MAX_SAFE_INTEGER : Number(rawCount);
     if (!userId || chatId !== userId || !Number.isSafeInteger(channelId) ||
+        !(isAll || (Number.isSafeInteger(requestedCount) && requestedCount > 0 && requestedCount <= 100000)) ||
         !(await canManageChannel(userId, channelId))) {
-      await answer(query, 'No tienes permiso para aprobar solicitudes de este chat.', true);
+      await answer(query, 'No tienes permiso o la cantidad no es válida.', true);
       return;
     }
     const pending = (await db.select().from(joinRequests).all())
       .filter(row => row.status === 'pending' && Number(row.chatId) === channelId)
-      .sort((a, b) => Number(a.requestedAt) - Number(b.requestedAt));
+      .sort((a, b) => Number(a.requestedAt) - Number(b.requestedAt))
+      .slice(0, requestedCount);
     if (!pending.length) {
       await answer(query, 'No tienes solicitudes pendientes acumuladas.', true);
       return;
     }
-    await answer(query, 'Procesando ' + pending.length + ' solicitudes pendientes…');
+    await answer(query, 'Procesando ' + pending.length + ' solicitudes…');
     let approved = 0;
     let failed = 0;
     for (const request of pending) {
       try {
         await api.approveChatJoinRequest({ chat_id: Number(request.chatId), user_id: Number(request.userId) });
         await db.update(joinRequests).set({
-          status: 'approved',
-          decidedBy: userId,
-          decidedAt: Date.now(),
+          status: 'approved', decidedBy: userId, decidedAt: Date.now(),
         }).where(eq(joinRequests.requestKey, request.requestKey)).run();
         approved++;
       } catch (error) {
@@ -328,13 +331,31 @@ export default async function (query) {
         console.log('No se pudo aprobar solicitud acumulada', request.requestKey, String(error));
       }
     }
+    const remaining = (await db.select().from(joinRequests).all())
+      .filter(row => row.status === 'pending' && Number(row.chatId) === channelId).length;
     await renderPanel(
       '📥 SOLICITUDES DE INGRESO\\n\\n' +
       '✅ Aprobadas: ' + approved + '\\n' +
-      '⚠️ No procesadas: ' + failed + '\\n\\n' +
-      'Las solicitudes no procesadas siguen pendientes. Pulsa actualizar para revisar.',
+      '⚠️ No procesadas: ' + failed + '\\n' +
+      '⏳ Pendientes restantes: ' + remaining,
       [[{ text: '🔄 Actualizar solicitudes', callback_data: 'admin:requestschat:' + channelId }], await backRow()]
     );
+    return;
+  }
+
+  if (data.startsWith('admin:joinapprovecustom:')) {
+    const channelId = Number(data.split(':')[2]);
+    if (!userId || chatId !== userId || !Number.isSafeInteger(channelId) ||
+        !(await canManageChannel(userId, channelId))) {
+      await answer(query, 'No tienes permiso para gestionar este chat.', true);
+      return;
+    }
+    await answer(query);
+    await api.sendMessage({
+      chat_id: chatId,
+      text: '🔢 ¿Cuántas solicitudes deseas aceptar?\n\nResponde con un número entero mayor que 0.\n[CBJOINCOUNT:' + channelId + ']',
+      reply_markup: { force_reply: true, selective: true },
+    });
     return;
   }
 
@@ -1570,7 +1591,17 @@ export default async function (query) {
       .sort((a, b) => Number(b.requestedAt) - Number(a.requestedAt))
       .slice(0, 20);
     const keyboard = [];
-    if (pending.length) keyboard.push([{ text: '✅ ACEPTAR TODAS (' + pending.length + ')', callback_data: 'admin:joinapproveall:' + channelId }]);
+    if (pending.length) {
+      const choices = [10, 30, 50, 100, 300, 500, 1000];
+      for (let i = 0; i < choices.length; i += 3) {
+        keyboard.push(choices.slice(i, i + 3).map(count => ({
+          text: count === 1000 ? '1k' : String(count),
+          callback_data: 'admin:joinapprovecount:' + channelId + ':' + count,
+        })));
+      }
+      keyboard.push([{ text: '✅ Todas (' + pending.length + ')', callback_data: 'admin:joinapproveall:' + channelId }]);
+      keyboard.push([{ text: '🔢 Número específico', callback_data: 'admin:joinapprovecustom:' + channelId }]);
+    }
     for (const request of pending) {
       keyboard.push([
         { text: '✅ ' + String(request.requesterName || request.username || request.userId).slice(0, 22), callback_data: 'admin:joinapprove:' + request.chatId + ':' + request.userId + ':' + request.requestedAt },
