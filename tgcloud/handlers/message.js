@@ -282,22 +282,27 @@ function parseButtonSyntax(source, rulesUrl = '') {
 }
 
 const HELP = [
-  '📚 COMANDOS DE CHANNELPOSTS_ROBOT',
-  '/admin — panel privado de administración',
-  '/channels — listar canales',
-  '/addchannel ID [título] — registrar canal',
-  '/delchannel ID — quitar canal',
-  '/welcome ID on|off — bienvenida por canal',
+  '📚 AYUDA · CANALES-BOT',
+  '/start — iniciar el bot y mostrar el menú de bienvenida',
+  '/help — mostrar esta guía completa de comandos',
+  '/admin — abrir el panel privado de administración (solo administradores autorizados)',
+  '/cancel — cancelar la operación o captura de datos actual (si hay una operación pendiente)',
+  '/channels — listar los canales registrados y disponibles para ti',
+  '/addchannel ID [título] — registrar un canal (el bot debe estar agregado como administrador)',
+  '/delchannel ID — eliminar el registro de un canal',
+  '/welcome ID on|off — activar o desactivar bienvenida por canal',
   '/welcometext ID texto — editar bienvenida',
-  '/captcha ID on|off — CAPTCHA por canal',
+  '/captcha ID on|off — activar o desactivar CAPTCHA por canal',
   '/correction ID on|off — corrección básica del texto',
   '/hashtags ID texto — hashtags por canal',
   '/description ID texto — plantilla de descripción con {texto}',
   '/missingdata ID texto — texto de respaldo si falta el contenido',
   '/setreport ID_CANAL ID_REPORTE — destino de avisos de reacción',
   '/setnotifications — configurar el grupo central de avisos (solo propietario; ejecutar dentro del supergrupo con temas)',
-  '/blacklist_add ID|@username [motivo] — blacklist y baneo global',
-  '/blacklist_remove ID|@username — retirar blacklist y desbanear',
+  '/blacklist_add ID|@username [motivo] — añadir usuario a la lista negra y bloquearlo en los canales gestionados',
+  '/globalban ID|@username [motivo] — alias para aplicar baneo global',
+  '/blacklist_remove ID|@username — retirar de la lista negra y quitar el baneo',
+  '/globalunban ID|@username — alias para retirar el baneo global',
   '/globalban ID|@username [motivo] y /globalunban ID|@username — moderación global',
   '/blacklist — consultar blacklist',
   '/route_add ORIGEN DESTINO — crear ruta',
@@ -317,12 +322,14 @@ const HELP = [
   '/publish_paid ID_CANAL PRECIO_STARS texto — crear publicación de pago en Stars, o responder a un mensaje multimedia',
   'Responde a un mensaje con /publish ID_CANAL para copiarlo al canal.',
   '/navtexts y /navtext CLAVE texto — editar textos de navegación',
-  '/stats — estadísticas',
-  '/addadmin ID y /deladmin ID — solo propietario',
+  '/stats — consultar estadísticas generales',
+  '/addadmin ID — autorizar un administrador (solo propietario)',
+  '/deladmin ID — retirar un administrador (solo propietario)',
   '',
   'Formatos: AUTO, HTML, Markdown, MarkdownV2, OFF y RICH_MESSAGE (JSON válido).',
   'Variables de bienvenida: {mencion}, {nombre}, {username}, {userid}, {canal}.',
-  'El bot debe tener permisos de administrador en cada canal/grupo.',
+  'El bot debe tener permisos de administrador en cada canal/grupo. Los comandos que modifican canales requieren que tengas permisos de administración sobre ese canal.',
+  'Consejo: puedes gestionar la mayoría de las funciones desde /admin sin escribir comandos. Usa los ID numéricos de los canales y usuarios cuando se soliciten.'
 ].join('\n');
 
 export default async function (message) {
@@ -921,7 +928,7 @@ export default async function (message) {
     return;
   }
   if (text === '/help') {
-    await say(chatId, '📚 CANALES-BOT se maneja desde los botones del panel. Pulsa ⚙️ PANEL DE ADMINISTRACIÓN y elige la función que quieres configurar.', { reply_markup: { inline_keyboard: [[{ text: '⚙️ Abrir panel', callback_data: 'admin:open' }]] } });
+    await say(chatId, HELP, { reply_markup: { inline_keyboard: [[{ text: '⚙️ Abrir panel', callback_data: 'admin:open' }]] } });
     return;
   }
   if (text === '/admin') {
