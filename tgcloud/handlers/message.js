@@ -286,7 +286,6 @@ const HELP = [
   '/start — iniciar el bot y mostrar el menú de bienvenida',
   '/help — mostrar esta guía completa de comandos',
   '/admin — abrir el panel privado de administración (solo administradores autorizados)',
-  '/cancel — cancelar la operación o captura de datos actual (si hay una operación pendiente)',
   '/channels — listar los canales registrados y disponibles para ti',
   '/addchannel ID [título] — registrar un canal (el bot debe estar agregado como administrador)',
   '/delchannel ID — eliminar el registro de un canal',
