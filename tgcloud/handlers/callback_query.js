@@ -32,21 +32,21 @@ async function navText(key) {
 }
 async function buildMainMenu() {
   const keys = [
-    ['channels', 'templates', 'hashtags'],
-    ['buttons', 'formats', 'rules'],
-    ['filters'],
-    ['welcome', 'captcha', 'blacklist'],
-    ['requests', 'routes', 'reactions'],
-    ['publications'],
-    ['stars', 'stats', 'admins'],
-    ['testmode', 'settings', 'navigation'],
-    ['close'],
+    'channels', 'templates', 'hashtags',
+    'buttons', 'formats', 'rules',
+    'filters', 'welcome', 'captcha',
+    'blacklist', 'requests', 'routes',
+    'reactions', 'publications', 'stars',
+    'stats', 'admins', 'testmode',
+    'settings', 'navigation', 'close',
   ];
   const menu = [];
-  for (const row of keys) {
-    const buttons = [];
-    for (const key of row) buttons.push({ text: await navText(key), callback_data: key === 'close' ? 'admin:close' : 'admin:' + key });
-    menu.push(buttons);
+  for (let i = 0; i < keys.length; i += 3) {
+    const row = keys.slice(i, i + 3);
+    menu.push(await Promise.all(row.map(async key => ({
+      text: await navText(key),
+      callback_data: key === 'close' ? 'admin:close' : 'admin:' + key,
+    }))));
   }
   return menu;
 }
