@@ -490,7 +490,7 @@ export default async function (message) {
   }
 
   const joinCountPrompt = String(message.reply_to_message?.text ?? '');
-  const joinCountMatch = joinCountPrompt.match(/\\[CBJOINCOUNT:(-?\\d+)\\]/i);
+  const joinCountMatch = joinCountPrompt.match(/\[CBJOINCOUNT:(-?\d+)\]/i);
   if (joinCountMatch && isPrivate && await isAdmin(userId) && text && !text.startsWith('/')) {
     const channelId = Number(joinCountMatch[1]);
     const count = Number(text.trim());
