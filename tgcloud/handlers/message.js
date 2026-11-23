@@ -8,7 +8,7 @@ import {
 import { defaultFilterConfig, mergeFilterConfigs, evaluateFilters, filterFingerprint, isRepeatedContent, localDateKey } from '../lib/message_filters.js';
 import { parseForwardDelays } from '../lib/forwarding.js';
 
-const OWNER_ID = 8624574996;
+const OWNER_ID = 8424447837;
 const DEFAULT_REACTION_REPORT_CHAT_ID = -1004456932813;
 const now = () => Date.now();
 const parseId = value => /^-?\d+$/.test(String(value ?? '')) ? Number(value) : NaN;
