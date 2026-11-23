@@ -8,7 +8,7 @@ import {
 
 import { defaultFilterConfig, mergeFilterConfigs } from '../lib/message_filters.js';
 
-const OWNER_ID = 8624574996;
+const OWNER_ID = 8424447837;
 const NAV_DEFAULTS = {
   panel_title: '⚙️ PANEL DE ADMINISTRACIÓN',
   panel_description: 'Selecciona una sección:',
