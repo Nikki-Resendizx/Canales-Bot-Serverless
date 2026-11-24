@@ -4,7 +4,6 @@ import { channels, channelRoutes, channelSettings, templates, postAlertKeys, not
 import { defaultFilterConfig, mergeFilterConfigs, evaluateFilters, filterFingerprint, isRepeatedContent, localDateKey } from '../lib/message_filters.js';
 import { normalizeForwardConfig, normalizeTextLineBreaks, sendWithFloodProtection } from '../lib/forwarding.js';
 
-const OWNER_ID = 8624574996;
 
 async function readFilterConfig(scopeKey) {
   try {
@@ -56,8 +55,12 @@ async function recordFilterRejection(post, route, sourceId, result, scopeKey) {
 
   if (behavior === 'review') {
     try {
+      const errorTopic = await db.select().from(notificationTopics)
+        .where(eq(notificationTopics.topicKey, 'errors')).get();
+      if (!errorTopic) throw new Error('No está configurado el tema ERRORES del grupo central');
       await api.sendMessage({
-        chat_id: OWNER_ID,
+        chat_id: Number(errorTopic.chatId),
+        message_thread_id: Number(errorTopic.messageThreadId),
         text: [
           '⏳ PUBLICACIÓN EN REVISIÓN',
           'Origen: ' + String(post.chat?.title || sourceId),
@@ -602,15 +605,19 @@ export default async function (post) {
       }
       if (routeSettings.notifyOwner) {
         try {
+          const distributionTopic = await db.select().from(notificationTopics)
+            .where(eq(notificationTopics.topicKey, 'distribution')).get();
+          if (!distributionTopic) throw new Error('No está configurado el tema DISTRIBUCIÓN del grupo central');
           await api.sendMessage({
-            chat_id: OWNER_ID,
+            chat_id: Number(distributionTopic.chatId),
+            message_thread_id: Number(distributionTopic.messageThreadId),
             text: '📨 Publicación distribuida\nRuta: ' + sourceId + ' → ' + route.destinationChatId
               + '\nMensaje de origen: ' + post.message_id
               + '\nDestino: ' + (sentMessage?.message_id || 'enviado'),
             disable_notification: true,
           });
         } catch (notifyError) {
-          console.log('No se pudo notificar al propietario sobre la distribución', route.routeKey, String(notifyError));
+          console.log('No se pudo notificar la distribución en el grupo central', route.routeKey, String(notifyError));
         }
       }
       await recordRouteDelivery(filterCheck);
