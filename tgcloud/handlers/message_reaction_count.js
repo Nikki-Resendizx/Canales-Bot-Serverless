@@ -1,6 +1,6 @@
 import { api, db } from 'sdk';
 import { eq } from 'sdk/db';
-import { channelSettings, reactionCountReports } from '../schema.js';
+import { notificationTopics, reactionCountReports } from '../schema.js';
 
 function describeCount(item) {
   if (!item || typeof item !== 'object') return { emoji: 'reacción desconocida', count: 0 };
@@ -23,10 +23,11 @@ export default async function (update) {
   const messageId = Number(update?.message_id);
   if (!Number.isSafeInteger(chatId) || !Number.isSafeInteger(messageId)) return;
 
-  const settings = await db.select().from(channelSettings)
-    .where(eq(channelSettings.channelId, chatId)).get();
-  const reportChatId = Number(settings?.reactionReportChatId);
-  if (!Number.isSafeInteger(reportChatId) || reportChatId === 0) return;
+  const reactionTopic = await db.select().from(notificationTopics)
+    .where(eq(notificationTopics.topicKey, 'reactions')).get();
+  if (!reactionTopic || !Number.isSafeInteger(Number(reactionTopic.chatId)) ||
+      !Number.isSafeInteger(Number(reactionTopic.messageThreadId)) ||
+      Number(reactionTopic.messageThreadId) <= 0 || Number(reactionTopic.chatId) === chatId) return;
 
   const counts = (Array.isArray(update.reactions) ? update.reactions : []).map(describeCount);
   const timestamp = Date.now();
@@ -41,7 +42,8 @@ export default async function (update) {
 
   const total = counts.reduce((sum, item) => sum + item.count, 0);
   await api.sendMessage({
-    chat_id: reportChatId,
+    chat_id: Number(reactionTopic.chatId),
+    message_thread_id: Number(reactionTopic.messageThreadId),
     text: [
       '📊 CONTEO DE REACCIONES (AGREGADO)',
       `Canal: ${chat?.title ?? chat?.username ?? chatId}`,
