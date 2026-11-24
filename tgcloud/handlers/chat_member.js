@@ -55,10 +55,10 @@ export default async function (update) {
     'Usuario: ' + userLabel,
     'ID del usuario: ' + user.id,
     'Fecha: ' + new Date().toLocaleString('es-MX', { timeZone: 'America/Mexico_City' }),
-  ].join('\\n');
+  ].join('\n');
   await sendTopicNotification('users', eventText);
   if (!knownBefore) {
-    await sendTopicNotification('users', '🆕 PRIMER REGISTRO DEL USUARIO\\n' + eventText);
+    await sendTopicNotification('users', '🆕 PRIMER REGISTRO DEL USUARIO\n' + eventText);
   }
 
   const banned = await db.select().from(globalBans).where(eq(globalBans.userId, Number(user.id))).get();
@@ -70,11 +70,11 @@ export default async function (update) {
       'Chat: ' + chatName + ' (' + chat.id + ')',
       'Motivo: ' + String(banned.reason || 'Sin motivo'),
       'Evento: ' + (joinedNow ? 'ingreso' : 'salida'),
-    ].join('\\n'));
-    await sendTopicNotification('blacklist', '🚫 USUARIO EN LISTA NEGRA DETECTADO\\n' + eventText + '\\nMotivo: ' + String(banned.reason || 'Sin motivo'));
+    ].join('\n'));
+    await sendTopicNotification('blacklist', '🚫 USUARIO EN LISTA NEGRA DETECTADO\n' + eventText + '\nMotivo: ' + String(banned.reason || 'Sin motivo'));
     if (joinedNow) {
       try { await api.banChatMember({ chat_id: chat.id, user_id: user.id, revoke_messages: true }); }
-      catch (error) { await sendTopicNotification('errors', '⚠️ NO SE PUDO APLICAR BANEO GLOBAL\\nChat: ' + chatName + '\\nID: ' + user.id + '\\n' + String(error)); }
+      catch (error) { await sendTopicNotification('errors', '⚠️ NO SE PUDO APLICAR BANEO GLOBAL\nChat: ' + chatName + '\nID: ' + user.id + '\n' + String(error)); }
     }
     return;
   }
