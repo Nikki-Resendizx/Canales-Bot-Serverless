@@ -20,13 +20,13 @@ export default async function (update) {
 
   if (isAdminNow && !wasAdmin) {
     const details = ['🆕 BOT AÑADIDO A UN CHAT', 'Nombre: ' + chatTitle, 'Tipo: ' + chat.type, 'ID: ' + chat.id, 'Añadido por: ' + (actorId || 'No disponible'), 'Permiso: administrador'];
-    await sendTopicNotification('new_chat', details.join('\\n'));
-    await sendTopicNotification('system', '🤖 BOT ACTIVADO EN CHAT\\n' + details.slice(1).join('\\n'));
+    await sendTopicNotification('new_chat', details.join('\n'));
+    await sendTopicNotification('system', '🤖 BOT ACTIVADO EN CHAT\n' + details.slice(1).join('\n'));
   }
   if (!isAdminNow && wasAdmin) {
     const details = ['🚪 BOT RETIRADO O SIN PERMISOS DE ADMINISTRADOR', 'Nombre: ' + chatTitle, 'Tipo: ' + chat.type, 'ID: ' + chat.id, 'Nuevo estado: ' + newStatus];
-    await sendTopicNotification('system', details.join('\\n'));
-    await sendTopicNotification('new_chat', details.join('\\n'));
+    await sendTopicNotification('system', details.join('\n'));
+    await sendTopicNotification('new_chat', details.join('\n'));
   }
 
   if (isAdminNow) {
@@ -51,7 +51,6 @@ export default async function (update) {
       hashtags: '',
       descriptionTemplate: '',
       missingDataText: '',
-      reactionReportChatId: -1004456932813,
       updatedAt: now()
     }).onConflictDoNothing().run();
 
@@ -59,7 +58,7 @@ export default async function (update) {
     return;
   }
 
-  if (member.status !== 'administrator') {
+  if (!isAdminNow) {
     try {
       await db.update(channels).set({ active: 0 }).where(eq(channels.chatId, Number(chat.id))).run();
       console.log('Canal/grupo desactivado porque el bot no conserva permisos de administrador:', chat.id, member.status);
