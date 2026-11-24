@@ -6,7 +6,7 @@ import {
 } from '../schema.js';
 
 import { defaultFilterConfig, mergeFilterConfigs, evaluateFilters, filterFingerprint, isRepeatedContent, localDateKey } from '../lib/message_filters.js';
-import { parseForwardDelays } from '../lib/forwarding.js';
+import { parseForwardDelays, normalizeTextLineBreaks, sendWithFloodProtection } from '../lib/forwarding.js';
 
 const OWNER_ID = 8424447837;
 const DEFAULT_REACTION_REPORT_CHAT_ID = -1004456932813;
@@ -74,7 +74,7 @@ async function managedChannels(userId) {
   return visible;
 }
 async function say(chatId, text, extra = {}) {
-  return api.sendMessage({ chat_id: chatId, text, ...extra });
+  return api.sendMessage({ chat_id: chatId, text: normalizeTextLineBreaks(text), ...extra });
 }
 async function ensureSettings(channelId) {
   let row = await db.select().from(channelSettings).where(eq(channelSettings.channelId, channelId)).get();
@@ -335,7 +335,7 @@ export default async function (message) {
   if (!message?.chat?.id || !message?.from) return;
   const chatId = Number(message.chat.id);
   const userId = Number(message.from.id);
-  const text = String(message.text ?? '').trim();
+  const text = normalizeTextLineBreaks(message.text ?? '').trim();
   const isPrivate = chatId === userId;
   if (!message.from.is_bot && Number.isSafeInteger(userId) && userId > 0) {
     try {
@@ -952,6 +952,7 @@ export default async function (message) {
         if (routes?.length) {
           const registeredChats = await db.select().from(channels).all();
           const chatById = new Map(registeredChats.map(row => [Number(row.chatId), row]));
+          let lastGroupRouteSendAt = 0;
           for (const route of routes) {
             const destination = chatById.get(Number(route.destinationChatId));
             if (Number(route.destinationChatId) === chatId || !destination || !Number(destination.active)) continue;
@@ -963,11 +964,13 @@ export default async function (message) {
               const mode = ['copy', 'forward'].includes(route.mode) ? route.mode : 'auto';
               const isForwarded = Boolean(message.forward_origin || message.forward_from || message.forward_from_chat || message.forward_sender_name);
               const shouldForward = mode === 'forward' || (mode === 'auto' && isForwarded);
-              if (shouldForward) {
-                await api.forwardMessage({ chat_id: Number(route.destinationChatId), from_chat_id: chatId, message_id: message.message_id });
-              } else {
-                await api.copyMessage({ chat_id: Number(route.destinationChatId), from_chat_id: chatId, message_id: message.message_id });
-              }
+              const delivery = await sendWithFloodProtection(
+                () => shouldForward
+                  ? api.forwardMessage({ chat_id: Number(route.destinationChatId), from_chat_id: chatId, message_id: message.message_id })
+                  : api.copyMessage({ chat_id: Number(route.destinationChatId), from_chat_id: chatId, message_id: message.message_id }),
+                { lastSentAt: lastGroupRouteSendAt, minIntervalMs: 1000, maxRetries: 2 },
+              );
+              lastGroupRouteSendAt = delivery.lastSentAt;
               await recordGroupRouteDelivery(filterCheck);
             } catch (error) {
               await releaseGroupRouteDelivery(filterCheck);
@@ -1155,7 +1158,7 @@ export default async function (message) {
       return;
     }
     if (command === '/hashtags' || command === '/description' || command === '/missingdata') {
-      const id = parseId(args[0]); let value = argText.slice(String(args[0] ?? '').length).trim();
+      const id = parseId(args[0]); let value = normalizeTextLineBreaks(argText.slice(String(args[0] ?? '').length)).trim();
       if (!Number.isSafeInteger(id) || !value) return void await say(chatId, `Uso: ${command} ID_CANAL texto`);
       if (!(await canManageChannel(userId, id))) return void await say(chatId, '⛔ Ese canal no existe o no está asignado a tu administración.');
       if (value.length > 1000) return void await say(chatId, 'El texto supera el límite de 1000 caracteres.');
@@ -1270,7 +1273,7 @@ export default async function (message) {
     }
     if (command === '/navtext') {
       const key = String(args[0] || '');
-      const value = argText.slice(key.length).trim();
+      const value = normalizeTextLineBreaks(argText.slice(key.length)).trim();
       if (!Object.hasOwn(NAV_DEFAULTS, key)) return void await say(chatId, 'Clave no válida. Usa /navtexts para ver las claves disponibles.');
       if (!value) return void await say(chatId, 'Uso: /navtext CLAVE nuevo texto. Usa /navtext CLAVE default para restaurar el texto original.');
       if (value.toLowerCase() === 'default') {
@@ -1285,7 +1288,7 @@ export default async function (message) {
     }
     if (command === '/template_set') {
       const id = parseId(args[0]); const kind = String(args[1] || '').toLowerCase(); const format = String(args[2] || 'HTML').toUpperCase();
-      const body = argText.replace(/^\S+\s+\S+\s+\S+\s+\S+\s*/, '').trim();
+      const body = normalizeTextLineBreaks(argText.replace(/^\S+\s+\S+\s+\S+\s+\S+\s*/, '')).trim();
       if (!Number.isSafeInteger(id) || !['default', 'text', 'photo', 'video', 'gif', 'audio', 'document', 'video_note', 'album', 'link', 'forward'].includes(kind) || !body || !['AUTO', 'HTML', 'MARKDOWN', 'MARKDOWNV2', 'OFF', 'RICH_MESSAGE'].includes(format)) return void await say(chatId, 'Uso: /template_set ID_CANAL default|text|photo|video|gif|audio|document|video_note|album|link|forward AUTO|HTML|Markdown|MarkdownV2|OFF|RICH_MESSAGE texto. RICH_MESSAGE requiere JSON válido.');
       if (!(await canManageChannel(userId, id))) return void await say(chatId, '⛔ Ese canal no existe o no está asignado a tu administración.');
       if (format === 'RICH_MESSAGE') {

@@ -105,3 +105,19 @@ test('forward delay parser requires exactly two bounded integers', () => {
   assert.equal(parseForwardDelays('5\n31').valid, false);
   assert.equal(parseForwardDelays('5').valid, false);
 });
+
+
+test('text normalization converts escaped line breaks without changing ordinary URL paths', async () => {
+  const { normalizeTextLineBreaks } = await import('../tgcloud/lib/forwarding.js');
+  assert.equal(normalizeTextLineBreaks('uno\\ndos'), 'uno\ndos');
+  assert.equal(normalizeTextLineBreaks('uno\\\\ndos'), 'uno\ndos');
+  assert.equal(normalizeTextLineBreaks('uno/n dos'), 'uno\ndos');
+  assert.equal(normalizeTextLineBreaks('https://example.com/news'), 'https://example.com/news');
+});
+
+test('flood protection returns the successful delivery timestamp', async () => {
+  const { sendWithFloodProtection } = await import('../tgcloud/lib/forwarding.js');
+  const result = await sendWithFloodProtection(async () => 'ok', { minIntervalMs: 0 });
+  assert.equal(result.result, 'ok');
+  assert.ok(result.lastSentAt > 0);
+});

@@ -2,7 +2,7 @@ import { api, db } from 'sdk';
 import { eq } from 'sdk/db';
 import { channels, channelRoutes, channelSettings, templates, postAlertKeys, filterConfigs, filterRejections, filterSeenContent, filterDeliveryEvents, routeForwardSettings } from '../schema.js';
 import { defaultFilterConfig, mergeFilterConfigs, evaluateFilters, filterFingerprint, isRepeatedContent, localDateKey } from '../lib/message_filters.js';
-import { normalizeForwardConfig } from '../lib/forwarding.js';
+import { normalizeForwardConfig, normalizeTextLineBreaks, sendWithFloodProtection } from '../lib/forwarding.js';
 
 const OWNER_ID = 8624574996;
 const ALERTS_CHAT_ID = -1004424261064;
@@ -246,11 +246,11 @@ async function getChannelInviteLinks(chat, channelId, needsOpen, needsClosed) {
 }
 
 function applyTemplate(template, values) {
-  let result = String(template ?? '');
+  let result = normalizeTextLineBreaks(template);
   for (const [key, value] of Object.entries(values)) {
-    result = result.replace(new RegExp('\\{' + key + '\\}', 'gi'), String(value ?? ''));
+    result = result.replace(new RegExp('\\{' + key + '\\}', 'gi'), normalizeTextLineBreaks(value));
   }
-  return result.trim();
+  return normalizeTextLineBreaks(result).trim();
 }
 
 function escapeHtml(value) {
@@ -308,7 +308,7 @@ async function completeManualPublication(post, channelId) {
   // {vacio} is the highest-priority opt-out: no template, correction, hashtags, signature or buttons.
   if (/\{vacio\}/i.test(String(template?.body ?? ''))) return;
 
-  const rawOriginal = String(post.text ?? post.caption ?? '');
+  const rawOriginal = normalizeTextLineBreaks(post.text ?? post.caption ?? '');
   const format = resolveFormat(template?.format ?? 'OFF', template?.body);
   const corrected = Number(settings?.textCorrectionEnabled) ? rawOriginal
     .replace(/[ \t]+/g, ' ')
@@ -319,7 +319,7 @@ async function completeManualPublication(post, channelId) {
     : rawOriginal;
   const detectedLink = corrected.match(/https?:\/\/\S+|t\.me\/\S+/i)?.[0] ?? '';
   const permalink = getPublicationLink(post.chat, post.message_id);
-  const templateText = String(template?.body ?? '') + '\\n' + String(settings?.descriptionTemplate ?? '') + '\\n' + String(settings?.missingDataText ?? '');
+  const templateText = [template?.body, settings?.descriptionTemplate, settings?.missingDataText].map(normalizeTextLineBreaks).join('\n');
   const needsOpenInvite = /\{enlace\}/i.test(templateText);
   const needsClosedInvite = /\{enlace_cerrado\}/i.test(templateText);
   const { openLink, closedLink } = await getChannelInviteLinks(post.chat, channelId, needsOpenInvite, needsClosedInvite);
@@ -558,6 +558,7 @@ export default async function (post) {
   const channelById = new Map(registeredChannels.map(channel => [Number(channel.chatId), channel]));
 
   let deliveredRoutes = 0;
+  let lastRouteSendAt = 0;
   for (const route of routes) {
     const destination = channelById.get(Number(route.destinationChatId));
     if (Number(route.destinationChatId) === sourceId) continue;
@@ -583,20 +584,14 @@ export default async function (post) {
       const mode = ['copy', 'forward'].includes(route.mode) ? route.mode : 'auto';
       const shouldForward = mode === 'forward' ||
         (mode === 'auto' && Boolean(post.forward_origin || post.forward_from || post.forward_from_chat || post.forward_sender_name));
-      let sentMessage;
-      if (shouldForward) {
-        sentMessage = await api.forwardMessage({
-          chat_id: route.destinationChatId,
-          from_chat_id: post.chat.id,
-          message_id: post.message_id,
-        });
-      } else {
-        sentMessage = await api.copyMessage({
-          chat_id: route.destinationChatId,
-          from_chat_id: post.chat.id,
-          message_id: post.message_id,
-        });
-      }
+      const delivery = await sendWithFloodProtection(
+        () => shouldForward
+          ? api.forwardMessage({ chat_id: route.destinationChatId, from_chat_id: post.chat.id, message_id: post.message_id })
+          : api.copyMessage({ chat_id: route.destinationChatId, from_chat_id: post.chat.id, message_id: post.message_id }),
+        { lastSentAt: lastRouteSendAt, minIntervalMs: 1000, maxRetries: 2 },
+      );
+      const sentMessage = delivery.result;
+      lastRouteSendAt = delivery.lastSentAt;
       deliveredRoutes++;
       if (routeSettings.pinPost && sentMessage?.message_id) {
         try {
