@@ -327,12 +327,54 @@ const HELP = [
   '',
   'Formatos: AUTO, HTML, Markdown, MarkdownV2, OFF y RICH_MESSAGE (JSON válido).',
   'Variables de bienvenida: {mencion}, {nombre}, {username}, {userid}, {canal}.',
+  'Autolimpieza: los mensajes de servicio de Telegram (entradas/salidas, cambios de título/foto, mensajes fijados, temas y eventos automáticos) se eliminan automáticamente cuando Telegram permite borrarlos. El bot necesita el permiso can_delete_messages; los mensajes normales y publicaciones se conservan.',
   'El bot debe tener permisos de administrador en cada canal/grupo. Los comandos que modifican canales requieren que tengas permisos de administración sobre ese canal.',
   'Consejo: puedes gestionar la mayoría de las funciones desde /admin sin escribir comandos. Usa los ID numéricos de los canales y usuarios cuando se soliciten.'
 ].join('\n');
 
+// Mensajes de servicio de Telegram: no son publicaciones de usuarios y pueden limpiarse
+// sin tocar contenido normal, medios ni mensajes reenviados.
+const TELEGRAM_SERVICE_MESSAGE_FIELDS = [
+  'new_chat_members', 'left_chat_member', 'new_chat_title', 'new_chat_photo',
+  'delete_chat_photo', 'group_chat_created', 'supergroup_chat_created',
+  'channel_chat_created', 'message_auto_delete_timer_changed',
+  'migrate_to_chat_id', 'migrate_from_chat_id', 'pinned_message',
+  'forum_topic_created', 'forum_topic_edited', 'forum_topic_closed',
+  'forum_topic_reopened', 'general_forum_topic_hidden',
+  'general_forum_topic_unhidden', 'video_chat_scheduled',
+  'video_chat_started', 'video_chat_ended', 'video_chat_participants_invited',
+  'giveaway_created', 'giveaway_completed', 'giveaway_winners',
+  'boost_added', 'chat_background_set',
+];
+
+function isTelegramServiceMessage(message) {
+  return TELEGRAM_SERVICE_MESSAGE_FIELDS.some(field =>
+    Object.prototype.hasOwnProperty.call(message ?? {}, field) &&
+    message[field] !== null && message[field] !== undefined
+  );
+}
+
+async function autoDeleteServiceMessage(message) {
+  if (!message?.chat?.id || !message?.message_id || !isTelegramServiceMessage(message)) return false;
+  try {
+    await api.deleteMessage({
+      chat_id: Number(message.chat.id),
+      message_id: Number(message.message_id),
+    });
+    console.log('Mensaje de servicio eliminado automáticamente:', message.chat.id, message.message_id);
+    return true;
+  } catch (error) {
+    // Telegram solo permite borrar mensajes recientes y el bot necesita can_delete_messages.
+    console.log('No se pudo eliminar mensaje de servicio; verifica can_delete_messages y el límite de 48 h:',
+      message.chat.id, message.message_id, String(error));
+    return false;
+  }
+}
+
 export default async function (message) {
-  if (!message?.chat?.id || !message?.from) return;
+  if (!message?.chat?.id) return;
+  if (await autoDeleteServiceMessage(message)) return;
+  if (!message?.from) return;
   const chatId = Number(message.chat.id);
   const userId = Number(message.from.id);
   const text = normalizeTextLineBreaks(message.text ?? '').trim();
