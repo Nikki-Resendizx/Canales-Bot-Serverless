@@ -357,6 +357,13 @@ function isTelegramServiceMessage(message) {
 async function autoDeleteServiceMessage(message) {
   if (!message?.chat?.id || !message?.message_id || !isTelegramServiceMessage(message)) return false;
   try {
+    const cleanup = await db.select().from(filterConfigs)
+      .where(eq(filterConfigs.scopeKey, 'cleanup:' + Number(message.chat.id))).get();
+    if (cleanup) {
+      let config = {};
+      try { config = JSON.parse(cleanup.configJson || '{}'); } catch {}
+      if (config.enabled === false) return false;
+    }
     await api.deleteMessage({
       chat_id: Number(message.chat.id),
       message_id: Number(message.message_id),
