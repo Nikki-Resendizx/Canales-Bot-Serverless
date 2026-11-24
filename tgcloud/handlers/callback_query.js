@@ -7,6 +7,7 @@ import {
 } from '../schema.js';
 
 import { defaultFilterConfig, mergeFilterConfigs } from '../lib/message_filters.js';
+import { sendTopicNotification } from '../lib/notifications.js';
 
 const OWNER_ID = 8424447837;
 const NAV_DEFAULTS = {
@@ -335,9 +336,9 @@ export default async function (query) {
     const remaining = (await db.select().from(joinRequests).all())
       .filter(row => row.status === 'pending' && Number(row.chatId) === channelId).length;
     await renderPanel(
-      '📥 SOLICITUDES DE INGRESO\\n\\n' +
-      '✅ Aprobadas: ' + approved + '\\n' +
-      '⚠️ No procesadas: ' + failed + '\\n' +
+      '📥 SOLICITUDES DE INGRESO\n\n' +
+      '✅ Aprobadas: ' + approved + '\n' +
+      '⚠️ No procesadas: ' + failed + '\n' +
       '⏳ Pendientes restantes: ' + remaining,
       [[{ text: '🔄 Actualizar solicitudes', callback_data: 'admin:requestschat:' + channelId }], await backRow()]
     );
@@ -425,7 +426,7 @@ export default async function (query) {
       reviewedBy: userId, reviewedAt: Date.now(),
     }).where(eq(filterRejections.rejectionKey, rejectionKey)).run();
     await answer(query, action === 'approve' ? 'Publicación reenviada.' : 'Publicación descartada.');
-    try { await api.editMessageText({ chat_id: chatId, message_id: message.message_id, text: (message.text || 'Revisión') + '\\n\\n' + (action === 'approve' ? '✅ APROBADA Y REENVIADA' : '🗑️ DESCARTADA') }); } catch {}
+    try { await api.editMessageText({ chat_id: chatId, message_id: message.message_id, text: (message.text || 'Revisión') + '\n\n' + (action === 'approve' ? '✅ APROBADA Y REENVIADA' : '🗑️ DESCARTADA') }); } catch {}
     return;
   }
 
@@ -631,7 +632,7 @@ export default async function (query) {
     keyboard.push([{ text: '🔀 Personalizar por ruta', callback_data: 'admin:filterroutes' }]);
     keyboard.push([{ text: '🧾 Registro de rechazos', callback_data: 'admin:filterlogs' }]);
     keyboard.push(await backRow());
-    await renderPanel('🔏 FILTROS DE MENSAJES\\n\\nElige dónde quieres administrar los filtros. La configuración global sirve como base; cada canal puede sobrescribirla sin afectar a los demás.', keyboard);
+    await renderPanel('🔏 FILTROS DE MENSAJES\n\nElige dónde quieres administrar los filtros. La configuración global sirve como base; cada canal puede sobrescribirla sin afectar a los demás.', keyboard);
     return;
   }
   if (section === 'filterlogs') {
@@ -670,7 +671,7 @@ export default async function (query) {
       callback_data: 'admin:filterroute:' + route.sourceChatId + ':' + route.destinationChatId,
     }]);
     keyboard.push(await backRow());
-    await renderPanel('🔀 FILTROS POR RUTA\\n\\nSelecciona una ruta para aplicar reglas adicionales solo a ese destino. La prioridad será ruta → canal origen → global.', keyboard);
+    await renderPanel('🔀 FILTROS POR RUTA\n\nSelecciona una ruta para aplicar reglas adicionales solo a ese destino. La prioridad será ruta → canal origen → global.', keyboard);
     return;
   }
   if (section === 'filterroute') {
@@ -683,21 +684,21 @@ export default async function (query) {
     ]);
     const config = mergeFilterConfigs(defaultFilterConfig(), globalConfig, channelConfig, ownConfig);
     const scope = { key: 'route:' + routeKey, type: 'route', sourceId, destinationId, routeKey, label: sourceId + ' → ' + destinationId };
-    await renderPanel('🔀 FILTROS DE RUTA\\n' + scope.label + '\\n\\n' + filterSummary(config) + '\\n\\nEsta configuración tiene prioridad sobre el canal y la configuración global.', filterSettingsKeyboard(scope, config));
+    await renderPanel('🔀 FILTROS DE RUTA\n' + scope.label + '\n\n' + filterSummary(config) + '\n\nEsta configuración tiene prioridad sobre el canal y la configuración global.', filterSettingsKeyboard(scope, config));
     return;
   }
   if (section === 'filterglobal') {
     if (userId !== OWNER_ID) { await answer(query, 'Solo el propietario puede modificar los filtros globales.', true); return; }
     const scope = { key: 'global', type: 'global', channelId: null, label: 'GLOBAL' };
     const config = mergeFilterConfigs(defaultFilterConfig(), await loadFilterScope(scope.key));
-    await renderPanel('🌐 FILTROS GLOBALES\\n\\n' + filterSummary(config) + '\\n\\nLos canales heredan estos valores mientras no tengan una personalización individual.', filterSettingsKeyboard(scope, config));
+    await renderPanel('🌐 FILTROS GLOBALES\n\n' + filterSummary(config) + '\n\nLos canales heredan estos valores mientras no tengan una personalización individual.', filterSettingsKeyboard(scope, config));
     return;
   }
   if (section === 'filterchannels') {
     const rows = await managedChannels(userId);
     const keyboard = rows.map(row => [{ text: String(row.title || row.chatId).slice(0, 42), callback_data: 'admin:filterchannel:' + row.chatId }]);
     keyboard.push(await backRow());
-    await renderPanel('📢 FILTROS POR CANAL\\n\\nSelecciona un canal para crear excepciones. Los valores no configurados seguirán heredándose de la configuración global.', keyboard);
+    await renderPanel('📢 FILTROS POR CANAL\n\nSelecciona un canal para crear excepciones. Los valores no configurados seguirán heredándose de la configuración global.', keyboard);
     return;
   }
   if (section === 'filterchannel') {
@@ -707,7 +708,7 @@ export default async function (query) {
     const scope = { key: 'channel:' + channelId, type: 'channel', channelId, label: String(channel?.title || channelId) };
     const [globalConfig, ownConfig] = await Promise.all([loadFilterScope('global'), loadFilterScope(scope.key)]);
     const config = mergeFilterConfigs(defaultFilterConfig(), globalConfig, ownConfig);
-    await renderPanel('📢 FILTROS DEL CANAL\\n' + scope.label + '\\n\\n' + filterSummary(config) + '\\n\\nLos cambios aquí solo afectan a este canal.', filterSettingsKeyboard(scope, config));
+    await renderPanel('📢 FILTROS DEL CANAL\n' + scope.label + '\n\n' + filterSummary(config) + '\n\nLos cambios aquí solo afectan a este canal.', filterSettingsKeyboard(scope, config));
     return;
   }
   if (section === 'filtertoggle') {
@@ -1131,30 +1132,13 @@ export default async function (query) {
     return;
   }
   if (section === 'reactions') {
-    const rows = await managedChannels(userId);
-    const keyboard = rows.map(row => [{ text: '🔔 ' + String(row.title || row.chatId).slice(0,38), callback_data: 'admin:reactionchannel:' + row.chatId }]);
-    keyboard.push(await backRow());
+    const destination = await db.select().from(notificationTopics)
+      .where(eq(notificationTopics.topicKey, 'reactions')).get();
     await answer(query);
-    await renderPanel('🔔 REPORTES DE REACCIONES\n\nSelecciona un canal para configurar dónde se envían los avisos.', keyboard);
-    return;
-  }
-  if (section === 'reactionchannel') {
-    const channelId = Number(parts[2]);
-    if (!Number.isSafeInteger(channelId) || !(await canManageChannel(userId, channelId))) { await answer(query, 'No tienes permiso para ese canal.', true); return; }
-    const setting = await db.select().from(channelSettings).where(eq(channelSettings.channelId, channelId)).get();
-    await answer(query);
-    await renderPanel('🔔 REPORTES DE REACCIONES\nCanal: ' + channelId + '\nDestino actual: ' + (setting?.reactionReportChatId || 'predeterminado') + '\n\nEl destino debe ser un canal donde el bot pueda publicar.', [
-      [{ text: '✏️ Cambiar destino', callback_data: 'admin:reactioninput:' + channelId }],
-      [{ text: '🔙 Volver', callback_data: 'admin:reactions' }],
-    ]);
-    return;
-  }
-  if (section === 'reactioninput') {
-    const channelId = Number(parts[2]);
-    if (!Number.isSafeInteger(channelId) || !(await canManageChannel(userId, channelId))) { await answer(query, 'No tienes permiso para ese canal.', true); return; }
-    await answer(query);
-    await api.sendMessage({ chat_id: chatId, text: '[CBINPUT:report:' + channelId + ']\n✍️ Responde con el ID numérico del canal o grupo que recibirá los reportes.', reply_markup: { force_reply: true, selective: true } });
-    await renderPanel('Envía el ID como respuesta al mensaje del bot.', [[{ text: '🔙 Volver', callback_data: 'admin:reactionchannel:' + channelId }]]);
+    await renderPanel(
+      '❤️ REPORTES DE REACCIONES\n\nLos cambios de reacciones y sus conteos se envían automáticamente al tema central configurado con /setnotifications.\n\nDestino: ' + (destination ? String(destination.chatTitle || destination.chatId) + ' · tema ID ' + destination.messageThreadId : 'No configurado'),
+      [[{ text: await navText('back'), callback_data: 'admin:back' }]],
+    );
     return;
   }
   // DISTRIBUCIÓN: cada pantalla usa un teclado nuevo, validado y serializable.
@@ -1219,12 +1203,12 @@ export default async function (query) {
           await api.editMessageText({
             chat_id: chatId,
             message_id: message.message_id,
-            text: '⚠️ No se pudo cargar DISTRIBUCIÓN.\\n\\nDiagnóstico: ' + diagnostic,
+            text: '⚠️ No se pudo cargar DISTRIBUCIÓN.\n\nDiagnóstico: ' + diagnostic,
           });
         } else {
           await api.sendMessage({
             chat_id: chatId,
-            text: '⚠️ No se pudo cargar DISTRIBUCIÓN.\\n\\nDiagnóstico: ' + diagnostic,
+            text: '⚠️ No se pudo cargar DISTRIBUCIÓN.\n\nDiagnóstico: ' + diagnostic,
           });
         }
       } catch (diagnosticError) {
@@ -1879,6 +1863,17 @@ export default async function (query) {
       db.select().from(reactionReports).all(),
     ]);
     await renderPanel(`📊 ESTADÍSTICAS\nCanales: ${c.length}\nRutas: ${r.length}\nPlantillas: ${t.length}\nBlacklist: ${b.length}\nPublicaciones: ${p.length}\nCompras registradas: ${purchaseRows.length}\nReacciones identificadas registradas: ${reactionRows.length}`, [[{ text: await navText('back'), callback_data: 'admin:back' }]]);
+    await sendTopicNotification('stats', [
+      '📊 CONSULTA DE ESTADÍSTICAS',
+      'Solicitante: ' + userId,
+      'Canales: ' + c.length,
+      'Rutas: ' + r.length,
+      'Plantillas: ' + t.length,
+      'Blacklist: ' + b.length,
+      'Publicaciones: ' + p.length,
+      'Compras: ' + purchaseRows.length,
+      'Reacciones identificadas: ' + reactionRows.length,
+    ].join('\n'));
     return;
   }
   if (section === 'stars') {
