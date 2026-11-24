@@ -885,11 +885,6 @@ export default async function (message) {
         if (text.length > 1000) { await say(chatId, '⚠️ La firma supera 1000 caracteres.'); return; }
         await db.update(channelSettings).set({ signatureText: text, updatedAt: now() }).where(eq(channelSettings.channelId, channelId)).run();
         await say(chatId, '✅ Firma personalizada guardada para el canal ' + channelId + '.');
-      } else if (inputType === 'report') {
-        const reportId = parseId(text);
-        if (!Number.isSafeInteger(reportId) || reportId === 0) { await say(chatId, '⚠️ Envía un ID numérico válido de canal o grupo.'); return; }
-        await db.update(channelSettings).set({ reactionReportChatId: reportId, updatedAt: now() }).where(eq(channelSettings.channelId, channelId)).run();
-        await say(chatId, '✅ Destino de reportes guardado para el canal ' + channelId + '.');
       }
     } catch (error) {
       console.log('No se pudo guardar la configuración desde el panel de botones', String(error));
