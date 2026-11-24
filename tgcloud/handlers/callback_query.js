@@ -950,6 +950,35 @@ export default async function (query) {
     }
     return;
   }
+  if (section === 'cleanup') {
+    const channelId = Number(parts[2]);
+    if (!Number.isSafeInteger(channelId) || !(await canManageChannel(userId, channelId))) {
+      await answer(query, 'No tienes permiso para administrar ese canal.', true); return;
+    }
+    const scopeKey = 'cleanup:' + channelId;
+    const existing = await db.select().from(filterConfigs).where(eq(filterConfigs.scopeKey, scopeKey)).get();
+    let config = {};
+    try { config = existing ? JSON.parse(existing.configJson || '{}') : {}; } catch {}
+    const enabled = config.enabled === false;
+    const values = {
+      scopeKey, scopeType: 'channel', channelId, routeKey: null,
+      configJson: JSON.stringify({ enabled }),
+      updatedBy: userId, updatedAt: Date.now(),
+    };
+    await db.insert(filterConfigs).values(values).onConflictDoUpdate({
+      target: filterConfigs.scopeKey,
+      set: { configJson: values.configJson, updatedBy: values.updatedBy, updatedAt: values.updatedAt },
+    }).run();
+    await answer(query, enabled ? 'Autolimpieza activada.' : 'Autolimpieza desactivada.');
+    const channel = await db.select().from(channels).where(eq(channels.chatId, channelId)).get();
+    await renderPanel('🧹 AUTOLIMPIEZA\n\nCanal: ' + String(channel?.title || channelId) +
+      '\nEstado: ' + (enabled ? '🟢 ACTIVADA' : '⚪ DESACTIVADA') +
+      '\n\nSe eliminan solo mensajes de servicio de Telegram. Las publicaciones normales, mensajes de usuarios y contenido multimedia se conservan. El bot necesita permiso para eliminar mensajes.', [
+        [{ text: '🔄 ' + (enabled ? 'Desactivar autolimpieza' : 'Activar autolimpieza'), callback_data: 'admin:cleanup:' + channelId }],
+        [{ text: '🔙 Volver a configuración', callback_data: 'admin:channelsettings:' + channelId }],
+      ]);
+    return;
+  }
   if (section === 'channelsettings') {
     const channelId = Number(parts[2]);
     if (!Number.isSafeInteger(channelId) || !(await canManageChannel(userId, channelId))) {
@@ -958,8 +987,13 @@ export default async function (query) {
     const channel = await db.select().from(channels).where(eq(channels.chatId, channelId)).get();
     if (!channel) { await answer(query, 'El canal ya no está registrado.', true); return; }
     const setting = await ensureChannelSettings(channelId);
+    const cleanupRow = await db.select().from(filterConfigs).where(eq(filterConfigs.scopeKey, 'cleanup:' + channelId)).get();
+    let cleanupConfig = {};
+    try { cleanupConfig = cleanupRow ? JSON.parse(cleanupRow.configJson || '{}') : {}; } catch {}
+    const cleanupEnabled = cleanupConfig.enabled !== false;
     await answer(query);
-    await renderPanel('⚙️ CONFIGURACIÓN INDIVIDUAL\n\n' + String(channel.title || channelId) + ' (' + channelId + ')\nProcesamiento: ' + (channel.active ? 'ACTIVO' : 'PAUSADO') + '\nBienvenida: ' + (setting?.welcomeEnabled ? 'ON' : 'OFF') + '\nCAPTCHA: ' + (setting?.captchaEnabled ? 'ON' : 'OFF') + '\nCorrección de texto: ' + (setting?.textCorrectionEnabled ? 'ON' : 'OFF') + '\nHashtags: ' + (setting?.hashtags || '(sin configurar)') + '\n\nDesde aquí puedes administrar todo lo que afecta a las publicaciones manuales de este canal. Plantillas, hashtags y botones se guardan por canal y tipo de contenido.', [
+    await renderPanel('⚙️ CONFIGURACIÓN INDIVIDUAL\n\n' + String(channel.title || channelId) + ' (' + channelId + ')\nProcesamiento: ' + (channel.active ? 'ACTIVO' : 'PAUSADO') + '\nBienvenida: ' + (setting?.welcomeEnabled ? 'ON' : 'OFF') + '\nCAPTCHA: ' + (setting?.captchaEnabled ? 'ON' : 'OFF') + '\nCorrección de texto: ' + (setting?.textCorrectionEnabled ? 'ON' : 'OFF') + '\nAutolimpieza: ' + (cleanupEnabled ? 'ACTIVA' : 'DESACTIVADA') + '\nHashtags: ' + (setting?.hashtags || '(sin configurar)') + '\n\nLa autolimpieza elimina únicamente mensajes de servicio de Telegram (entradas/salidas, cambios de título/foto, mensajes fijados y eventos automáticos). No elimina publicaciones normales.', [
+      [{ text: '🧹 Autolimpieza: ' + (cleanupEnabled ? '🟢 ACTIVADA' : '⚪ DESACTIVADA'), callback_data: 'admin:cleanup:' + channelId }],
       [{ text: '📝 Plantillas de publicaciones', callback_data: 'admin:templatechannel:' + channelId }],
       [{ text: '#️⃣ Hashtags ' + (setting?.hashtags ? '🟢' : '⚪'), callback_data: 'admin:hashtagchannel:' + channelId }],
       [{ text: '🔘 Botones interactivos', callback_data: 'admin:buttonchannel:' + channelId }],
