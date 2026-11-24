@@ -1,12 +1,10 @@
 import { api, db } from 'sdk';
 import { eq } from 'sdk/db';
-import { channels, channelRoutes, channelSettings, templates, postAlertKeys, filterConfigs, filterRejections, filterSeenContent, filterDeliveryEvents, routeForwardSettings } from '../schema.js';
+import { channels, channelRoutes, channelSettings, templates, postAlertKeys, notificationTopics, filterConfigs, filterRejections, filterSeenContent, filterDeliveryEvents, routeForwardSettings } from '../schema.js';
 import { defaultFilterConfig, mergeFilterConfigs, evaluateFilters, filterFingerprint, isRepeatedContent, localDateKey } from '../lib/message_filters.js';
 import { normalizeForwardConfig, normalizeTextLineBreaks, sendWithFloodProtection } from '../lib/forwarding.js';
 
 const OWNER_ID = 8624574996;
-const ALERTS_CHAT_ID = -1004424261064;
-const REACTION_REPORT_CHAT_ID = -1004456932813;
 
 async function readFilterConfig(scopeKey) {
   try {
@@ -506,13 +504,15 @@ export default async function (post) {
     }
   }
 
-  if (sourceId !== ALERTS_CHAT_ID && sourceId !== REACTION_REPORT_CHAT_ID) {
-    // Una clave persistente por álbum evita un aviso por cada elemento del grupo.
+  // Los avisos de publicaciones se envían exclusivamente al tema PUBLICACIONES
+  // del grupo central configurado mediante /setnotifications.
+  const publicationTopic = await db.select().from(notificationTopics)
+    .where(eq(notificationTopics.topicKey, 'publications')).get();
+  if (publicationTopic && Number(publicationTopic.chatId) !== sourceId) {
     const alertKey = post.media_group_id
       ? `album:${sourceId}:${post.media_group_id}`
       : `post:${sourceId}:${post.message_id}`;
     let shouldAlert = false;
-
     try {
       const existingAlert = await db.select().from(postAlertKeys)
         .where(eq(postAlertKeys.alertKey, alertKey)).get();
@@ -521,7 +521,6 @@ export default async function (post) {
         shouldAlert = true;
       }
     } catch (error) {
-      // Si no podemos confirmar la clave, omitimos el aviso para evitar duplicados.
       console.log('No se pudo registrar la clave del aviso; se omite', String(error));
     }
 
@@ -534,7 +533,8 @@ export default async function (post) {
       const type = post.media_group_id ? 'álbum' : post.photo ? 'foto' : post.video ? 'vídeo' : post.document ? 'documento' : post.text ? 'texto/enlace' : 'publicación';
       try {
         await api.sendMessage({
-          chat_id: ALERTS_CHAT_ID,
+          chat_id: Number(publicationTopic.chatId),
+          message_thread_id: Number(publicationTopic.messageThreadId),
           text: [
             '📣 NUEVA PUBLICACIÓN EN CANAL CONECTADO',
             `Canal: ${post.chat.title ?? post.chat.username ?? sourceId}`,
@@ -544,7 +544,7 @@ export default async function (post) {
           link_preview_options: { is_disabled: true },
         });
       } catch (error) {
-        console.log('No se pudo enviar el aviso de publicación', String(error));
+        console.log('No se pudo enviar el aviso al tema PUBLICACIONES', String(error));
       }
     }
   }
