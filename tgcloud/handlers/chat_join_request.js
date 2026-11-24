@@ -2,7 +2,7 @@ import { api, db } from 'sdk';
 import { eq } from 'sdk/db';
 import { channels, joinRequests, notificationTopics } from '../schema.js';
 
-const OWNER_ID = 8624574996;
+const OWNER_ID = 8424447837;
 
 export default async function (update) {
   const chat = update?.chat;
