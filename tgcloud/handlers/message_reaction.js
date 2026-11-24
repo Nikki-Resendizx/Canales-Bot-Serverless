@@ -1,6 +1,6 @@
 import { api, db } from 'sdk';
 import { eq } from 'sdk/db';
-import { channelSettings, reactionReports } from '../schema.js';
+import { notificationTopics, reactionReports } from '../schema.js';
 
 const escapeHtml = (value) => String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
 
@@ -51,14 +51,11 @@ export default async function (update) {
     return;
   }
 
-  const settings = await db
-    .select()
-    .from(channelSettings)
-    .where(eq(channelSettings.channelId, chatId))
-    .get();
-
-  const reportChatId = settings?.reactionReportChatId;
-  if (!Number.isSafeInteger(reportChatId) || reportChatId === 0) return;
+  const reactionTopic = await db.select().from(notificationTopics)
+    .where(eq(notificationTopics.topicKey, 'reactions')).get();
+  if (!reactionTopic || !Number.isSafeInteger(Number(reactionTopic.chatId)) ||
+      !Number.isSafeInteger(Number(reactionTopic.messageThreadId)) ||
+      Number(reactionTopic.messageThreadId) <= 0 || Number(reactionTopic.chatId) === chatId) return;
 
   const timestamp = Date.now();
   // Incluir el estado anterior/nuevo reduce colisiones si llegan varias actualizaciones en el mismo milisegundo.
@@ -81,7 +78,8 @@ export default async function (update) {
 
   const publicationLink = postLink.startsWith('https://t.me/') ? '<a href="' + escapeHtml(postLink) + '">Abrir publicación</a>' : 'enlace no disponible';
   await api.sendMessage({
-    chat_id: reportChatId,
+    chat_id: Number(reactionTopic.chatId),
+    message_thread_id: Number(reactionTopic.messageThreadId),
     text: [
       '<b>🔔 REACCIÓN ACTUALIZADA</b>',
       `Canal: ${escapeHtml(chat.title ?? chat.username ?? chatId)}`,
