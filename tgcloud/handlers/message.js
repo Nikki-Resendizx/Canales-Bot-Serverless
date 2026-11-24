@@ -84,9 +84,6 @@ async function ensureSettings(channelId) {
       captchaEnabled: 0, captchaQuestion: '', captchaAnswer: '', updatedAt: now(),
     }).run();
     row = await db.select().from(channelSettings).where(eq(channelSettings.channelId, channelId)).get();
-  } else if (!row.reactionReportChatId) {
-    await db.update(channelSettings).set({ reactionReportChatId: DEFAULT_REACTION_REPORT_CHAT_ID, updatedAt: now() }).where(eq(channelSettings.channelId, channelId)).run();
-    row = await db.select().from(channelSettings).where(eq(channelSettings.channelId, channelId)).get();
   }
   return row;
 }
@@ -208,8 +205,12 @@ async function evaluateGroupRouteFilters(message, route, sourceId) {
     } catch (error) { console.log('No se pudo registrar el rechazo de ruta de grupo', rejectionKey, String(error)); }
     if (result.behavior === 'review') {
       try {
+        const errorTopic = await db.select().from(notificationTopics)
+          .where(eq(notificationTopics.topicKey, 'errors')).get();
+        if (!errorTopic) throw new Error('No está configurado el tema ERRORES');
         await api.sendMessage({
-          chat_id: OWNER_ID,
+          chat_id: Number(errorTopic.chatId),
+          message_thread_id: Number(errorTopic.messageThreadId),
           text: ['⏳ PUBLICACIÓN EN REVISIÓN', 'Origen: ' + String(message.chat?.title || sourceId), 'Destino: ' + Number(route.destinationChatId), 'Motivo: ' + String(result.reason)].join('\n'),
           reply_markup: { inline_keyboard: [[
             { text: '✅ Aprobar y reenviar', callback_data: 'admin:filterreview:approve:' + rejectionKey },
@@ -359,10 +360,10 @@ export default async function (message) {
         'Usuario: ' + (message.from.username ? '@' + message.from.username : 'Sin username'),
         'ID: ' + userId, 'Origen: interacción con el bot',
         'Fecha: ' + new Date().toLocaleString('es-MX', { timeZone: 'America/Mexico_City' }),
-      ].join('\\n'));
+      ].join('\n'));
     } catch (error) {
       console.log('No se pudo actualizar el registro de usuario conocido', String(error));
-      await sendTopicNotification('errors', '⚠️ ERROR AL REGISTRAR USUARIO\\nID: ' + userId + '\\n' + String(error));
+      await sendTopicNotification('errors', '⚠️ ERROR AL REGISTRAR USUARIO\nID: ' + userId + '\n' + String(error));
     }
   }
 
@@ -452,9 +453,11 @@ export default async function (message) {
     if (action === 'adminadd') {
       await db.insert(admins).values({ userId: target, role: 'admin', createdAt: now() }).onConflictDoNothing().run();
       await say(chatId, '✅ Administrador añadido: ' + target + '.');
+      await sendTopicNotification('admins', '👥 NUEVO ADMINISTRADOR\nID: ' + target + '\nAñadido por: ' + userId);
     } else {
       await db.delete(admins).where(eq(admins.userId, target)).run();
       await say(chatId, '✅ Administrador eliminado: ' + target + '.');
+      await sendTopicNotification('admins', '👥 ADMINISTRADOR ELIMINADO\nID: ' + target + '\nEliminado por: ' + userId);
     }
     return;
   }
@@ -486,8 +489,10 @@ export default async function (message) {
         } catch (error) { console.log('No se pudo aplicar blacklist desde el panel', channel.chatId, String(error)); }
       }
       await say(chatId, '🚫 Usuario añadido a la blacklist. Baneos aplicados en ' + count + '/' + rows.length + ' canales administrados.');
-      await sendTopicNotification('blacklist', ['🚫 USUARIO AÑADIDO A LA BLACKLIST', 'ID: ' + targetId, 'Usuario: ' + (username ? '@' + username : 'No disponible'), 'Motivo: ' + reason, 'Baneos aplicados: ' + count + '/' + rows.length, 'Administrador: ' + userId].join('\\n'));
-      await sendTopicNotification('id_matches', '🆔 ID REGISTRADO EN BLACKLIST\\nID: ' + targetId + '\\nMotivo: ' + reason);
+      await sendTopicNotification('blacklist', '🚫 USUARIO AÑADIDO A LA BLACKLIST\nID: ' + targetId + '\nMotivo: ' + reason + '\nAdministrador: ' + userId);
+      await sendTopicNotification('id_matches', '🆔 ID REGISTRADO EN BLACKLIST\nID: ' + targetId + '\nMotivo: ' + reason);
+      await sendTopicNotification('blacklist', ['🚫 USUARIO AÑADIDO A LA BLACKLIST', 'ID: ' + targetId, 'Usuario: ' + (username ? '@' + username : 'No disponible'), 'Motivo: ' + reason, 'Baneos aplicados: ' + count + '/' + rows.length, 'Administrador: ' + userId].join('\n'));
+      await sendTopicNotification('id_matches', '🆔 ID REGISTRADO EN BLACKLIST\nID: ' + targetId + '\nMotivo: ' + reason);
     } else {
       await db.delete(globalBans).where(eq(globalBans.userId, targetId)).run();
       const rows = await managedChannels(userId);
@@ -501,7 +506,8 @@ export default async function (message) {
         } catch (error) { console.log('No se pudo aplicar desbaneo desde el panel', channel.chatId, String(error)); }
       }
       await say(chatId, '✅ Usuario eliminado de la blacklist. Desbaneos solicitados en ' + count + '/' + rows.length + ' canales administrados.');
-      await sendTopicNotification('blacklist', ['♻️ USUARIO RETIRADO DE LA BLACKLIST', 'ID: ' + targetId, 'Desbaneos solicitados: ' + count + '/' + rows.length, 'Administrador: ' + userId].join('\\n'));
+      await sendTopicNotification('blacklist', '♻️ USUARIO RETIRADO DE LA BLACKLIST\nID: ' + targetId + '\nAdministrador: ' + userId);
+      await sendTopicNotification('blacklist', ['♻️ USUARIO RETIRADO DE LA BLACKLIST', 'ID: ' + targetId, 'Desbaneos solicitados: ' + count + '/' + rows.length, 'Administrador: ' + userId].join('\n'));
     }
     return;
   }
@@ -543,9 +549,9 @@ export default async function (message) {
     }
     const remaining = (await db.select().from(joinRequests).all())
       .filter(row => row.status === 'pending' && Number(row.chatId) === channelId).length;
-    await say(chatId, '📥 RESULTADO DE ACEPTACIÓN\\n\\n✅ Aprobadas: ' + approved +
-      '\\n⚠️ No procesadas: ' + failed + '\\n⏳ Pendientes restantes: ' + remaining +
-      '\\n\\nAbre Solicitudes para continuar gestionándolas.');
+    await say(chatId, '📥 RESULTADO DE ACEPTACIÓN\n\n✅ Aprobadas: ' + approved +
+      '\n⚠️ No procesadas: ' + failed + '\n⏳ Pendientes restantes: ' + remaining +
+      '\n\nAbre Solicitudes para continuar gestionándolas.');
     return;
   }
 
@@ -982,16 +988,25 @@ export default async function (message) {
                 { lastSentAt: lastGroupRouteSendAt, minIntervalMs: 1000, maxRetries: 2 },
               );
               lastGroupRouteSendAt = delivery.lastSentAt;
+              await sendTopicNotification('distribution', [
+                '🔀 MENSAJE DISTRIBUIDO',
+                'Origen: ' + String(message.chat.title || chatId) + ' (' + chatId + ')',
+                'Destino: ' + String(destination.title || route.destinationChatId) + ' (' + route.destinationChatId + ')',
+                'Mensaje de origen: ' + message.message_id,
+                'Modo: ' + (shouldForward ? 'Reenviado' : 'Copiado'),
+              ].join('\n'));
               await recordGroupRouteDelivery(filterCheck);
             } catch (error) {
               await releaseGroupRouteDelivery(filterCheck);
               console.log('No se pudo distribuir el mensaje de grupo a la ruta', route.routeKey, String(error));
+              await sendTopicNotification('errors', '⚠️ ERROR DE DISTRIBUCIÓN\nRuta: ' + route.routeKey + '\n' + String(error));
             }
           }
         }
       }
     } catch (error) {
       console.log('No se pudieron procesar las rutas del grupo', chatId, String(error));
+      await sendTopicNotification('errors', '⚠️ ERROR AL PROCESAR RUTAS DE GRUPO\nChat: ' + chatId + '\n' + String(error));
     }
   }
 
@@ -1055,9 +1070,9 @@ export default async function (message) {
           set: { chatId: topic.chatId, messageThreadId: topic.messageThreadId, chatTitle: topic.chatTitle, updatedAt: topic.updatedAt },
         }).run();
       }
-      await say(chatId, '✅ GRUPO DE NOTIFICACIONES CONFIGURADO\\n\\nGrupo: ' + String(targetChat.title || chatId)
-        + '\\nTemas nuevos: ' + createdTopics.length + '\\nTemas disponibles: ' + topicDefinitions.length
-        + '\\n\\nLos temas existentes se conservaron; no se duplicaron.');
+      await say(chatId, '✅ GRUPO DE NOTIFICACIONES CONFIGURADO\n\nGrupo: ' + String(targetChat.title || chatId)
+        + '\nTemas nuevos: ' + createdTopics.length + '\nTemas disponibles: ' + topicDefinitions.length
+        + '\n\nLos temas existentes se conservaron; no se duplicaron.');
     } catch (error) {
       console.log('No se pudo configurar el grupo central de notificaciones', String(error));
       await say(chatId, '⚠️ No se pudo completar la configuración. Comprueba que el bot tenga permiso para administrar temas y vuelve a intentarlo. Si algunos temas alcanzaron a crearse, podrían quedar duplicados al repetir el comando.');
@@ -1536,7 +1551,7 @@ export default async function (message) {
         'Plantillas: ' + templateRows.length, 'Blacklist: ' + banRows.length,
         'Publicaciones: ' + pubRows.length, 'Compras: ' + purchaseRows.length,
         'Reacciones identificadas: ' + reactionRows.length,
-      ].join('\\n'));
+      ].join('\n'));
       return;
     }
     if (command === '/addadmin' || command === '/deladmin') {
@@ -1547,18 +1562,18 @@ export default async function (message) {
       if (command === '/addadmin') {
         await db.insert(admins).values({ userId: target, role: 'admin', createdAt: now() }).onConflictDoNothing().run();
         await say(chatId, `✅ Administrador añadido: ${target}`);
-        await sendTopicNotification('admins', '👥 NUEVO ADMINISTRADOR\\nID: ' + target + '\\nAñadido por: ' + userId);
+        await sendTopicNotification('admins', '👥 NUEVO ADMINISTRADOR\nID: ' + target + '\nAñadido por: ' + userId);
       } else {
         await db.delete(admins).where(eq(admins.userId, target)).run();
         await say(chatId, `✅ Administrador eliminado: ${target}`);
-        await sendTopicNotification('admins', '👥 ADMINISTRADOR ELIMINADO\\nID: ' + target + '\\nEliminado por: ' + userId);
+        await sendTopicNotification('admins', '👥 ADMINISTRADOR ELIMINADO\nID: ' + target + '\nEliminado por: ' + userId);
       }
       return;
     }
     await say(chatId, 'Comando no reconocido. Usa /help.');
   } catch (error) {
     console.log('Error en comando administrativo', command, String(error));
-    await sendTopicNotification('errors', '⚠️ ERROR EN COMANDO ADMINISTRATIVO\\nComando: ' + command + '\\nUsuario: ' + userId + '\\nError: ' + String(error));
+    await sendTopicNotification('errors', '⚠️ ERROR EN COMANDO ADMINISTRATIVO\nComando: ' + command + '\nUsuario: ' + userId + '\nError: ' + String(error));
     await say(chatId, '⚠️ No se pudo completar la acción. Revisa el ID, el esquema migrado y los permisos del bot.');
   }
 }
