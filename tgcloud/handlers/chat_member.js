@@ -1,6 +1,7 @@
 import { api, db } from 'sdk';
 import { eq } from 'sdk/db';
 import { channels, channelSettings, captchaSessions, globalBans, knownUsers } from '../schema.js';
+import { sendTopicNotification } from '../lib/notifications.js';
 
 function renderWelcome(template, user, chat) {
   const name = [user.first_name, user.last_name].filter(Boolean).join(' ') || 'usuario';
@@ -29,32 +30,58 @@ export default async function (update) {
     (member.status === 'restricted' && Boolean(member.is_member));
   const wasAlreadyMember = ['member', 'administrator', 'creator'].includes(oldStatus) ||
     (oldStatus === 'restricted' && Boolean(oldMember?.is_member));
-  // Saludar y lanzar CAPTCHA solo en una entrada real, no al cambiar permisos.
-  if (!isNowMember || wasAlreadyMember) return;
+  const leftNow = !isNowMember && wasAlreadyMember;
+  const joinedNow = isNowMember && !wasAlreadyMember;
+  if (!joinedNow && !leftNow) return;
 
-  const displayName = [user.first_name, user.last_name].filter(Boolean).join(' ');
+  const displayName = [user.first_name, user.last_name].filter(Boolean).join(' ') || 'Usuario';
+  const username = String(user.username ?? '').toLowerCase();
+  const knownBefore = await db.select().from(knownUsers).where(eq(knownUsers.userId, Number(user.id))).get();
   await db.insert(knownUsers).values({
-    userId: Number(user.id),
-    username: String(user.username ?? '').toLowerCase(),
-    displayName,
-    lastSeenAt: Date.now(),
+    userId: Number(user.id), username, displayName, lastSeenAt: Date.now(),
   }).onConflictDoUpdate({
     target: knownUsers.userId,
-    set: {
-      username: String(user.username ?? '').toLowerCase(),
-      displayName,
-      lastSeenAt: Date.now(),
-    },
+    set: { username, displayName, lastSeenAt: Date.now() },
   }).run();
+
+  const chatName = String(chat.title || chat.username || chat.id);
+  const userLabel = user.username ? '@' + user.username : 'Sin username';
+  const eventText = [
+    joinedNow ? '📥 USUARIO INGRESÓ A UN CHAT' : '📤 USUARIO SALIÓ DE UN CHAT',
+    'Chat: ' + chatName,
+    'Tipo: ' + String(chat.type || 'desconocido'),
+    'ID del chat: ' + chat.id,
+    'Nombre: ' + displayName,
+    'Usuario: ' + userLabel,
+    'ID del usuario: ' + user.id,
+    'Fecha: ' + new Date().toLocaleString('es-MX', { timeZone: 'America/Mexico_City' }),
+  ].join('\\n');
+  await sendTopicNotification('users', eventText);
+  if (!knownBefore) {
+    await sendTopicNotification('users', '🆕 PRIMER REGISTRO DEL USUARIO\\n' + eventText);
+  }
+
+  const banned = await db.select().from(globalBans).where(eq(globalBans.userId, Number(user.id))).get();
+  if (banned) {
+    await sendTopicNotification('id_matches', [
+      '🆔 COINCIDENCIA DE ID CON BLACKLIST',
+      'ID detectado: ' + user.id,
+      'Usuario: ' + userLabel,
+      'Chat: ' + chatName + ' (' + chat.id + ')',
+      'Motivo: ' + String(banned.reason || 'Sin motivo'),
+      'Evento: ' + (joinedNow ? 'ingreso' : 'salida'),
+    ].join('\\n'));
+    await sendTopicNotification('blacklist', '🚫 USUARIO EN LISTA NEGRA DETECTADO\\n' + eventText + '\\nMotivo: ' + String(banned.reason || 'Sin motivo'));
+    if (joinedNow) {
+      try { await api.banChatMember({ chat_id: chat.id, user_id: user.id, revoke_messages: true }); }
+      catch (error) { await sendTopicNotification('errors', '⚠️ NO SE PUDO APLICAR BANEO GLOBAL\\nChat: ' + chatName + '\\nID: ' + user.id + '\\n' + String(error)); }
+    }
+    return;
+  }
+  if (!joinedNow) return;
 
   const connectedChannel = await db.select().from(channels).where(eq(channels.chatId, Number(chat.id))).get();
   if (!connectedChannel || !Number(connectedChannel.active)) return;
-
-  const banned = await db.select().from(globalBans).where(eq(globalBans.userId, user.id)).get();
-  if (banned) {
-    await api.banChatMember({ chat_id: chat.id, user_id: user.id, revoke_messages: true });
-    return;
-  }
 
   const settings = await db.select().from(channelSettings).where(eq(channelSettings.channelId, chat.id)).get();
   if (!settings) return;
