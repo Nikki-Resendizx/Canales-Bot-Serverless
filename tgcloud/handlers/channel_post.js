@@ -3,6 +3,7 @@ import { eq } from 'sdk/db';
 import { channels, channelRoutes, channelSettings, templates, postAlertKeys, notificationTopics, filterConfigs, filterRejections, filterSeenContent, filterDeliveryEvents, routeForwardSettings } from '../schema.js';
 import { defaultFilterConfig, mergeFilterConfigs, evaluateFilters, filterFingerprint, isRepeatedContent, localDateKey } from '../lib/message_filters.js';
 import { normalizeForwardConfig, normalizeTextLineBreaks, sendWithFloodProtection } from '../lib/forwarding.js';
+import { sendTopicNotification } from '../lib/notifications.js';
 
 
 async function readFilterConfig(scopeKey) {
@@ -53,6 +54,16 @@ async function recordFilterRejection(post, route, sourceId, result, scopeKey) {
     console.log('No se pudo registrar el rechazo del filtro', rejectionKey, String(error));
   }
 
+  if (behavior !== 'review') {
+    await sendTopicNotification('errors', [
+      '🚫 PUBLICACIÓN RECHAZADA POR FILTROS',
+      'Origen: ' + String(post.chat?.title || sourceId),
+      'Destino: ' + Number(route.destinationChatId),
+      'Filtro: ' + String(result.key),
+      'Motivo: ' + String(result.reason),
+      'Mensaje: ' + Number(post.message_id),
+    ].join('\n'));
+  }
   if (behavior === 'review') {
     try {
       const errorTopic = await db.select().from(notificationTopics)
@@ -603,23 +614,14 @@ export default async function (post) {
           console.log('No se pudo fijar la publicación reenviada', route.routeKey, String(pinError));
         }
       }
-      if (routeSettings.notifyOwner) {
-        try {
-          const distributionTopic = await db.select().from(notificationTopics)
-            .where(eq(notificationTopics.topicKey, 'distribution')).get();
-          if (!distributionTopic) throw new Error('No está configurado el tema DISTRIBUCIÓN del grupo central');
-          await api.sendMessage({
-            chat_id: Number(distributionTopic.chatId),
-            message_thread_id: Number(distributionTopic.messageThreadId),
-            text: '📨 Publicación distribuida\nRuta: ' + sourceId + ' → ' + route.destinationChatId
-              + '\nMensaje de origen: ' + post.message_id
-              + '\nDestino: ' + (sentMessage?.message_id || 'enviado'),
-            disable_notification: true,
-          });
-        } catch (notifyError) {
-          console.log('No se pudo notificar la distribución en el grupo central', route.routeKey, String(notifyError));
-        }
-      }
+      await sendTopicNotification('distribution', [
+        '📨 PUBLICACIÓN DISTRIBUIDA',
+        'Origen: ' + String(post.chat?.title || sourceId) + ' (' + sourceId + ')',
+        'Destino: ' + String(destination.title || route.destinationChatId) + ' (' + route.destinationChatId + ')',
+        'Mensaje de origen: ' + post.message_id,
+        'Mensaje enviado: ' + (sentMessage?.message_id || 'enviado'),
+        'Modo: ' + (shouldForward ? 'Reenviado' : 'Copiado'),
+      ].join('\n'));
       await recordRouteDelivery(filterCheck);
     } catch (error) {
       await releaseRouteDelivery(filterCheck);
