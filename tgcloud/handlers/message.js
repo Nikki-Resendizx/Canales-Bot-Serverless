@@ -297,7 +297,6 @@ const HELP = [
   '/hashtags ID texto — hashtags por canal',
   '/description ID texto — plantilla de descripción con {texto}',
   '/missingdata ID texto — texto de respaldo si falta el contenido',
-  '/setreport ID_CANAL ID_REPORTE — destino de avisos de reacción',
   '/setnotifications — configurar el grupo central de avisos (solo propietario; ejecutar dentro del supergrupo con temas)',
   '/blacklist_add ID|@username [motivo] — añadir usuario a la lista negra y bloquearlo en los canales gestionados',
   '/globalban ID|@username [motivo] — alias para aplicar baneo global',
@@ -1169,15 +1168,6 @@ export default async function (message) {
       await ensureSettings(id);
       await db.update(channelSettings).set({ captchaEnabled: mode === 'on' ? 1 : 0, updatedAt: now() }).where(eq(channelSettings.channelId, id)).run();
       await say(chatId, `✅ CAPTCHA ${mode === 'on' ? 'activado' : 'desactivado'} para ${id}. El fallo o vencimiento aplica baneo permanente.`);
-      return;
-    }
-    if (command === '/setreport') {
-      const id = parseId(args[0]); const reportId = parseId(args[1]);
-      if (!Number.isSafeInteger(id) || !Number.isSafeInteger(reportId)) return void await say(chatId, 'Uso: /setreport ID_CANAL ID_REPORTE');
-      if (!(await canManageChannel(userId, id))) return void await say(chatId, '⛔ Ese canal no existe o no está asignado a tu administración.');
-      await ensureSettings(id);
-      await db.update(channelSettings).set({ reactionReportChatId: reportId, updatedAt: now() }).where(eq(channelSettings.channelId, id)).run();
-      await say(chatId, '✅ Canal de reportes configurado. El bot debe poder publicar allí.');
       return;
     }
     if (command === '/correction') {
