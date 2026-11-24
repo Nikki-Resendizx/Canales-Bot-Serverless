@@ -488,8 +488,6 @@ export default async function (message) {
         } catch (error) { console.log('No se pudo aplicar blacklist desde el panel', channel.chatId, String(error)); }
       }
       await say(chatId, '🚫 Usuario añadido a la blacklist. Baneos aplicados en ' + count + '/' + rows.length + ' canales administrados.');
-      await sendTopicNotification('blacklist', '🚫 USUARIO AÑADIDO A LA BLACKLIST\nID: ' + targetId + '\nMotivo: ' + reason + '\nAdministrador: ' + userId);
-      await sendTopicNotification('id_matches', '🆔 ID REGISTRADO EN BLACKLIST\nID: ' + targetId + '\nMotivo: ' + reason);
       await sendTopicNotification('blacklist', ['🚫 USUARIO AÑADIDO A LA BLACKLIST', 'ID: ' + targetId, 'Usuario: ' + (username ? '@' + username : 'No disponible'), 'Motivo: ' + reason, 'Baneos aplicados: ' + count + '/' + rows.length, 'Administrador: ' + userId].join('\n'));
       await sendTopicNotification('id_matches', '🆔 ID REGISTRADO EN BLACKLIST\nID: ' + targetId + '\nMotivo: ' + reason);
     } else {
@@ -505,7 +503,6 @@ export default async function (message) {
         } catch (error) { console.log('No se pudo aplicar desbaneo desde el panel', channel.chatId, String(error)); }
       }
       await say(chatId, '✅ Usuario eliminado de la blacklist. Desbaneos solicitados en ' + count + '/' + rows.length + ' canales administrados.');
-      await sendTopicNotification('blacklist', '♻️ USUARIO RETIRADO DE LA BLACKLIST\nID: ' + targetId + '\nAdministrador: ' + userId);
       await sendTopicNotification('blacklist', ['♻️ USUARIO RETIRADO DE LA BLACKLIST', 'ID: ' + targetId, 'Desbaneos solicitados: ' + count + '/' + rows.length, 'Administrador: ' + userId].join('\n'));
     }
     return;
@@ -1220,6 +1217,8 @@ export default async function (message) {
         }
       }
       await say(chatId, `🚫 Usuario ${id}${username ? ' (@' + username + ')' : ''} añadido a la blacklist. Baneo aplicado en ${bannedCount}/${rows.length} chats conectados; también se bloqueará si intenta entrar de nuevo donde el bot tenga permisos.`);
+      await sendTopicNotification('blacklist', ['🚫 USUARIO AÑADIDO A LA BLACKLIST', 'ID: ' + id, 'Usuario: ' + (username ? '@' + username : 'Sin username'), 'Motivo: ' + reason, 'Baneos aplicados: ' + bannedCount + '/' + rows.length, 'Administrador: ' + userId].join('\n'));
+      await sendTopicNotification('id_matches', '🆔 ID REGISTRADO EN BLACKLIST\nID: ' + id + '\nMotivo: ' + reason);
       return;
     }
     if (command === '/blacklist_remove' || command === '/globalunban') {
@@ -1244,6 +1243,7 @@ export default async function (message) {
         }
       }
       await say(chatId, `✅ Usuario ${id} eliminado de la blacklist; desbaneo solicitado en ${unbannedCount}/${rows.length} chats conectados.`);
+      await sendTopicNotification('blacklist', '♻️ USUARIO RETIRADO DE LA BLACKLIST\nID: ' + id + '\nAdministrador: ' + userId);
       return;
     }
     if (command === '/blacklist') {
