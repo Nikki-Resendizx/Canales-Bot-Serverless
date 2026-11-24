@@ -7,9 +7,9 @@ import {
 
 import { defaultFilterConfig, mergeFilterConfigs, evaluateFilters, filterFingerprint, isRepeatedContent, localDateKey } from '../lib/message_filters.js';
 import { parseForwardDelays, normalizeTextLineBreaks, sendWithFloodProtection } from '../lib/forwarding.js';
+import { sendTopicNotification } from '../lib/notifications.js';
 
 const OWNER_ID = 8424447837;
-const DEFAULT_REACTION_REPORT_CHAT_ID = -1004456932813;
 const now = () => Date.now();
 const parseId = value => /^-?\d+$/.test(String(value ?? '')) ? Number(value) : NaN;
 const escapeHtml = value => String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
@@ -81,7 +81,7 @@ async function ensureSettings(channelId) {
   if (!row) {
     await db.insert(channelSettings).values({
       channelId, welcomeEnabled: 0, welcomeText: '👋 ¡Bienvenido, {mencion}!',
-      captchaEnabled: 0, captchaQuestion: '', captchaAnswer: '', reactionReportChatId: DEFAULT_REACTION_REPORT_CHAT_ID, updatedAt: now(),
+      captchaEnabled: 0, captchaQuestion: '', captchaAnswer: '', updatedAt: now(),
     }).run();
     row = await db.select().from(channelSettings).where(eq(channelSettings.channelId, channelId)).get();
   } else if (!row.reactionReportChatId) {
@@ -339,6 +339,7 @@ export default async function (message) {
   const isPrivate = chatId === userId;
   if (!message.from.is_bot && Number.isSafeInteger(userId) && userId > 0) {
     try {
+      const knownBefore = await db.select().from(knownUsers).where(eq(knownUsers.userId, userId)).get();
       const displayName = [message.from.first_name, message.from.last_name].filter(Boolean).join(' ');
       await db.insert(knownUsers).values({
         userId,
@@ -353,8 +354,15 @@ export default async function (message) {
           lastSeenAt: now(),
         },
       }).run();
+      if (!knownBefore) await sendTopicNotification('users', [
+        '👤 NUEVO USUARIO REGISTRADO', 'Nombre: ' + (displayName || 'Usuario'),
+        'Usuario: ' + (message.from.username ? '@' + message.from.username : 'Sin username'),
+        'ID: ' + userId, 'Origen: interacción con el bot',
+        'Fecha: ' + new Date().toLocaleString('es-MX', { timeZone: 'America/Mexico_City' }),
+      ].join('\\n'));
     } catch (error) {
       console.log('No se pudo actualizar el registro de usuario conocido', String(error));
+      await sendTopicNotification('errors', '⚠️ ERROR AL REGISTRAR USUARIO\\nID: ' + userId + '\\n' + String(error));
     }
   }
 
@@ -478,6 +486,8 @@ export default async function (message) {
         } catch (error) { console.log('No se pudo aplicar blacklist desde el panel', channel.chatId, String(error)); }
       }
       await say(chatId, '🚫 Usuario añadido a la blacklist. Baneos aplicados en ' + count + '/' + rows.length + ' canales administrados.');
+      await sendTopicNotification('blacklist', ['🚫 USUARIO AÑADIDO A LA BLACKLIST', 'ID: ' + targetId, 'Usuario: ' + (username ? '@' + username : 'No disponible'), 'Motivo: ' + reason, 'Baneos aplicados: ' + count + '/' + rows.length, 'Administrador: ' + userId].join('\\n'));
+      await sendTopicNotification('id_matches', '🆔 ID REGISTRADO EN BLACKLIST\\nID: ' + targetId + '\\nMotivo: ' + reason);
     } else {
       await db.delete(globalBans).where(eq(globalBans.userId, targetId)).run();
       const rows = await managedChannels(userId);
@@ -491,6 +501,7 @@ export default async function (message) {
         } catch (error) { console.log('No se pudo aplicar desbaneo desde el panel', channel.chatId, String(error)); }
       }
       await say(chatId, '✅ Usuario eliminado de la blacklist. Desbaneos solicitados en ' + count + '/' + rows.length + ' canales administrados.');
+      await sendTopicNotification('blacklist', ['♻️ USUARIO RETIRADO DE LA BLACKLIST', 'ID: ' + targetId, 'Desbaneos solicitados: ' + count + '/' + rows.length, 'Administrador: ' + userId].join('\\n'));
     }
     return;
   }
@@ -1012,35 +1023,41 @@ export default async function (message) {
       const currentGroup = await db.select().from(notificationTopics)
         .where(eq(notificationTopics.topicKey, '__group__')).get();
       const savedTopics = await db.select().from(notificationTopics).all();
-      if (Number(currentGroup?.chatId) === chatId && savedTopics.filter(row => row.topicKey !== '__group__').length === 10) {
-        await say(chatId, '✅ Este supergrupo ya está configurado como destino central. No crearé temas duplicados.');
-        return;
-      }
+      const sameGroup = Number(currentGroup?.chatId) === chatId;
       const topicDefinitions = [
-        ['publications', '📢 PUBLICACIONES'],
-        ['distribution', '🔀 DISTRIBUCIÓN'],
-        ['requests', '📥 SOLICITUDES'],
-        ['reactions', '❤️ REACCIONES'],
-        ['errors', '⚠️ ERRORES'],
-        ['admins', '👥 ADMINISTRADORES'],
-        ['stats', '📊 ESTADÍSTICAS'],
-        ['system', '🤖 SISTEMA'],
-        ['blacklist', '🚫 BLACKLIST'],
-        ['new_chat', '🆕 NUEVO CANAL O GRUPO INGRESADO'],
+        ['publications', '📢 PUBLICACIONES'], ['distribution', '🔀 DISTRIBUCIÓN'],
+        ['requests', '📥 SOLICITUDES'], ['reactions', '❤️ REACCIONES'],
+        ['errors', '⚠️ ERRORES'], ['admins', '👥 ADMINISTRADORES'],
+        ['stats', '📊 ESTADÍSTICAS'], ['system', '🤖 SISTEMA'],
+        ['blacklist', '🚫 BLACKLIST'], ['new_chat', '🆕 NUEVO CANAL O GRUPO INGRESADO'],
+        ['users', '👤 REGISTRO DE USUARIOS'], ['id_matches', '🆔 COINCIDENCIAS DE IDS'],
       ];
+      const existingKeys = new Set(sameGroup
+        ? savedTopics.filter(row => row.topicKey !== '__group__' && Number(row.chatId) === chatId).map(row => row.topicKey)
+        : []);
       const createdTopics = [];
       for (const [topicKey, topicName] of topicDefinitions) {
+        if (existingKeys.has(topicKey)) continue;
         const topic = await api.createForumTopic({ chat_id: chatId, name: topicName });
         const threadId = Number(topic?.message_thread_id);
         if (!Number.isSafeInteger(threadId) || threadId <= 0) throw new Error('Telegram no devolvió el identificador del tema: ' + topicName);
         createdTopics.push({ topicKey, chatId, messageThreadId: threadId, chatTitle: String(targetChat.title || ''), updatedAt: now() });
       }
-      await db.delete(notificationTopics).run();
-      await db.insert(notificationTopics).values([
-        { topicKey: '__group__', chatId, messageThreadId: 0, chatTitle: String(targetChat.title || ''), updatedAt: now() },
-        ...createdTopics,
-      ]).run();
-      await say(chatId, '✅ GRUPO DE NOTIFICACIONES CONFIGURADO\n\nGrupo: ' + String(targetChat.title || chatId) + '\nTemas creados: ' + createdTopics.length + '\n\nPuedes volver a ejecutar /setnotifications en otro supergrupo para cambiar el destino.');
+      if (!sameGroup) await db.delete(notificationTopics).run();
+      const groupRow = { topicKey: '__group__', chatId, messageThreadId: 0, chatTitle: String(targetChat.title || ''), updatedAt: now() };
+      await db.insert(notificationTopics).values(groupRow).onConflictDoUpdate({
+        target: notificationTopics.topicKey,
+        set: { chatId, messageThreadId: 0, chatTitle: groupRow.chatTitle, updatedAt: groupRow.updatedAt },
+      }).run();
+      for (const topic of createdTopics) {
+        await db.insert(notificationTopics).values(topic).onConflictDoUpdate({
+          target: notificationTopics.topicKey,
+          set: { chatId: topic.chatId, messageThreadId: topic.messageThreadId, chatTitle: topic.chatTitle, updatedAt: topic.updatedAt },
+        }).run();
+      }
+      await say(chatId, '✅ GRUPO DE NOTIFICACIONES CONFIGURADO\\n\\nGrupo: ' + String(targetChat.title || chatId)
+        + '\\nTemas nuevos: ' + createdTopics.length + '\\nTemas disponibles: ' + topicDefinitions.length
+        + '\\n\\nLos temas existentes se conservaron; no se duplicaron.');
     } catch (error) {
       console.log('No se pudo configurar el grupo central de notificaciones', String(error));
       await say(chatId, '⚠️ No se pudo completar la configuración. Comprueba que el bot tenga permiso para administrar temas y vuelve a intentarlo. Si algunos temas alcanzaron a crearse, podrían quedar duplicados al repetir el comando.');
@@ -1513,6 +1530,13 @@ export default async function (message) {
         db.select().from(reactionReports).all(),
       ]);
       await say(chatId, `📊 ESTADÍSTICAS\nCanales: ${channelRows.length}\nRutas: ${routeRows.length}\nPlantillas: ${templateRows.length}\nBlacklist: ${banRows.length}\nPublicaciones: ${pubRows.length}\nCompras registradas: ${purchaseRows.length}\nReacciones identificadas: ${reactionRows.length}`);
+      await sendTopicNotification('stats', [
+        '📊 CONSULTA DE ESTADÍSTICAS', 'Solicitante: ' + userId,
+        'Canales: ' + channelRows.length, 'Rutas: ' + routeRows.length,
+        'Plantillas: ' + templateRows.length, 'Blacklist: ' + banRows.length,
+        'Publicaciones: ' + pubRows.length, 'Compras: ' + purchaseRows.length,
+        'Reacciones identificadas: ' + reactionRows.length,
+      ].join('\\n'));
       return;
     }
     if (command === '/addadmin' || command === '/deladmin') {
@@ -1523,15 +1547,18 @@ export default async function (message) {
       if (command === '/addadmin') {
         await db.insert(admins).values({ userId: target, role: 'admin', createdAt: now() }).onConflictDoNothing().run();
         await say(chatId, `✅ Administrador añadido: ${target}`);
+        await sendTopicNotification('admins', '👥 NUEVO ADMINISTRADOR\\nID: ' + target + '\\nAñadido por: ' + userId);
       } else {
         await db.delete(admins).where(eq(admins.userId, target)).run();
         await say(chatId, `✅ Administrador eliminado: ${target}`);
+        await sendTopicNotification('admins', '👥 ADMINISTRADOR ELIMINADO\\nID: ' + target + '\\nEliminado por: ' + userId);
       }
       return;
     }
     await say(chatId, 'Comando no reconocido. Usa /help.');
   } catch (error) {
     console.log('Error en comando administrativo', command, String(error));
+    await sendTopicNotification('errors', '⚠️ ERROR EN COMANDO ADMINISTRATIVO\\nComando: ' + command + '\\nUsuario: ' + userId + '\\nError: ' + String(error));
     await say(chatId, '⚠️ No se pudo completar la acción. Revisa el ID, el esquema migrado y los permisos del bot.');
   }
 }
