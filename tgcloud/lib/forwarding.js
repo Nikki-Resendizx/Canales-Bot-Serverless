@@ -41,7 +41,8 @@ export function normalizeTextLineBreaks(value) {
     .replace(/\\r\\n/g, '\n')
     .replace(/\\\\n/g, '\n')
     .replace(/\\n/g, '\n')
-    .replace(/\/n(?=$|\s)/g, '\n');
+    .replace(/\/n(?=$|\s)/g, '\n')
+    .replace(/\n[ \t]+/g, '\n');
 }
 
 function retryAfterSeconds(error) {
