@@ -515,6 +515,7 @@ export default async function (post) {
       await completeManualPublication(post, sourceId);
     } catch (error) {
       console.log('No se pudo completar automáticamente la publicación', sourceId, post.message_id, String(error));
+      await sendTopicNotification('errors', '⚠️ ERROR AL COMPLETAR PUBLICACIÓN\nCanal: ' + sourceId + '\nMensaje: ' + post.message_id + '\n' + String(error));
     }
   }
 
@@ -627,6 +628,7 @@ export default async function (post) {
       await releaseRouteDelivery(filterCheck);
       // No bloquear otras rutas si un destino rechaza la copia.
       console.log('No se pudo copiar la publicación a la ruta', route.routeKey, String(error));
+      await sendTopicNotification('errors', '⚠️ ERROR DE DISTRIBUCIÓN\nRuta: ' + route.routeKey + '\n' + String(error));
     }
   }
 }
