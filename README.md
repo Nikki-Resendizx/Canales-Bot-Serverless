@@ -29,8 +29,8 @@ El código y los módulos están en la rama `main`. GitHub Actions valida la sin
 - Panel y comandos de canales compartidos entre todos los administradores autorizados del bot: todos pueden ver y configurar cualquier canal registrado donde el bot sea administrador, sin importar quién lo añadió. `addedBy` se conserva solo como dato histórico; las rutas, plantillas y ajustes existentes no se duplican ni se reinician.
 - Publicaciones de texto y copia de un mensaje al canal mediante `/publish`.
 - Publicaciones de pago con Telegram Stars: flujo por comandos y creación de publicaciones de texto desde el panel, factura XTR, validación pre-checkout y entrega tras confirmar el pago.
-- Reportes de cambios de reacciones identificadas y reportes separados de conteos agregados. Los conteos agregados nunca se presentan como si identificaran usuarios. Los reportes de reacción usan por defecto `-1004456932813` y se pueden cambiar con `/setreport`.
-- Alertas de publicaciones nuevas en canales conectados al canal de avisos `-1004424261064`.
+- Reportes de cambios de reacciones identificadas y conteos agregados, enviados al tema central REACCIONES. Los conteos agregados nunca se presentan como si identificaran usuarios.
+- Alertas de publicaciones nuevas enviadas al tema PUBLICACIONES del grupo central.
 - Estadísticas de canales, rutas, plantillas, blacklist, publicaciones, compras y reacciones.
 - Registro de usuarios observados para resolver usernames sin inventar IDs.
 
@@ -46,7 +46,6 @@ El código y los módulos están en la rama `main`. GitHub Actions valida la sin
 - `/hashtags ID_CANAL texto`
 - `/description ID_CANAL texto` — admite `{texto}`
 - `/missingdata ID_CANAL texto`
-- `/setreport ID_CANAL ID_CANAL_REPORTE`
 - `/blacklist_add ID|@username [motivo]` o `/globalban ID|@username [motivo]`
 - `/blacklist_remove ID|@username` o `/globalunban ID|@username`
 - `/route_add ORIGEN DESTINO`, `/route_remove ORIGEN DESTINO`, `/routes`
