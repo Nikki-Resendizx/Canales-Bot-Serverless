@@ -1064,6 +1064,7 @@ export default async function (message) {
       await say(chatId, '✅ GRUPO DE NOTIFICACIONES CONFIGURADO\n\nGrupo: ' + String(targetChat.title || chatId)
         + '\nTemas nuevos: ' + createdTopics.length + '\nTemas disponibles: ' + topicDefinitions.length
         + '\n\nLos temas existentes se conservaron; no se duplicaron.');
+      await sendTopicNotification('system', '⚙️ GRUPO CENTRAL DE NOTIFICACIONES CONFIGURADO\nGrupo: ' + String(targetChat.title || chatId) + '\nTemas: ' + topicDefinitions.length + '\nTemas nuevos: ' + createdTopics.length);
     } catch (error) {
       console.log('No se pudo configurar el grupo central de notificaciones', String(error));
       await say(chatId, '⚠️ No se pudo completar la configuración. Comprueba que el bot tenga permiso para administrar temas y vuelve a intentarlo. Si algunos temas alcanzaron a crearse, podrían quedar duplicados al repetir el comando.');
