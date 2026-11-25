@@ -876,7 +876,9 @@ export default async function (message) {
           target: templates.templateKey,
           set: { body: text, format, updatedBy: userId, updatedAt: now() },
         }).run();
-        await say(chatId, '✅ Plantilla guardada para el canal ' + channelId + ' (' + kind + ', ' + format + ').');
+        await say(chatId, kind === 'default'
+          ? '✅ Plantilla predeterminada global guardada para el canal ' + channelId + '. Se aplicará automáticamente a todas sus publicaciones sin plantilla específica (' + format + ').'
+          : '✅ Plantilla específica guardada para el canal ' + channelId + ' (' + kind + ', ' + format + '). Cuando no exista, se utilizará la plantilla predeterminada global.');
       } else if (inputType === 'hashtags') {
         if (text.length > 1000) { await say(chatId, '⚠️ El texto supera 1000 caracteres.'); return; }
         await db.update(channelSettings).set({ hashtags: text, updatedAt: now() }).where(eq(channelSettings.channelId, channelId)).run();
