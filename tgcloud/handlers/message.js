@@ -314,6 +314,8 @@ const HELP = [
   '/lists — consultar listas de destinos',
   '/schedule_add ORIGEN_ID MENSAJE_ID FECHA_ISO DESTINOS copy|forward [INTERVALO_MIN] [REPETICIONES] — programar publicación; DESTINOS admite IDs separados por coma o @CLAVE_LISTA; 0 repeticiones significa indefinidas',
   '/schedule_list — consultar programaciones',
+  '/schedule_pause CLAVE — pausar una programación',
+  '/schedule_resume CLAVE — reanudar una programación',
   '/schedule_cancel CLAVE — cancelar una programación',
   '/template_set ID_CANAL TIPO FORMATO texto — crear/editar plantilla',
   'Tipos de plantilla: default, text, photo, video, gif, audio, document, video_note, album, link y forward.',
@@ -1409,6 +1411,25 @@ export default async function (message) {
         '• ' + row.scheduleKey + ' · ' + row.status + ' · ' + new Date(Number(row.dueAt)).toISOString() +
         ' · ' + row.sourceChatId + '/' + row.sourceMessageId).join('\\n') :
         'No hay programaciones. Usa /schedule_add para crear una.');
+      return;
+    }
+    if (command === '/schedule_pause' || command === '/schedule_resume') {
+      const scheduleKey = String(args[0] || '');
+      const row = await db.select().from(scheduledPublications).where(eq(scheduledPublications.scheduleKey, scheduleKey)).get();
+      if (!row || (Number(row.createdBy) !== userId && userId !== OWNER_ID)) return void await say(chatId, '⛔ Programación no encontrada o sin permisos.');
+      const repeat = await db.select().from(repeatJobs).where(eq(repeatJobs.scheduleKey, scheduleKey)).get();
+      if (command === '/schedule_pause') {
+        await db.update(scheduledPublications).set({ status: 'paused' }).where(eq(scheduledPublications.scheduleKey, scheduleKey)).run();
+        if (repeat) await db.update(repeatJobs).set({ active: 0 }).where(eq(repeatJobs.repeatKey, repeat.repeatKey)).run();
+        await say(chatId, '⏸️ Programación pausada: ' + scheduleKey);
+      } else {
+        const nextAt = repeat ? Math.max(Number(repeat.nextRunAt) || 0, now() + 60000) : Math.max(Number(row.dueAt), now() + 60000);
+        await db.update(scheduledPublications).set({ status: 'pending', dueAt: nextAt, processedAt: null })
+          .where(eq(scheduledPublications.scheduleKey, scheduleKey)).run();
+        if (repeat) await db.update(repeatJobs).set({ active: 1, nextRunAt: nextAt })
+          .where(eq(repeatJobs.repeatKey, repeat.repeatKey)).run();
+        await say(chatId, '▶️ Programación reanudada: ' + scheduleKey + '\\nPróxima ejecución: ' + new Date(nextAt).toISOString());
+      }
       return;
     }
     if (command === '/schedule_cancel') {
