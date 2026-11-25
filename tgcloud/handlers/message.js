@@ -2,7 +2,7 @@ import { api, db } from 'sdk';
 import { eq } from 'sdk/db';
 import {
   admins, channels, channelSettings, globalBans, channelRoutes, joinRequests,
-  templates, publications, purchases, reactionReports, knownUsers, botTexts, notificationTopics, filterConfigs, filterRejections, filterSeenContent, filterDeliveryEvents, routeForwardSettings,
+  templates, publications, purchases, reactionReports, knownUsers, botTexts, notificationTopics, filterConfigs, filterRejections, filterSeenContent, filterDeliveryEvents, routeForwardSettings, recipientLists, recipientListItems, scheduledPublications, scheduledPublicationTargets, repeatJobs,
 } from '../schema.js';
 
 import { defaultFilterConfig, mergeFilterConfigs, evaluateFilters, filterFingerprint, isRepeatedContent, localDateKey } from '../lib/message_filters.js';
@@ -1301,6 +1301,117 @@ export default async function (message) {
     if (command === '/blacklist') {
       const rows = await db.select().from(globalBans).all();
       await say(chatId, rows.length ? '🚫 BLACKLIST GLOBAL\n' + rows.map(b => `• ${b.userId} ${b.username ? '@' + b.username : ''} — ${b.reason}`).join('\n') : 'La blacklist está vacía.');
+      return;
+    }
+    if (command === '/list_create') {
+      const name = argText.trim();
+      if (!name || name.length > 60) return void await say(chatId, 'Uso: /list_create Nombre de la lista (máximo 60 caracteres).');
+      const listKey = 'list_' + now().toString(36) + '_' + userId.toString(36);
+      await db.insert(recipientLists).values({ listKey, name, createdBy: userId, createdAt: now() }).run();
+      await say(chatId, '✅ Lista creada: ' + name + '\\nClave: ' + listKey + '\\nAgrega destinos con /list_add ' + listKey + ' ID_CANAL.');
+      return;
+    }
+    if (command === '/list_add' || command === '/list_remove') {
+      const listKey = String(args[0] || '');
+      const destinationId = parseId(args[1]);
+      const list = await db.select().from(recipientLists).where(eq(recipientLists.listKey, listKey)).get();
+      if (!list || !Number.isSafeInteger(destinationId)) return void await say(chatId, 'Uso: /' + command.slice(1) + ' CLAVE_LISTA ID_CANAL.');
+      if (Number(list.createdBy) !== userId && userId !== OWNER_ID) return void await say(chatId, '⛔ Solo quien creó la lista o el propietario puede modificarla.');
+      if (!(await canManageChannel(userId, destinationId))) return void await say(chatId, '⛔ El destino debe estar registrado y ser administrable por ti.');
+      if (command === '/list_add') {
+        const itemKey = listKey + ':' + destinationId;
+        await db.insert(recipientListItems).values({ itemKey, listKey, chatId: destinationId, addedAt: now() }).onConflictDoNothing().run();
+        await say(chatId, '✅ Destino agregado a «' + list.name + '».');
+      } else {
+        await db.delete(recipientListItems).where(eq(recipientListItems.itemKey, listKey + ':' + destinationId)).run();
+        await say(chatId, '✅ Destino eliminado de «' + list.name + '».');
+      }
+      return;
+    }
+    if (command === '/lists') {
+      const lists = await db.select().from(recipientLists).all();
+      const lines = [];
+      for (const list of lists) {
+        if (Number(list.createdBy) !== userId && userId !== OWNER_ID) continue;
+        const items = await db.select().from(recipientListItems).where(eq(recipientListItems.listKey, list.listKey)).all();
+        lines.push('• ' + list.name + ' [' + list.listKey + '] — ' + items.length + ' destinos');
+      }
+      await say(chatId, lines.length ? '📋 LISTAS DE DESTINOS\\n' + lines.join('\\n') : 'No tienes listas. Crea una con /list_create Nombre.');
+      return;
+    }
+    if (command === '/schedule_add') {
+      const sourceId = parseId(args[0]);
+      const sourceMessageId = parseId(args[1]);
+      const dueAt = Date.parse(String(args[2] || ''));
+      const targetSpec = String(args[3] || '');
+      const mode = String(args[4] || 'copy').toLowerCase();
+      const repeatMinutes = Number(args[5] || 0);
+      const remainingRuns = Number(args[6] || 0);
+      if (!Number.isSafeInteger(sourceId) || !Number.isSafeInteger(sourceMessageId) || !Number.isFinite(dueAt) ||
+          dueAt <= now() + 10000 || !targetSpec || !['copy', 'forward'].includes(mode) ||
+          !Number.isInteger(repeatMinutes) || repeatMinutes < 0 || (repeatMinutes > 0 && repeatMinutes < 5) ||
+          !Number.isInteger(remainingRuns) || remainingRuns < 0) {
+        return void await say(chatId, 'Uso: /schedule_add ORIGEN_ID MENSAJE_ID FECHA_ISO DESTINOS_ID[,ID|@CLAVE_LISTA] copy|forward [INTERVALO_MIN] [REPETICIONES]. Fecha ISO con zona horaria. Repeticiones 0 = indefinidas.');
+      }
+      if (!(await canManageChannel(userId, sourceId))) return void await say(chatId, '⛔ No puedes administrar el origen.');
+      let destinations = [];
+      let recipientListKey = '';
+      if (targetSpec.startsWith('@')) {
+        recipientListKey = targetSpec.slice(1);
+        const list = await db.select().from(recipientLists).where(eq(recipientLists.listKey, recipientListKey)).get();
+        if (!list || (Number(list.createdBy) !== userId && userId !== OWNER_ID)) return void await say(chatId, '⛔ La lista no existe o no tienes acceso.');
+        destinations = (await db.select().from(recipientListItems).where(eq(recipientListItems.listKey, recipientListKey)).all()).map(row => Number(row.chatId));
+      } else {
+        destinations = targetSpec.split(',').map(parseId);
+      }
+      destinations = [...new Set(destinations)];
+      if (!destinations.length || destinations.some(id => !Number.isSafeInteger(id) || id === sourceId)) return void await say(chatId, '⚠️ Destinos no válidos. No puedes incluir el origen.');
+      for (const id of destinations) if (!(await canManageChannel(userId, id))) return void await say(chatId, '⛔ Todos los destinos deben estar registrados y ser administrables por ti.');
+      const scheduleKey = 'sch_' + now().toString(36) + '_' + userId.toString(36);
+      await db.insert(scheduledPublications).values({
+        scheduleKey, sourceChatId: sourceId, sourceMessageId,
+        destinationChatId: destinations[0], routeKey: '', dueAt,
+        status: 'pending', payloadJson: JSON.stringify({ mode, recipientListKey }),
+        createdBy: userId, createdAt: now(), processedAt: null,
+      }).run();
+      for (const id of destinations) {
+        await db.insert(scheduledPublicationTargets).values({
+          targetKey: scheduleKey + ':' + id, scheduleKey, destinationChatId: id, createdAt: now(),
+        }).onConflictDoNothing().run();
+      }
+      if (repeatMinutes > 0) {
+        const interval = repeatMinutes * 60000;
+        await db.insert(repeatJobs).values({
+          repeatKey: 'rep_' + scheduleKey, scheduleKey, intervalMinutes: repeatMinutes,
+          nextRunAt: dueAt + interval, remainingRuns, active: 1, createdAt: now(),
+        }).run();
+      }
+      await say(chatId, '✅ Programación creada.\\nOrigen: ' + sourceId + ' / mensaje ' + sourceMessageId +
+        '\\nDestinos: ' + destinations.length + '\\nFecha: ' + new Date(dueAt).toISOString() +
+        (repeatMinutes ? '\\nRepetición: cada ' + repeatMinutes + ' min' + (remainingRuns ? ' · ' + remainingRuns + ' repeticiones' : ' · indefinida') : '') +
+        '\\nClave: ' + scheduleKey);
+      await sendTopicNotification('distribution', '🗓️ PROGRAMACIÓN CREADA\\nClave: ' + scheduleKey + '\\nOrigen: ' + sourceId + '\\nDestinos: ' + destinations.join(', '));
+      return;
+    }
+    if (command === '/schedule_list') {
+      const rows = (await db.select().from(scheduledPublications).all())
+        .filter(row => Number(row.createdBy) === userId || userId === OWNER_ID)
+        .sort((a, b) => Number(a.dueAt) - Number(b.dueAt));
+      await say(chatId, rows.length ? '🗓️ PROGRAMACIONES\\n' + rows.map(row =>
+        '• ' + row.scheduleKey + ' · ' + row.status + ' · ' + new Date(Number(row.dueAt)).toISOString() +
+        ' · ' + row.sourceChatId + '/' + row.sourceMessageId).join('\\n') :
+        'No hay programaciones. Usa /schedule_add para crear una.');
+      return;
+    }
+    if (command === '/schedule_cancel') {
+      const scheduleKey = String(args[0] || '');
+      const row = await db.select().from(scheduledPublications).where(eq(scheduledPublications.scheduleKey, scheduleKey)).get();
+      if (!row || (Number(row.createdBy) !== userId && userId !== OWNER_ID)) return void await say(chatId, '⛔ Programación no encontrada o sin permisos.');
+      await db.update(scheduledPublications).set({ status: 'cancelled', processedAt: now() })
+        .where(eq(scheduledPublications.scheduleKey, scheduleKey)).run();
+      const repeat = await db.select().from(repeatJobs).where(eq(repeatJobs.scheduleKey, scheduleKey)).get();
+      if (repeat) await db.update(repeatJobs).set({ active: 0 }).where(eq(repeatJobs.repeatKey, repeat.repeatKey)).run();
+      await say(chatId, '✅ Programación cancelada: ' + scheduleKey);
       return;
     }
     if (command === '/route_add') {
