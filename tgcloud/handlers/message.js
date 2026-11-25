@@ -95,7 +95,7 @@ const NAV_DEFAULTS = {
   rules: '⚙️ REGLAS AUTOMÁTICAS', testmode: '🧪 MODO DE PRUEBA',
   publications: '💰 PUBLICACIONES', buttons: '🔘 BOTONES', formats: '🎨 FORMATOS',
   reactions: '🔔 REACCIONES', stars: '⭐ PREMIUM / ESTRELLAS', admins: '👥 ADMINISTRADORES',
-  stats: '📊 ESTADÍSTICAS', settings: '⚙️ CONFIGURACIÓN', close: '❌ CERRAR', navigation: '🧭 NAVEGACIÓN', filters: '🔏 FILTROS',
+  stats: '📊 ESTADÍSTICAS', settings: '⚙️ CONFIGURACIÓN', close: '❌ CERRAR', navigation: '🧭 NAVEGACIÓN', filters: '🔏 FILTROS', scheduled: '🗓️ PROGRAMACIONES', recipientlists: '📋 LISTAS DE DESTINOS',
   back: '🔙 VOLVER',
 };
 async function navText(key) {
@@ -112,12 +112,12 @@ async function buildMainMenu() {
   const keys = [
     ['channels', 'templates', 'hashtags'],
     ['buttons', 'formats', 'rules'],
-    ['filters'],
-    ['welcome', 'captcha', 'blacklist'],
-    ['routes', 'reactions', 'publications'],
-    ['stars', 'stats', 'admins'],
-    ['testmode', 'settings', 'navigation'],
-    ['close'],
+    ['filters', 'welcome', 'captcha'],
+    ['blacklist', 'routes', 'requests'],
+    ['scheduled', 'recipientlists', 'reactions'],
+    ['publications', 'stars', 'stats'],
+    ['admins', 'testmode', 'settings'],
+    ['navigation', 'close'],
   ];
   const menu = [];
   for (const row of keys) {
@@ -307,6 +307,13 @@ const HELP = [
   '/route_add ORIGEN DESTINO — crear ruta',
   '/route_remove ORIGEN DESTINO — borrar ruta',
   '/routes — listar rutas',
+  '/list_create NOMBRE — crear una lista de destinos',
+  '/list_add CLAVE ID_CANAL — agregar destino a una lista',
+  '/list_remove CLAVE ID_CANAL — quitar destino de una lista',
+  '/lists — consultar listas de destinos',
+  '/schedule_add ORIGEN_ID MENSAJE_ID FECHA_ISO DESTINOS copy|forward [INTERVALO_MIN] [REPETICIONES] — programar publicación; DESTINOS admite IDs separados por coma o @CLAVE_LISTA; 0 repeticiones significa indefinidas',
+  '/schedule_list — consultar programaciones',
+  '/schedule_cancel CLAVE — cancelar una programación',
   '/template_set ID_CANAL TIPO FORMATO texto — crear/editar plantilla',
   'Tipos de plantilla: default, text, photo, video, gif, audio, document, video_note, album, link y forward.',
   'Variables de plantilla: {canal}, {descripcion}, {titulo}, {enlace}, {enlace_cerrado}, {hashtags}, {fecha}, {contenido}, {vacio} (también {texto}). {enlace} usa el enlace público del canal o crea un enlace de invitación abierto para canales privados; {enlace_cerrado} crea un enlace que requiere aprobación de un administrador. El bot necesita permiso para invitar miembros cuando se generan enlaces privados. {vacio} evita cualquier modificación automática de la publicación.',
