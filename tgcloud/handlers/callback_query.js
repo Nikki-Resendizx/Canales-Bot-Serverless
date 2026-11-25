@@ -1613,11 +1613,11 @@ export default async function (query) {
         const row = rows.find(item => item.kind === kind);
         if (kind === 'default') return label + ': ' + (row ? 'GLOBAL ACTIVA (' + row.format + ')' : 'sin configurar');
         return label + ': ' + (row ? 'personalizada (' + row.format + ')' : (defaultRow ? 'usa predeterminada global' : 'sin configurar'));
-      }).join('\\n');
+      }).join('\n');
       const keyboard = kinds.map(([kind,label]) => [{ text: label, callback_data: 'admin:templatekind:' + channelId + ':' + kind }]);
       keyboard.push([{ text: '📋 Ver todas las plantillas', callback_data: 'admin:templatelist:' + channelId }]);
       keyboard.push([{ text: '🔙 Volver a canales', callback_data: 'admin:templates' }]);
-      await renderPanel('📝 PLANTILLAS DEL CANAL\\n\\n' + String(channel.title || channelId) + ' (' + channelId + ')\\n\\n⭐ PREDETERMINADA = plantilla GLOBAL para todas las publicaciones del canal. Se aplica automáticamente a texto, fotos, vídeos, GIF, audio, archivos, álbumes, enlaces y reenvíos cuando no exista una plantilla específica.\\n\\nLas plantillas específicas tienen prioridad únicamente para su tipo de publicación.\\n\\n' + list + '\\n\\nVariables: {canal}, {descripcion}, {titulo}, {enlace}, {hashtags}, {fecha}, {contenido}, {vacio} (también {texto}). {vacio} impide cualquier modificación.', keyboard);
+      await renderPanel('📝 PLANTILLAS DEL CANAL\n\n' + String(channel.title || channelId) + ' (' + channelId + ')\n\n⭐ PREDETERMINADA = plantilla GLOBAL para todas las publicaciones del canal. Se aplica automáticamente a texto, fotos, vídeos, GIF, audio, archivos, álbumes, enlaces y reenvíos cuando no exista una plantilla específica.\n\nLas plantillas específicas tienen prioridad únicamente para su tipo de publicación.\n\n' + list + '\n\nVariables: {canal}, {descripcion}, {titulo}, {enlace}, {hashtags}, {fecha}, {contenido}, {vacio} (también {texto}). {vacio} impide cualquier modificación.', keyboard);
     }
     return;
   }
@@ -1657,8 +1657,8 @@ export default async function (query) {
       return;
     }
     await answer(query);
-    const scopeHelp = kind === 'default' ? '\\n\\n⭐ Esta es la plantilla GLOBAL del canal: se aplicará automáticamente a todos los tipos de publicaciones que no tengan una plantilla específica.' : '\\n\\nEsta plantilla solo sustituye a la predeterminada para este tipo de publicación. Si no está configurada, se usará la plantilla predeterminada global del canal.';
-    await renderPanel('✏️ PLANTILLA: ' + labels[kind] + scopeHelp + '\\n\\n1. Elige el formato.\\n2. El bot te pedirá el texto y lo guardarás respondiendo al mensaje.\\n\\nVariables: {contenido}, {texto}, {titulo}, {descripcion}, {enlace}, {hashtags}, {fecha}, {canal}, {firma}, {vacio}. Si usas {vacio}, el bot conserva el mensaje original sin cambios, hashtags, firma ni botones.', [
+    const scopeHelp = kind === 'default' ? '\n\n⭐ Esta es la plantilla GLOBAL del canal: se aplicará automáticamente a todos los tipos de publicaciones que no tengan una plantilla específica.' : '\n\nEsta plantilla solo sustituye a la predeterminada para este tipo de publicación. Si no está configurada, se usará la plantilla predeterminada global del canal.';
+    await renderPanel('✏️ PLANTILLA: ' + labels[kind] + scopeHelp + '\n\n1. Elige el formato.\n2. El bot te pedirá el texto y lo guardarás respondiendo al mensaje.\n\nVariables: {contenido}, {texto}, {titulo}, {descripcion}, {enlace}, {hashtags}, {fecha}, {canal}, {firma}, {vacio}. Si usas {vacio}, el bot conserva el mensaje original sin cambios, hashtags, firma ni botones.', [
       [{ text: 'AUTO', callback_data: 'admin:templateinput:' + channelId + ':' + kind + ':AUTO' }, { text: 'HTML', callback_data: 'admin:templateinput:' + channelId + ':' + kind + ':HTML' }],
       [{ text: 'Markdown', callback_data: 'admin:templateinput:' + channelId + ':' + kind + ':MARKDOWN' }, { text: 'MarkdownV2', callback_data: 'admin:templateinput:' + channelId + ':' + kind + ':MARKDOWNV2' }],
       [{ text: 'OFF', callback_data: 'admin:templateinput:' + channelId + ':' + kind + ':OFF' }],
