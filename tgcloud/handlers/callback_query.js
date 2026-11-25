@@ -3,7 +3,7 @@ import { eq } from 'sdk/db';
 import {
   admins, captchaSessions, channels, channelSettings, channelRoutes,
   templates, globalBans, publications, purchases, reactionReports, botTexts, joinRequests, filterConfigs, filterRejections, routeForwardSettings,
-  knownUsers, postAlertKeys, filterSeenContent, filterDeliveryEvents,
+  knownUsers, postAlertKeys, filterSeenContent, filterDeliveryEvents, recipientLists, recipientListItems, scheduledPublications, repeatJobs,
 } from '../schema.js';
 
 import { defaultFilterConfig, mergeFilterConfigs } from '../lib/message_filters.js';
@@ -19,7 +19,7 @@ const NAV_DEFAULTS = {
   publications: '💰 PUBLICACIONES', buttons: '🔘 BOTONES', formats: '🎨 FORMATOS',
   reactions: '🔔 REACCIONES', stars: '⭐ PREMIUM / ESTRELLAS', admins: '👥 ADMINISTRADORES',
   stats: '📊 ESTADÍSTICAS', settings: '⚙️ CONFIGURACIÓN', close: '❌ CERRAR', navigation: '🧭 NAVEGACIÓN',
-  requests: '📥 SOLICITUDES DE INGRESO', filters: '🔏 FILTROS', back: '🔙 VOLVER',
+  requests: '📥 SOLICITUDES DE INGRESO', filters: '🔏 FILTROS', scheduled: '🗓️ PROGRAMACIONES', recipientlists: '📋 LISTAS DE DESTINOS', back: '🔙 VOLVER',
 };
 async function navText(key) {
   // El menú principal debe poder abrirse incluso si la migración de bot_texts aún no terminó.
@@ -33,22 +33,20 @@ async function navText(key) {
 }
 async function buildMainMenu() {
   const keys = [
-    'channels', 'templates', 'hashtags',
-    'buttons', 'formats', 'rules',
-    'filters', 'welcome', 'captcha',
-    'blacklist', 'requests', 'routes',
-    'reactions', 'publications', 'stars',
-    'stats', 'admins', 'testmode',
-    'settings', 'navigation', 'close',
+    ['channels', 'templates', 'hashtags'],
+    ['buttons', 'formats', 'rules'],
+    ['filters', 'welcome', 'captcha'],
+    ['blacklist', 'requests', 'routes'],
+    ['scheduled', 'recipientlists', 'reactions'],
+    ['publications', 'stars', 'stats'],
+    ['admins', 'testmode', 'settings'],
+    ['navigation', 'close'],
   ];
   const menu = [];
-  for (let i = 0; i < keys.length; i += 3) {
-    const row = keys.slice(i, i + 3);
-    menu.push(await Promise.all(row.map(async key => ({
-      text: await navText(key),
-      callback_data: key === 'close' ? 'admin:close' : 'admin:' + key,
-    }))));
-  }
+  for (const row of keys) menu.push(await Promise.all(row.map(async key => ({
+    text: await navText(key),
+    callback_data: key === 'close' ? 'admin:close' : 'admin:' + key,
+  }))));
   return menu;
 }
 
@@ -1176,6 +1174,115 @@ export default async function (query) {
     return;
   }
   // DISTRIBUCIÓN: cada pantalla usa un teclado nuevo, validado y serializable.
+  if (section === 'scheduled') {
+    const rows = (await db.select().from(scheduledPublications).all())
+      .filter(row => Number(row.createdBy) === userId || userId === OWNER_ID)
+      .sort((a, b) => Number(a.dueAt) - Number(b.dueAt));
+    const active = rows.filter(row => row.status === 'pending');
+    const keyboard = [
+      [
+        { text: '➕ Crear programación', callback_data: 'admin:schedulehelp' },
+        { text: '🔄 Recurrentes', callback_data: 'admin:repeatlist' },
+        { text: '🔃 Actualizar', callback_data: 'admin:scheduled' },
+      ],
+      [{ text: '🔙 Volver al panel', callback_data: 'admin:back' }],
+    ];
+    await answer(query);
+    await renderPanel('🗓️ PROGRAMACIONES\\n\\nPendientes: ' + active.length + ' · Total: ' + rows.length +
+      (rows.length ? '\\n\\n' + rows.slice(0, 15).map(row =>
+        '• ' + row.scheduleKey + '\\n  ' + row.status + ' · ' + new Date(Number(row.dueAt)).toISOString() +
+        '\\n  Origen ' + row.sourceChatId + ' / mensaje ' + row.sourceMessageId).join('\\n') :
+        '\\n\\nTodavía no hay publicaciones programadas.') +
+      '\\n\\nPara crear una programación responde al mensaje origen en el canal y usa /schedule_add en privado; consulta /help para la sintaxis.',
+      keyboard);
+    return;
+  }
+  if (section === 'schedulehelp') {
+    await answer(query);
+    await renderPanel('➕ CREAR PROGRAMACIÓN\\n\\nElige el mensaje de cualquier canal registrado indicando su ID y el ID del mensaje. Puedes seleccionar varios destinos o una lista guardada.\\n\\nComando: /schedule_add ORIGEN_ID MENSAJE_ID FECHA_ISO DESTINOS_ID[,ID|@CLAVE_LISTA] copy|forward [INTERVALO_MIN] [REPETICIONES]\\n\\nLa cola se procesa cada cinco minutos (UTC).',
+      [
+        [
+          { text: '📋 Ver listas', callback_data: 'admin:recipientlists' },
+          { text: '🗓️ Ver agenda', callback_data: 'admin:scheduled' },
+          { text: '🔙 Volver', callback_data: 'admin:scheduled' },
+        ],
+      ]);
+    return;
+  }
+  if (section === 'repeatlist') {
+    const rows = await db.select().from(repeatJobs).all();
+    const visible = [];
+    for (const repeat of rows) {
+      const schedule = await db.select().from(scheduledPublications)
+        .where(eq(scheduledPublications.scheduleKey, repeat.scheduleKey)).get();
+      if (schedule && (Number(schedule.createdBy) === userId || userId === OWNER_ID)) visible.push({ repeat, schedule });
+    }
+    await answer(query);
+    await renderPanel('🔄 PROGRAMACIONES RECURRENTES\\n\\n' +
+      (visible.length ? visible.map(({ repeat, schedule }) =>
+        '• ' + schedule.scheduleKey + ' · ' + (repeat.active ? 'activa' : 'pausada') +
+        '\\n  Cada ' + repeat.intervalMinutes + ' min · ' +
+        (repeat.remainingRuns ? repeat.remainingRuns + ' restantes' : 'indefinidas')).join('\\n') : 'No hay recurrencias configuradas.'),
+      [[
+        { text: '🗓️ Agenda', callback_data: 'admin:scheduled' },
+        { text: '📋 Listas', callback_data: 'admin:recipientlists' },
+        { text: '🔙 Panel', callback_data: 'admin:back' },
+      ]]);
+    return;
+  }
+  if (section === 'recipientlists') {
+    const rows = (await db.select().from(recipientLists).all())
+      .filter(row => Number(row.createdBy) === userId || userId === OWNER_ID);
+    const keyboard = [];
+    for (let i = 0; i < rows.length; i += 3) keyboard.push(rows.slice(i, i + 3).map(list => ({
+      text: '📋 ' + String(list.name).slice(0, 28),
+      callback_data: 'admin:recipientlist:' + list.listKey,
+    })));
+    keyboard.push([
+      { text: '➕ Crear lista', callback_data: 'admin:listhelp' },
+      { text: '🗓️ Programaciones', callback_data: 'admin:scheduled' },
+      { text: '🔙 Panel', callback_data: 'admin:back' },
+    ]);
+    await answer(query);
+    await renderPanel('📋 LISTAS DE DESTINOS\\n\\n' +
+      (rows.length ? 'Selecciona una lista para consultar sus destinos.' : 'No has creado listas todavía.') +
+      '\\n\\nPuedes crear y administrar listas con /list_create, /list_add y /list_remove.',
+      keyboard);
+    return;
+  }
+  if (section === 'recipientlist') {
+    const key = String(parts[2] || '');
+    const list = await db.select().from(recipientLists).where(eq(recipientLists.listKey, key)).get();
+    if (!list || (Number(list.createdBy) !== userId && userId !== OWNER_ID)) {
+      await answer(query, 'Lista no encontrada o sin permisos.', true);
+      return;
+    }
+    const items = await db.select().from(recipientListItems).where(eq(recipientListItems.listKey, key)).all();
+    const channelRows = await managedChannels(userId);
+    const names = new Map(channelRows.map(row => [Number(row.chatId), String(row.title || row.chatId)]));
+    const destinations = items.map(item => '• ' + (names.get(Number(item.chatId)) || item.chatId)).join('\\n');
+    await answer(query);
+    await renderPanel('📋 ' + list.name + '\\nClave: ' + key + '\\nDestinos: ' + items.length +
+      '\\n\\n' + (destinations || 'La lista está vacía.') +
+      '\\n\\nGestiona destinos con /list_add ' + key + ' ID o /list_remove ' + key + ' ID.',
+      [[
+        { text: '➕ Agregar destino', callback_data: 'admin:listhelp' },
+        { text: '📋 Otras listas', callback_data: 'admin:recipientlists' },
+        { text: '🔙 Panel', callback_data: 'admin:back' },
+      ]]);
+    return;
+  }
+  if (section === 'listhelp') {
+    await answer(query);
+    await renderPanel('➕ ADMINISTRAR LISTAS\\n\\n/list_create Nombre de lista\\n/list_add CLAVE_LISTA ID_CANAL\\n/list_remove CLAVE_LISTA ID_CANAL\\n/lists\\n\\nCada lista puede reutilizarse como destino de programaciones.',
+      [[
+        { text: '📋 Ver listas', callback_data: 'admin:recipientlists' },
+        { text: '🗓️ Programaciones', callback_data: 'admin:scheduled' },
+        { text: '🔙 Panel', callback_data: 'admin:back' },
+      ]]);
+    return;
+  }
+
   if (section === 'routes') {
     await answer(query);
     try {
