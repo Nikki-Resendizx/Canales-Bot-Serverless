@@ -113,13 +113,13 @@ export default async function (_args = {}, tick = {}) {
       const interval = Math.max(1, Number(repeat.intervalMinutes)) * 60_000;
       const nextAt = Math.max(Number(schedule.dueAt) + interval, Number(repeat.nextRunAt) || 0);
       const remaining = Number(repeat.remainingRuns) || 0;
-      if (remaining === 0 || remaining > 1) {
+      if (remaining === -1 || remaining > 0) {
         await db.update(scheduledPublications).set({
           dueAt: nextAt, status: 'pending', processedAt: now,
         }).where(eq(scheduledPublications.scheduleKey, schedule.scheduleKey)).run();
         await db.update(repeatJobs).set({
           nextRunAt: nextAt + interval,
-          remainingRuns: remaining > 0 ? remaining - 1 : 0,
+          remainingRuns: remaining > 0 ? remaining - 1 : -1,
         }).where(eq(repeatJobs.repeatKey, repeat.repeatKey)).run();
       } else {
         await db.update(repeatJobs).set({ active: 0, remainingRuns: 0 })
