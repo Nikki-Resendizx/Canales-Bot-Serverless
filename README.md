@@ -22,7 +22,11 @@ El código y los módulos están en la rama `main`. GitHub Actions valida la sin
 - Bienvenida editable por canal/grupo con variables `{mencion}`, `{nombre}`, `{username}`, `{userid}` y `{canal}`; los eventos de entrada se filtran para no volver a saludar por simples cambios de permisos.
 - CAPTCHA aritmético por canal. Una respuesta incorrecta bloquea permanentemente al usuario en ese grupo; el vencimiento se comprueba cuando llega una respuesta, no mediante un temporizador de fondo.
 - Blacklist global con resolución de `@username` cuando el bot ya ha observado a ese usuario, intento de baneo en todos los chats conectados y desbaneo global al retirarlo.
-- Rutas de publicación entre varios canales origen y un destino; se conserva el reenvío cuando Telegram entrega metadatos de mensaje reenviado. Las entregas de cada ejecución se serializan con un intervalo mínimo de 1 segundo, respetan `retry_after` de Telegram y limitan los reintentos a dos para evitar ciclos de envío.
+- Rutas de publicación entre varios canales origen y un destino; se conserva el reenvío cuando Telegram entrega metadatos de mensaje reenviado.
+- Distribuciones en lote origen(es) → destino(s) mediante `/route_group ORIGENES DESTINOS`; admite matriz muchos-a-muchos y evita duplicar rutas.
+- Listas reutilizables de destinos con `/list_create`, `/list_add`, `/list_remove` y `/lists`.
+- Programación de publicaciones y reenvíos a múltiples destinos mediante `/schedule_add`, `/schedule_list` y `/schedule_cancel`; recurrencias configurables por intervalo y número de ejecuciones.
+- Procesador persistente de programaciones mediante `tgcloud-cron`, ejecutado cada cinco minutos por GitHub Actions; requiere `TGCLOUD_TOKEN` y tiene precisión de ventana de cinco minutos. Las entregas de cada ejecución se serializan con un intervalo mínimo de 1 segundo, respetan `retry_after` de Telegram y limitan los reintentos a dos para evitar ciclos de envío.
 - Plantillas por canal: crear/editar desde el panel, listar, formatos AUTO/HTML/Markdown/MarkdownV2/OFF/RICH_MESSAGE y botones inline. Las variables admitidas son `{canal}`, `{descripcion}`, `{titulo}`, `{enlace}`, `{hashtags}`, `{fecha}`, `{contenido}`, `{texto}` y `{vacio}`. `{contenido}` conserva el texto original; `{texto}` puede reflejar la corrección activada; `{vacio}` desactiva cualquier modificación de esa publicación.
 - Edición de botones individuales desde el panel, además de edición de teclado completo. La sintaxis admite URL completas o `t.me/...`, `callback:`, `popup:`, `alert:`, `copy:` y `share:`, con estilos de botón cuando Telegram los admite.
 - Editor por canal: corrección básica de espacios/puntuación y mayúscula inicial, hashtags, plantilla de descripción insertable con `{descripcion}` y texto de respaldo si falta el contenido. Las plantillas y mensajes convierten secuencias literales `\\n` y `/n` aisladas en saltos de línea reales, conservando los párrafos.
@@ -58,6 +62,17 @@ El código y los módulos están en la rama `main`. GitHub Actions valida la sin
 - `/publish_paid ID_CANAL PRECIO_STARS texto` — o responde a un mensaje con `/publish_paid ID_CANAL PRECIO_STARS`.
 - `/stats`
 - `/addadmin ID` y `/deladmin ID` — solo el propietario.
+
+## Programaciones y listas de destinos
+
+Consulta `docs/scheduled-distribution.md` para la arquitectura y activación controlada. Los comandos principales son:
+
+- `/route_group ORIGENES DESTINOS` — crear todas las relaciones origen-destino indicadas; separa IDs con comas.
+- `/list_create NOMBRE`, `/list_add CLAVE ID`, `/list_remove CLAVE ID`, `/lists`.
+- `/schedule_add ORIGEN_ID MENSAJE_ID FECHA_ISO DESTINOS copy|forward [INTERVALO_MIN] [REPETICIONES]` — DESTINOS acepta IDs separados por comas o `@CLAVE_LISTA`; la fecha debe incluir zona horaria. Repeticiones `0` significa indefinidas.
+- `/schedule_list` y `/schedule_cancel CLAVE`.
+
+La agenda se ejecuta en UTC y el workflow de GitHub Actions despierta cada cinco minutos. La ejecución exacta depende del inicio de Actions y no es al segundo.
 
 ## Requisitos de Telegram
 
