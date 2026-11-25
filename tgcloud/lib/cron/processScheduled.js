@@ -29,6 +29,7 @@ export default async function (_args = {}, tick = {}) {
   let sent = 0;
   let failed = 0;
   let skipped = 0;
+  let lastSentAt = 0;
 
   for (const schedule of dueRows) {
     const sourceId = Number(schedule.sourceChatId);
@@ -81,8 +82,9 @@ export default async function (_args = {}, tick = {}) {
                 from_chat_id: sourceId,
                 message_id: sourceMessageId,
               }),
-          { lastSentAt: 0, minIntervalMs: 1100, maxRetries: 2 },
+          { lastSentAt, minIntervalMs: 1100, maxRetries: 2 },
         );
+        lastSentAt = delivery.lastSentAt;
         await db.insert(forwardHistory).values({
           historyKey,
           routeKey: 'schedule:' + String(schedule.scheduleKey),
