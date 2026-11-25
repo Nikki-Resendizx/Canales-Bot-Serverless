@@ -313,6 +313,8 @@ async function completeManualPublication(post, channelId) {
   const kind = publicationKind(post);
   const templateRows = await db.select().from(templates)
     .where(eq(templates.channelId, channelId)).all();
+  // La plantilla específica prevalece; si no existe, la predeterminada es global
+  // y completa automáticamente cualquier tipo de publicación del canal.
   const template = templateRows.find(row => row.kind === kind)
     ?? templateRows.find(row => row.kind === 'default')
     ?? null;
