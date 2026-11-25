@@ -1390,7 +1390,7 @@ export default async function (message) {
         const interval = repeatMinutes * 60000;
         await db.insert(repeatJobs).values({
           repeatKey: 'rep_' + scheduleKey, scheduleKey, intervalMinutes: repeatMinutes,
-          nextRunAt: dueAt + interval, remainingRuns, active: 1, createdAt: now(),
+          nextRunAt: dueAt + interval, remainingRuns: remainingRuns === 0 ? -1 : remainingRuns, active: 1, createdAt: now(),
         }).run();
       }
       await say(chatId, '✅ Programación creada.\\nOrigen: ' + sourceId + ' / mensaje ' + sourceMessageId +
