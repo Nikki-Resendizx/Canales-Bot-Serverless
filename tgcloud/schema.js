@@ -262,3 +262,20 @@ export const forwardHistory = table('forward_history', {
   status: text('status').notNull().default('sent'),
   createdAt: integer('created_at').notNull(),
 });
+
+
+// Destinos asociados a una programación: una publicación puede dirigirse
+// a varios chats o a una lista reutilizable.
+export const scheduledPublicationTargets = table('scheduled_publication_targets', {
+  targetKey: text('target_key').primaryKey(),
+  scheduleKey: text('schedule_key').notNull(),
+  destinationChatId: integer('destination_chat_id').notNull(),
+  createdAt: integer('created_at').notNull(),
+});
+
+// Metadatos y auditoría de las listas de destinatarios.
+export const recipientListSettings = table('recipient_list_settings', {
+  listKey: text('list_key').primaryKey(),
+  updatedBy: integer('updated_by').notNull(),
+  updatedAt: integer('updated_at').notNull(),
+});
