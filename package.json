@@ -12,6 +12,6 @@
   },
   "devDependencies": {
     "@tgcloud/cli": "^0.2.0",
-    "tgcloud-cron": "^0.3.0"
+    "tgcloud-cron": "^0.2.0"
   }
 }
