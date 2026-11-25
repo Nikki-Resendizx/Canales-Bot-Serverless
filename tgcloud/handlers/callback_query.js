@@ -1363,6 +1363,17 @@ export default async function (query) {
     return;
   }
 
+  if (section === 'routegrouphelp') {
+    await answer(query);
+    await renderPanel('🔀 DISTRIBUCIÓN MÚLTIPLE\\n\\nAsigna un destino a varios orígenes, varios destinos a un origen o crea una matriz de distribución entre ambos grupos.\\n\\nComando: /route_group ORIGENES DESTINOS\\nUsa IDs separados por comas.\\n\\nEjemplo: /route_group -100111,-100222 -100333,-100444\\n\\nSe crearán todas las combinaciones válidas y se omitirán rutas duplicadas o un origen igual a su destino.',
+      [[
+        { text: '➕ Ruta individual', callback_data: 'admin:routeadd' },
+        { text: '📋 Listas', callback_data: 'admin:recipientlists' },
+        { text: '🔙 Distribuciones', callback_data: 'admin:routes' },
+      ]]);
+    return;
+  }
+
   if (section === 'routeadd') {
     const rows = await managedChannels(userId);
     const keyboard = rows.map(channel => [{
