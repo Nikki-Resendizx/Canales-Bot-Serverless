@@ -1222,7 +1222,7 @@ export default async function (query) {
       (visible.length ? visible.map(({ repeat, schedule }) =>
         '• ' + schedule.scheduleKey + ' · ' + (repeat.active ? 'activa' : 'pausada') +
         '\\n  Cada ' + repeat.intervalMinutes + ' min · ' +
-        (repeat.remainingRuns ? repeat.remainingRuns + ' restantes' : 'indefinidas')).join('\\n') : 'No hay recurrencias configuradas.'),
+        (Number(repeat.remainingRuns) === -1 ? 'indefinidas' : repeat.remainingRuns + ' restantes')).join('\\n') : 'No hay recurrencias configuradas.'),
       [[
         { text: '🗓️ Agenda', callback_data: 'admin:scheduled' },
         { text: '📋 Listas', callback_data: 'admin:recipientlists' },
