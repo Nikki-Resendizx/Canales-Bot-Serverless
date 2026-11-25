@@ -305,6 +305,7 @@ const HELP = [
   '/globalban ID|@username [motivo] y /globalunban ID|@username — moderación global',
   '/blacklist — consultar blacklist',
   '/route_add ORIGEN DESTINO — crear ruta',
+  '/route_group ORIGENES DESTINOS — crear distribución múltiple en lote; IDs separados por comas, crea todas las combinaciones posibles',
   '/route_remove ORIGEN DESTINO — borrar ruta',
   '/routes — listar rutas',
   '/list_create NOMBRE — crear una lista de destinos',
@@ -1419,6 +1420,41 @@ export default async function (message) {
       const repeat = await db.select().from(repeatJobs).where(eq(repeatJobs.scheduleKey, scheduleKey)).get();
       if (repeat) await db.update(repeatJobs).set({ active: 0 }).where(eq(repeatJobs.repeatKey, repeat.repeatKey)).run();
       await say(chatId, '✅ Programación cancelada: ' + scheduleKey);
+      return;
+    }
+    if (command === '/route_group') {
+      const [sourceSpec, destinationSpec] = args;
+      const sources = String(sourceSpec || '').split(',').map(parseId);
+      const destinations = String(destinationSpec || '').split(',').map(parseId);
+      if (!sources.length || !destinations.length || sources.some(id => !Number.isSafeInteger(id)) ||
+          destinations.some(id => !Number.isSafeInteger(id)) || sources.length > 30 || destinations.length > 30) {
+        return void await say(chatId, 'Uso: /route_group ORIGENES DESTINOS. Separa los IDs con comas. Ejemplo: /route_group -100111,-100222 -100333,-100444');
+      }
+      const uniqueSources = [...new Set(sources)];
+      const uniqueDestinations = [...new Set(destinations)];
+      for (const id of [...uniqueSources, ...uniqueDestinations]) {
+        if (!(await canManageChannel(userId, id))) return void await say(chatId, '⛔ Todos los orígenes y destinos deben estar registrados y ser administrables por ti: ' + id);
+      }
+      let created = 0;
+      let skipped = 0;
+      for (const sourceId of uniqueSources) {
+        for (const destinationId of uniqueDestinations) {
+          if (sourceId === destinationId) { skipped++; continue; }
+          const routeKey = sourceId + ':' + destinationId;
+          const exists = await db.select().from(channelRoutes).where(eq(channelRoutes.routeKey, routeKey)).get();
+          await db.insert(channelRoutes).values({
+            routeKey, sourceChatId: sourceId, destinationChatId: destinationId,
+            mode: 'auto', createdBy: userId, createdAt: now(),
+          }).onConflictDoNothing().run();
+          if (exists) skipped++; else created++;
+        }
+      }
+      await say(chatId, '✅ DISTRIBUCIÓN MÚLTIPLE CONFIGURADA\\nOrígenes: ' + uniqueSources.length +
+        '\\nDestinos: ' + uniqueDestinations.length + '\\nRutas nuevas: ' + created +
+        '\\nOmitidas (duplicadas o mismo origen/destino): ' + skipped);
+      await sendTopicNotification('distribution', '🔀 DISTRIBUCIÓN MÚLTIPLE CREADA\\nAdministrador: ' + userId +
+        '\\nOrígenes: ' + uniqueSources.join(', ') + '\\nDestinos: ' + uniqueDestinations.join(', ') +
+        '\\nRutas nuevas: ' + created);
       return;
     }
     if (command === '/route_add') {
