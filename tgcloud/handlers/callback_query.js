@@ -1298,7 +1298,10 @@ export default async function (query) {
       );
       const keyboard = [[
         { text: '➕ Crear ruta', callback_data: 'admin:routeadd' },
+        { text: '🔀 Distribución múltiple', callback_data: 'admin:routegrouphelp' },
+        { text: '📋 Listas', callback_data: 'admin:recipientlists' },
       ]];
+      let routeButtonRow = [];
 
       for (const route of routeRows) {
         const sourceId = Number(route.sourceChatId);
@@ -1311,12 +1314,17 @@ export default async function (query) {
           + ' → ' + channelNames.get(destinationId).slice(0, 16)
           + ' · ' + modeLabel;
 
-        keyboard.push([{
+        routeButtonRow.push({
           text: String(label),
           callback_data: 'admin:routedetail:' + sourceId + ':' + destinationId,
-        }]);
+        });
+        if (routeButtonRow.length === 3) {
+          keyboard.push(routeButtonRow);
+          routeButtonRow = [];
+        }
       }
 
+      if (routeButtonRow.length) keyboard.push(routeButtonRow);
       keyboard.push([{ text: '🔙 VOLVER', callback_data: 'admin:back' }]);
 
       // Validar el teclado con el mismo sanitizador estricto usado al enviarlo.
