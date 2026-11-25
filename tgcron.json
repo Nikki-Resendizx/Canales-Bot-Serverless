@@ -1,0 +1,9 @@
+{
+  "$schema": "./node_modules/tgcloud-cron/schema.json",
+  "jobs": {
+    "processScheduled": {
+      "schedule": "*/5 * * * *",
+      "module": "lib/cron/processScheduled"
+    }
+  }
+}
