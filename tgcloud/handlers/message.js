@@ -658,6 +658,50 @@ export default async function (message) {
     return;
   }
 
+  const addChannelPrompt = String(message.reply_to_message?.text ?? '');
+  if (/\[CBADDCHANNEL\]/.test(addChannelPrompt) && isPrivate && await isAdmin(userId) && text && !text.startsWith('/')) {
+    const separator = text.indexOf('|');
+    const id = parseId(separator >= 0 ? text.slice(0, separator).trim() : text.trim());
+    const title = separator >= 0 ? text.slice(separator + 1).trim() : '';
+    if (!Number.isSafeInteger(id) || id === 0) { await say(chatId, '⚠️ El ID del canal no es válido. Vuelve a responder con ID | NOMBRE.'); return; }
+    const existing = await db.select().from(channels).where(eq(channels.chatId, id)).get();
+    if (existing && Number(existing.addedBy) !== userId && userId !== OWNER_ID) { await say(chatId, '⛔ Ese canal ya está registrado por otro administrador.'); return; }
+    try {
+      const botInfo = await api.getMe();
+      const membership = await api.getChatMember({ chat_id: id, user_id: botInfo.id });
+      if (!['administrator','creator'].includes(String(membership?.status))) { await say(chatId, '⚠️ Añade primero el bot como administrador del canal y vuelve a intentarlo.'); return; }
+      const chat = await api.getChat({ chat_id: id });
+      await db.insert(channels).values({ chatId: id, title: title || String(chat?.title || id), addedBy: userId, active: 1, createdAt: now() })
+        .onConflictDoUpdate({ target: channels.chatId, set: { title: title || String(chat?.title || id), active: 1, addedBy: userId } }).run();
+      await ensureSettings(id);
+      await say(chatId, '✅ Canal verificado y registrado: ' + String(title || chat?.title || id) + ' (' + id + ').', { reply_markup: { inline_keyboard: [[{ text: '⚙️ Abrir canales', callback_data: 'admin:channels' }]] } });
+    } catch (error) {
+      console.log('No se pudo registrar canal desde el formulario del panel', id, String(error));
+      await say(chatId, '⚠️ No pude verificar el canal. Comprueba el ID y que el bot sea administrador.');
+    }
+    return;
+  }
+  const detectChannelPrompt = String(message.reply_to_message?.text ?? '');
+  if (/\[CBDETECTCHANNEL\]/.test(detectChannelPrompt) && isPrivate && await isAdmin(userId) && (message.forward_origin || message.forward_from_chat)) {
+    const forwardedChat = message.forward_origin?.chat || message.forward_from_chat;
+    const id = Number(forwardedChat?.id);
+    if (!Number.isSafeInteger(id) || forwardedChat?.type !== 'channel') { await say(chatId, '⚠️ El mensaje reenviado no contiene metadatos de un canal. Usa «Añadir por ID».'); return; }
+    try {
+      const botInfo = await api.getMe();
+      const membership = await api.getChatMember({ chat_id: id, user_id: botInfo.id });
+      if (!['administrator','creator'].includes(String(membership?.status))) { await say(chatId, '⚠️ El bot todavía no es administrador de ese canal. Agrégalo y vuelve a reenviar una publicación.'); return; }
+      const title = String(forwardedChat.title || id);
+      await db.insert(channels).values({ chatId: id, title, addedBy: userId, active: 1, createdAt: now() })
+        .onConflictDoUpdate({ target: channels.chatId, set: { title, active: 1, addedBy: userId } }).run();
+      await ensureSettings(id);
+      await say(chatId, '✅ Canal detectado, verificado y registrado: ' + title + ' (' + id + ').', { reply_markup: { inline_keyboard: [[{ text: '⚙️ Abrir canales', callback_data: 'admin:channels' }]] } });
+    } catch (error) {
+      console.log('No se pudo registrar canal detectado desde el panel', id, String(error));
+      await say(chatId, '⚠️ No pude verificar el canal. Comprueba que el bot sea administrador.');
+    }
+    return;
+  }
+
   const listCreatePrompt = String(message.reply_to_message?.text ?? '');
   if (/\[CBLISTCREATE\]/.test(listCreatePrompt) && isPrivate && await isAdmin(userId) && text && !text.startsWith('/')) {
     const name = text.trim();
