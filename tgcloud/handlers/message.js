@@ -659,7 +659,7 @@ export default async function (message) {
   }
 
   const listCreatePrompt = String(message.reply_to_message?.text ?? '');
-  if (/\\[CBLISTCREATE\\]/.test(listCreatePrompt) && isPrivate && await isAdmin(userId) && text && !text.startsWith('/')) {
+  if (/\[CBLISTCREATE\]/.test(listCreatePrompt) && isPrivate && await isAdmin(userId) && text && !text.startsWith('/')) {
     const name = text.trim();
     if (!name || name.length > 60) { await say(chatId, '⚠️ El nombre debe contener entre 1 y 60 caracteres.'); return; }
     const listKey = 'list_' + now().toString(36) + '_' + userId.toString(36);
@@ -668,7 +668,7 @@ export default async function (message) {
     return;
   }
   const listRenamePrompt = String(message.reply_to_message?.text ?? '');
-  const listRenameMatch = listRenamePrompt.match(/\\[CBLISTRENAME:([a-zA-Z0-9_-]+)\\]/);
+  const listRenameMatch = listRenamePrompt.match(/\[CBLISTRENAME:([a-zA-Z0-9_-]+)\]/);
   if (listRenameMatch && isPrivate && await isAdmin(userId) && text && !text.startsWith('/')) {
     const key = listRenameMatch[1];
     const list = await db.select().from(recipientLists).where(eq(recipientLists.listKey, key)).get();
@@ -680,7 +680,7 @@ export default async function (message) {
     return;
   }
   const schedulePrompt = String(message.reply_to_message?.text ?? '');
-  const scheduleMatch = schedulePrompt.match(/\\[CBSCHEDULE:(\\d+)\\]/);
+  const scheduleMatch = schedulePrompt.match(/\[CBSCHEDULE:(\d+)\]/);
   if (scheduleMatch && isPrivate && Number(scheduleMatch[1]) === userId && await isAdmin(userId) && text && !text.startsWith('/')) {
     const draftRow = await db.select().from(botTexts).where(eq(botTexts.textKey, 'ui_schedule_' + userId)).get();
     let draft = {};
@@ -688,7 +688,7 @@ export default async function (message) {
     const separator = text.indexOf('|');
     const sourceMessageId = parseId(separator >= 0 ? text.slice(0, separator).trim() : '');
     const dateText = separator >= 0 ? text.slice(separator + 1).trim() : '';
-    const dateMatch = dateText.match(/^(\\d{4}-\\d{2}-\\d{2})[ T](\\d{2}:\\d{2})$/);
+    const dateMatch = dateText.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2})$/);
     if (!Number.isSafeInteger(Number(draft.sourceChatId)) || !Array.isArray(draft.destinationIds) || !draft.destinationIds.length ||
         !Number.isSafeInteger(sourceMessageId) || !dateMatch) {
       await say(chatId, '⚠️ Formato incorrecto. Envía ID_MENSAJE | AAAA-MM-DD HH:mm. Ejemplo: 1234 | 2026-12-01 18:30.');
@@ -724,12 +724,12 @@ export default async function (message) {
       }).run();
     }
     await db.delete(botTexts).where(eq(botTexts.textKey, 'ui_schedule_' + userId)).run();
-    await say(chatId, '✅ PROGRAMACIÓN CREADA\\n\\nOrigen: ' + draft.sourceChatId + ' · mensaje ' + sourceMessageId +
-      '\\nDestinos: ' + destinations.length + '\\nModo: ' + String(draft.mode || 'copy').toUpperCase() +
-      '\\nFecha: ' + new Date(dueAt).toLocaleString('es-MX', { timeZone: 'America/Mexico_City' }) +
-      (interval ? '\\nRepetición: cada ' + interval + ' min · ' + (Number(draft.remainingRuns) ? draft.remainingRuns + ' veces' : 'indefinida') : '') +
-      '\\nClave: ' + scheduleKey, { reply_markup: { inline_keyboard: [[{ text: '🗓️ Abrir programaciones', callback_data: 'admin:scheduled' }]] } });
-    await sendTopicNotification('distribution', '🗓️ PROGRAMACIÓN CREADA\\nClave: ' + scheduleKey + '\\nOrigen: ' + draft.sourceChatId + '\\nDestinos: ' + destinations.join(', '));
+    await say(chatId, '✅ PROGRAMACIÓN CREADA\n\nOrigen: ' + draft.sourceChatId + ' · mensaje ' + sourceMessageId +
+      '\nDestinos: ' + destinations.length + '\nModo: ' + String(draft.mode || 'copy').toUpperCase() +
+      '\nFecha: ' + new Date(dueAt).toLocaleString('es-MX', { timeZone: 'America/Mexico_City' }) +
+      (interval ? '\nRepetición: cada ' + interval + ' min · ' + (Number(draft.remainingRuns) ? draft.remainingRuns + ' veces' : 'indefinida') : '') +
+      '\nClave: ' + scheduleKey, { reply_markup: { inline_keyboard: [[{ text: '🗓️ Abrir programaciones', callback_data: 'admin:scheduled' }]] } });
+    await sendTopicNotification('distribution', '🗓️ PROGRAMACIÓN CREADA\nClave: ' + scheduleKey + '\nOrigen: ' + draft.sourceChatId + '\nDestinos: ' + destinations.join(', '));
     return;
   }
 
