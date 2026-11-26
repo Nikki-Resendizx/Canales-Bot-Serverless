@@ -2358,11 +2358,15 @@ export default async function (query) {
     return;
   }
   if (section === 'channeladdmanual') {
-    await renderPanel('➕ AÑADIR CANAL POR ID\nEnvía en este chat: /addchannel ID Título. El bot debe ser administrador del canal.', [[{ text: await navText('back'), callback_data: 'admin:channels' }]]);
+    await answer(query);
+    await api.sendMessage({ chat_id: chatId, text: '[CBADDCHANNEL]\nEnvía el ID del canal y, opcionalmente, su nombre separados por |. Ejemplo: -1001234567890 | Mi canal. El bot debe ser administrador.', reply_markup: { force_reply: true, selective: true } });
+    await renderPanel('➕ AÑADIR CANAL POR ID\n\nResponde al mensaje anterior con ID | NOMBRE. El bot verificará sus permisos antes de registrarlo.', [[{ text: await navText('back'), callback_data: 'admin:channels' }]]);
     return;
   }
   if (section === 'detectchannel') {
-    await renderPanel('🔎 DETECTAR CANAL\n1. Reenvía al bot una publicación del canal que quieres conectar.\n2. Responde a esa publicación reenviada con: /addchannel Título\nEl bot leerá el ID del canal desde los metadatos del reenvío; si Telegram oculta esos metadatos, usa el ID manualmente.', [[{ text: await navText('back'), callback_data: 'admin:channels' }]]);
+    await answer(query);
+    await api.sendMessage({ chat_id: chatId, text: '[CBDETECTCHANNEL]\nReenvía aquí una publicación del canal que quieres conectar. No necesitas escribir comandos.', reply_markup: { force_reply: true, selective: true } });
+    await renderPanel('🔎 DETECTAR CANAL\n\nResponde al mensaje anterior reenviando una publicación del canal. El bot leerá su ID y comprobará que tiene permisos de administrador.', [[{ text: await navText('back'), callback_data: 'admin:channels' }]]);
     return;
   }
   const text = moduleText(section);
