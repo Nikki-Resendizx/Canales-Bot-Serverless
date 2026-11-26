@@ -1201,7 +1201,7 @@ export default async function (query) {
         '• ' + row.scheduleKey + '\\n  ' + row.status + ' · ' + new Date(Number(row.dueAt)).toISOString() +
         '\\n  Origen ' + row.sourceChatId + ' / mensaje ' + row.sourceMessageId).join('\\n') :
         '\\n\\nTodavía no hay publicaciones programadas.') +
-      '\\n\\nPara crear una programación responde al mensaje origen en el canal y usa /schedule_add en privado; consulta /help para la sintaxis.',
+      '\\n\\nPara crear una programación, pulsa «Crear programación» y sigue el asistente de botones.',
       keyboard);
     return;
   }
@@ -1405,7 +1405,7 @@ export default async function (query) {
     await answer(query);
     await renderPanel('📋 LISTAS DE DESTINOS\\n\\n' +
       (rows.length ? 'Selecciona una lista para consultar sus destinos.' : 'No has creado listas todavía.') +
-      '\\n\\nPuedes crear y administrar listas con /list_create, /list_add y /list_remove.',
+      '\\n\\nCrea listas y administra sus destinos directamente con los botones.',
       keyboard);
     return;
   }
@@ -1561,13 +1561,64 @@ export default async function (query) {
   }
 
   if (section === 'routegrouphelp') {
+    const rows = await managedChannels(userId);
+    const keyboard = [];
+    for (let i = 0; i < rows.length; i += 3) keyboard.push(rows.slice(i, i + 3).map(channel => ({ text: '⬜ ' + String(channel.title || channel.chatId).slice(0, 24), callback_data: 'admin:routegroupsourcetoggle:' + Number(channel.chatId) })));
+    keyboard.push([{ text: '➡️ Elegir destinos', callback_data: 'admin:routegroupsourcenext' }]);
+    keyboard.push([{ text: '🔙 Distribuciones', callback_data: 'admin:routes' }]);
+    const draft = { sources: [], destinations: [] };
+    await db.insert(botTexts).values({ textKey: 'ui_routegroup_' + userId, body: JSON.stringify(draft), updatedBy: userId, updatedAt: Date.now() })
+      .onConflictDoUpdate({ target: botTexts.textKey, set: { body: JSON.stringify(draft), updatedBy: userId, updatedAt: Date.now() } }).run();
     await answer(query);
-    await renderPanel('🔀 DISTRIBUCIÓN MÚLTIPLE\\n\\nAsigna un destino a varios orígenes, varios destinos a un origen o crea una matriz de distribución entre ambos grupos.\\n\\nComando: /route_group ORIGENES DESTINOS\\nUsa IDs separados por comas.\\n\\nEjemplo: /route_group -100111,-100222 -100333,-100444\\n\\nSe crearán todas las combinaciones válidas y se omitirán rutas duplicadas o un origen igual a su destino.',
-      [[
-        { text: '➕ Ruta individual', callback_data: 'admin:routeadd' },
-        { text: '📋 Listas', callback_data: 'admin:recipientlists' },
-        { text: '🔙 Distribuciones', callback_data: 'admin:routes' },
-      ]]);
+    await renderPanel('🔀 DISTRIBUCIÓN MÚLTIPLE · ORÍGENES\n\nMarca uno o varios canales de origen. Después podrás seleccionar los destinos y crear todas las combinaciones automáticamente.', keyboard);
+    return;
+  }
+  if (section === 'routegroupsourcetoggle' || section === 'routegroupsourcenext' || section === 'routegroupdesttoggle' || section === 'routegroupcreate') {
+    const draftRow = await db.select().from(botTexts).where(eq(botTexts.textKey, 'ui_routegroup_' + userId)).get();
+    let draft = { sources: [], destinations: [] }; try { draft = JSON.parse(draftRow?.body || '{}'); } catch {}
+    if (!Array.isArray(draft.sources)) draft.sources = [];
+    if (!Array.isArray(draft.destinations)) draft.destinations = [];
+    if (section === 'routegroupsourcetoggle') {
+      const id = Number(parts[2]);
+      if (!Number.isSafeInteger(id) || !(await canManageChannel(userId, id))) { await answer(query, 'Origen no válido.', true); return; }
+      const set = new Set(draft.sources.map(Number)); set.has(id) ? set.delete(id) : set.add(id); draft.sources = [...set];
+    } else if (section === 'routegroupdesttoggle') {
+      const id = Number(parts[2]);
+      if (!Number.isSafeInteger(id) || draft.sources.includes(id) || !(await canManageChannel(userId, id))) { await answer(query, 'Destino no válido o coincide con un origen.', true); return; }
+      const set = new Set(draft.destinations.map(Number)); set.has(id) ? set.delete(id) : set.add(id); draft.destinations = [...set];
+    } else if (section === 'routegroupsourcenext') {
+      if (!draft.sources.length) { await answer(query, 'Selecciona al menos un origen.', true); return; }
+      const rows = (await managedChannels(userId)).filter(channel => !draft.sources.includes(Number(channel.chatId)));
+      const keyboard = [];
+      for (let i = 0; i < rows.length; i += 3) keyboard.push(rows.slice(i, i + 3).map(channel => ({ text: '⬜ ' + String(channel.title || channel.chatId).slice(0, 24), callback_data: 'admin:routegroupdesttoggle:' + Number(channel.chatId) })));
+      keyboard.push([{ text: '✅ Crear matriz (' + draft.sources.length + ' orígenes · ' + draft.destinations.length + ' destinos)', callback_data: 'admin:routegroupcreate' }]);
+      keyboard.push([{ text: '🔙 Volver a orígenes', callback_data: 'admin:routegrouphelp' }]);
+      await db.update(botTexts).set({ body: JSON.stringify(draft), updatedBy: userId, updatedAt: Date.now() }).where(eq(botTexts.textKey, 'ui_routegroup_' + userId)).run();
+      await answer(query);
+      await renderPanel('🔀 DISTRIBUCIÓN MÚLTIPLE · DESTINOS\n\nOrígenes seleccionados: ' + draft.sources.join(', ') + '\nMarca uno o varios destinos. Se crearán todas las combinaciones origen → destino.', keyboard);
+      return;
+    } else {
+      if (!draft.sources.length || !draft.destinations.length) { await answer(query, 'Selecciona al menos un origen y un destino.', true); return; }
+      let created = 0; let skipped = 0;
+      for (const sourceId of draft.sources) for (const destinationId of draft.destinations) {
+        if (sourceId === destinationId || !(await canManageChannel(userId, sourceId)) || !(await canManageChannel(userId, destinationId))) { skipped++; continue; }
+        const routeKey = sourceId + ':' + destinationId;
+        const result = await db.insert(channelRoutes).values({ routeKey, sourceChatId: sourceId, destinationChatId: destinationId, mode: 'auto', createdBy: userId, createdAt: Date.now() }).onConflictDoNothing().run();
+        if (result?.changes === 0) skipped++; else created++;
+      }
+      await db.delete(botTexts).where(eq(botTexts.textKey, 'ui_routegroup_' + userId)).run();
+      await answer(query, 'Matriz de distribución guardada.');
+      await renderPanel('✅ MATRIZ CREADA\nNuevas rutas: ' + created + '\nOmitidas o duplicadas: ' + skipped, [[{ text: '🔀 Ver distribuciones', callback_data: 'admin:routes' }], [{ text: '🔙 Panel', callback_data: 'admin:back' }]]);
+      return;
+    }
+    await db.update(botTexts).set({ body: JSON.stringify(draft), updatedBy: userId, updatedAt: Date.now() }).where(eq(botTexts.textKey, 'ui_routegroup_' + userId)).run();
+    const sourceRows = (await managedChannels(userId)).filter(channel => !draft.destinations.includes(Number(channel.chatId)));
+    const keyboard = [];
+    for (let i = 0; i < sourceRows.length; i += 3) keyboard.push(sourceRows.slice(i, i + 3).map(channel => ({ text: (draft.sources.includes(Number(channel.chatId)) ? '✅ ' : '⬜ ') + String(channel.title || channel.chatId).slice(0, 22), callback_data: 'admin:routegroupsourcetoggle:' + Number(channel.chatId) })));
+    keyboard.push([{ text: '➡️ Elegir destinos', callback_data: 'admin:routegroupsourcenext' }]);
+    keyboard.push([{ text: '🔙 Distribuciones', callback_data: 'admin:routes' }]);
+    await answer(query);
+    await renderPanel('🔀 ORÍGENES SELECCIONADOS: ' + draft.sources.length + '\n' + draft.sources.join(', '), keyboard);
     return;
   }
 
