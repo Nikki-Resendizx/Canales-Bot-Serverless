@@ -3,7 +3,7 @@ import { eq } from 'sdk/db';
 import {
   admins, captchaSessions, channels, channelSettings, channelRoutes,
   templates, globalBans, publications, purchases, reactionReports, botTexts, joinRequests, filterConfigs, filterRejections, routeForwardSettings,
-  knownUsers, postAlertKeys, filterSeenContent, filterDeliveryEvents, recipientLists, recipientListItems, scheduledPublications, repeatJobs,
+  knownUsers, postAlertKeys, filterSeenContent, filterDeliveryEvents, recipientLists, recipientListItems, recipientListSettings, scheduledPublications, scheduledPublicationTargets, repeatJobs,
 } from '../schema.js';
 
 import { defaultFilterConfig, mergeFilterConfigs } from '../lib/message_filters.js';
