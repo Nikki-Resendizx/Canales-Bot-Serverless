@@ -658,6 +658,81 @@ export default async function (message) {
     return;
   }
 
+  const listCreatePrompt = String(message.reply_to_message?.text ?? '');
+  if (/\\[CBLISTCREATE\\]/.test(listCreatePrompt) && isPrivate && await isAdmin(userId) && text && !text.startsWith('/')) {
+    const name = text.trim();
+    if (!name || name.length > 60) { await say(chatId, '⚠️ El nombre debe contener entre 1 y 60 caracteres.'); return; }
+    const listKey = 'list_' + now().toString(36) + '_' + userId.toString(36);
+    await db.insert(recipientLists).values({ listKey, name, createdBy: userId, createdAt: now() }).run();
+    await say(chatId, '✅ Lista creada: ' + name + '. Ahora abre «Listas de destinos» y selecciona los canales con los botones.');
+    return;
+  }
+  const listRenamePrompt = String(message.reply_to_message?.text ?? '');
+  const listRenameMatch = listRenamePrompt.match(/\\[CBLISTRENAME:([a-zA-Z0-9_-]+)\\]/);
+  if (listRenameMatch && isPrivate && await isAdmin(userId) && text && !text.startsWith('/')) {
+    const key = listRenameMatch[1];
+    const list = await db.select().from(recipientLists).where(eq(recipientLists.listKey, key)).get();
+    if (!list || (Number(list.createdBy) !== userId && userId !== OWNER_ID)) { await say(chatId, '⛔ No tienes permiso para renombrar esta lista.'); return; }
+    const name = text.trim();
+    if (!name || name.length > 60) { await say(chatId, '⚠️ El nombre debe contener entre 1 y 60 caracteres.'); return; }
+    await db.update(recipientLists).set({ name }).where(eq(recipientLists.listKey, key)).run();
+    await say(chatId, '✅ Lista renombrada a «' + name + '».');
+    return;
+  }
+  const schedulePrompt = String(message.reply_to_message?.text ?? '');
+  const scheduleMatch = schedulePrompt.match(/\\[CBSCHEDULE:(\\d+)\\]/);
+  if (scheduleMatch && isPrivate && Number(scheduleMatch[1]) === userId && await isAdmin(userId) && text && !text.startsWith('/')) {
+    const draftRow = await db.select().from(botTexts).where(eq(botTexts.textKey, 'ui_schedule_' + userId)).get();
+    let draft = {};
+    try { draft = JSON.parse(draftRow?.body || '{}'); } catch {}
+    const separator = text.indexOf('|');
+    const sourceMessageId = parseId(separator >= 0 ? text.slice(0, separator).trim() : '');
+    const dateText = separator >= 0 ? text.slice(separator + 1).trim() : '';
+    const dateMatch = dateText.match(/^(\\d{4}-\\d{2}-\\d{2})[ T](\\d{2}:\\d{2})$/);
+    if (!Number.isSafeInteger(Number(draft.sourceChatId)) || !Array.isArray(draft.destinationIds) || !draft.destinationIds.length ||
+        !Number.isSafeInteger(sourceMessageId) || !dateMatch) {
+      await say(chatId, '⚠️ Formato incorrecto. Envía ID_MENSAJE | AAAA-MM-DD HH:mm. Ejemplo: 1234 | 2026-12-01 18:30.');
+      return;
+    }
+    const dueAt = Date.parse(dateMatch[1] + 'T' + dateMatch[2] + ':00-06:00');
+    if (!Number.isFinite(dueAt) || dueAt <= now() + 10000) {
+      await say(chatId, '⚠️ La fecha debe ser válida y futura (hora de Ciudad de México). Vuelve a responder con otra fecha.');
+      return;
+    }
+    if (!(await canManageChannel(userId, Number(draft.sourceChatId)))) { await say(chatId, '⛔ Ya no tienes permiso sobre el canal origen.'); return; }
+    const destinations = [...new Set(draft.destinationIds.map(Number))];
+    for (const id of destinations) if (!(await canManageChannel(userId, id))) { await say(chatId, '⛔ Uno de los destinos ya no está disponible.'); return; }
+    const scheduleKey = 'sch_' + now().toString(36) + '_' + userId.toString(36);
+    await db.insert(scheduledPublications).values({
+      scheduleKey, sourceChatId: Number(draft.sourceChatId), sourceMessageId,
+      destinationChatId: destinations[0], routeKey: '', dueAt, status: 'pending',
+      payloadJson: JSON.stringify({ mode: draft.mode === 'forward' ? 'forward' : 'copy' }),
+      createdBy: userId, createdAt: now(), processedAt: null,
+    }).run();
+    for (const id of destinations) {
+      await db.insert(scheduledPublicationTargets).values({
+        targetKey: scheduleKey + ':' + id, scheduleKey, destinationChatId: id, createdAt: now(),
+      }).onConflictDoNothing().run();
+    }
+    const interval = Number(draft.intervalMinutes) || 0;
+    if (interval > 0) {
+      await db.insert(repeatJobs).values({
+        repeatKey: 'rep_' + scheduleKey, scheduleKey, intervalMinutes: interval,
+        nextRunAt: dueAt + interval * 60000,
+        remainingRuns: Number(draft.remainingRuns) === 0 ? -1 : Number(draft.remainingRuns),
+        active: 1, createdAt: now(),
+      }).run();
+    }
+    await db.delete(botTexts).where(eq(botTexts.textKey, 'ui_schedule_' + userId)).run();
+    await say(chatId, '✅ PROGRAMACIÓN CREADA\\n\\nOrigen: ' + draft.sourceChatId + ' · mensaje ' + sourceMessageId +
+      '\\nDestinos: ' + destinations.length + '\\nModo: ' + String(draft.mode || 'copy').toUpperCase() +
+      '\\nFecha: ' + new Date(dueAt).toLocaleString('es-MX', { timeZone: 'America/Mexico_City' }) +
+      (interval ? '\\nRepetición: cada ' + interval + ' min · ' + (Number(draft.remainingRuns) ? draft.remainingRuns + ' veces' : 'indefinida') : '') +
+      '\\nClave: ' + scheduleKey, { reply_markup: { inline_keyboard: [[{ text: '🗓️ Abrir programaciones', callback_data: 'admin:scheduled' }]] } });
+    await sendTopicNotification('distribution', '🗓️ PROGRAMACIÓN CREADA\\nClave: ' + scheduleKey + '\\nOrigen: ' + draft.sourceChatId + '\\nDestinos: ' + destinations.join(', '));
+    return;
+  }
+
   const starsPrompt = String(message.reply_to_message?.text ?? '');
   const starsMatch = starsPrompt.match(/\[CBSTAR:(-?\d+)\]/);
   if (starsMatch && isPrivate && await isAdmin(userId) && text && !text.startsWith('/')) {
