@@ -1613,7 +1613,7 @@ export default async function (query) {
       await answer(query);
       await renderPanel('🔀 DISTRIBUCIÓN MÚLTIPLE · DESTINOS\n\nOrígenes seleccionados: ' + draft.sources.join(', ') + '\nMarca uno o varios destinos. Se crearán todas las combinaciones origen → destino.', keyboard);
       return;
-    } else {
+    } else if (section === 'routegroupcreate') {
       if (!draft.sources.length || !draft.destinations.length) { await answer(query, 'Selecciona al menos un origen y un destino.', true); return; }
       let created = 0; let skipped = 0;
       for (const sourceId of draft.sources) for (const destinationId of draft.destinations) {
