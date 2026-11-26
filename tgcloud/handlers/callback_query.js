@@ -1603,8 +1603,12 @@ export default async function (query) {
       for (const sourceId of draft.sources) for (const destinationId of draft.destinations) {
         if (sourceId === destinationId || !(await canManageChannel(userId, sourceId)) || !(await canManageChannel(userId, destinationId))) { skipped++; continue; }
         const routeKey = sourceId + ':' + destinationId;
-        const result = await db.insert(channelRoutes).values({ routeKey, sourceChatId: sourceId, destinationChatId: destinationId, mode: 'auto', createdBy: userId, createdAt: Date.now() }).onConflictDoNothing().run();
-        const exists = await db.select().from(channelRoutes).where(eq(channelRoutes.routeKey, routeKey)).get();\n        if (exists) skipped++; else {\n          await db.insert(channelRoutes).values({ routeKey, sourceChatId: sourceId, destinationChatId: destinationId, mode: 'auto', createdBy: userId, createdAt: Date.now() }).onConflictDoNothing().run();\n          created++;\n        }
+        const exists = await db.select().from(channelRoutes).where(eq(channelRoutes.routeKey, routeKey)).get();
+        if (exists) skipped++;
+        else {
+          await db.insert(channelRoutes).values({ routeKey, sourceChatId: sourceId, destinationChatId: destinationId, mode: 'auto', createdBy: userId, createdAt: Date.now() }).onConflictDoNothing().run();
+          created++;
+        }
       }
       await db.delete(botTexts).where(eq(botTexts.textKey, 'ui_routegroup_' + userId)).run();
       await answer(query, 'Matriz de distribución guardada.');
