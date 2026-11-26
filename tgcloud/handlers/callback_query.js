@@ -1503,7 +1503,7 @@ export default async function (query) {
       );
       const keyboard = [[
         { text: '➕ Crear ruta', callback_data: 'admin:routeadd' },
-        { text: '🔀 Distribución múltiple', callback_data: 'admin:routegroupsourceback' },
+        { text: '🔀 Distribución múltiple', callback_data: 'admin:routegrouphelp' },
         { text: '📋 Listas', callback_data: 'admin:recipientlists' },
       ]];
       let routeButtonRow = [];
