@@ -1604,7 +1604,7 @@ export default async function (query) {
         if (sourceId === destinationId || !(await canManageChannel(userId, sourceId)) || !(await canManageChannel(userId, destinationId))) { skipped++; continue; }
         const routeKey = sourceId + ':' + destinationId;
         const result = await db.insert(channelRoutes).values({ routeKey, sourceChatId: sourceId, destinationChatId: destinationId, mode: 'auto', createdBy: userId, createdAt: Date.now() }).onConflictDoNothing().run();
-        if (result?.changes === 0) skipped++; else created++;
+        const exists = await db.select().from(channelRoutes).where(eq(channelRoutes.routeKey, routeKey)).get();\n        if (exists) skipped++; else {\n          await db.insert(channelRoutes).values({ routeKey, sourceChatId: sourceId, destinationChatId: destinationId, mode: 'auto', createdBy: userId, createdAt: Date.now() }).onConflictDoNothing().run();\n          created++;\n        }
       }
       await db.delete(botTexts).where(eq(botTexts.textKey, 'ui_routegroup_' + userId)).run();
       await answer(query, 'Matriz de distribución guardada.');
@@ -1612,13 +1612,22 @@ export default async function (query) {
       return;
     }
     await db.update(botTexts).set({ body: JSON.stringify(draft), updatedBy: userId, updatedAt: Date.now() }).where(eq(botTexts.textKey, 'ui_routegroup_' + userId)).run();
-    const sourceRows = (await managedChannels(userId)).filter(channel => !draft.destinations.includes(Number(channel.chatId)));
+    const available = await managedChannels(userId);
     const keyboard = [];
-    for (let i = 0; i < sourceRows.length; i += 3) keyboard.push(sourceRows.slice(i, i + 3).map(channel => ({ text: (draft.sources.includes(Number(channel.chatId)) ? '✅ ' : '⬜ ') + String(channel.title || channel.chatId).slice(0, 22), callback_data: 'admin:routegroupsourcetoggle:' + Number(channel.chatId) })));
-    keyboard.push([{ text: '➡️ Elegir destinos', callback_data: 'admin:routegroupsourcenext' }]);
-    keyboard.push([{ text: '🔙 Distribuciones', callback_data: 'admin:routes' }]);
-    await answer(query);
-    await renderPanel('🔀 ORÍGENES SELECCIONADOS: ' + draft.sources.length + '\n' + draft.sources.join(', '), keyboard);
+    if (section === 'routegroupdesttoggle') {
+      const destinationRows = available.filter(channel => !draft.sources.includes(Number(channel.chatId)));
+      for (let i = 0; i < destinationRows.length; i += 3) keyboard.push(destinationRows.slice(i, i + 3).map(channel => ({ text: (draft.destinations.includes(Number(channel.chatId)) ? '✅ ' : '⬜ ') + String(channel.title || channel.chatId).slice(0, 22), callback_data: 'admin:routegroupdesttoggle:' + Number(channel.chatId) })));
+      keyboard.push([{ text: '✅ Crear matriz (' + draft.sources.length + ' × ' + draft.destinations.length + ')', callback_data: 'admin:routegroupcreate' }]);
+      keyboard.push([{ text: '🔙 Volver a orígenes', callback_data: 'admin:routegrouphelp' }]);
+      await answer(query);
+      await renderPanel('🔀 DESTINOS SELECCIONADOS: ' + draft.destinations.length + '\nOrígenes: ' + draft.sources.join(', ') + '\nDestinos: ' + draft.destinations.join(', '), keyboard);
+    } else {
+      for (let i = 0; i < available.length; i += 3) keyboard.push(available.slice(i, i + 3).map(channel => ({ text: (draft.sources.includes(Number(channel.chatId)) ? '✅ ' : '⬜ ') + String(channel.title || channel.chatId).slice(0, 22), callback_data: 'admin:routegroupsourcetoggle:' + Number(channel.chatId) })));
+      keyboard.push([{ text: '➡️ Elegir destinos', callback_data: 'admin:routegroupsourcenext' }]);
+      keyboard.push([{ text: '🔙 Distribuciones', callback_data: 'admin:routes' }]);
+      await answer(query);
+      await renderPanel('🔀 ORÍGENES SELECCIONADOS: ' + draft.sources.length + '\n' + draft.sources.join(', '), keyboard);
+    }
     return;
   }
 
