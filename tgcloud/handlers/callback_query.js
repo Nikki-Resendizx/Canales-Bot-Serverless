@@ -1181,12 +1181,20 @@ export default async function (query) {
     const active = rows.filter(row => row.status === 'pending');
     const keyboard = [
       [
-        { text: '➕ Crear programación', callback_data: 'admin:schedulehelp' },
+        { text: '➕ Crear programación', callback_data: 'admin:schedulewizard' },
         { text: '🔄 Recurrentes', callback_data: 'admin:repeatlist' },
         { text: '🔃 Actualizar', callback_data: 'admin:scheduled' },
       ],
-      [{ text: '🔙 Volver al panel', callback_data: 'admin:back' }],
     ];
+    for (const row of rows.slice(0, 12)) {
+      const key = String(row.scheduleKey);
+      keyboard.push([
+        { text: '⚙️ ' + key.slice(0, 14), callback_data: 'admin:scheduleview:' + key },
+        { text: row.status === 'paused' ? '▶️ Reanudar' : '⏸ Pausar', callback_data: 'admin:scheduleaction:' + key + ':' + (row.status === 'paused' ? 'resume' : 'pause') },
+        { text: '🗑️', callback_data: 'admin:scheduleaction:' + key + ':cancel' },
+      ]);
+    }
+    keyboard.push([{ text: '🔙 Volver al panel', callback_data: 'admin:back' }]);
     await answer(query);
     await renderPanel('🗓️ PROGRAMACIONES\\n\\nPendientes: ' + active.length + ' · Total: ' + rows.length +
       (rows.length ? '\\n\\n' + rows.slice(0, 15).map(row =>
@@ -1324,6 +1332,40 @@ export default async function (query) {
     await answer(query);
     await api.sendMessage({ chat_id: chatId, text: '[CBSCHEDULE:' + userId + ']\\nEnvía el ID del mensaje y la fecha/hora local de México en una línea, separados por |.\\nEjemplo: 1234 | 2026-12-01 18:30\\nLa fecha debe ser futura. La programación se procesa en ventanas de cinco minutos.', reply_markup: { force_reply: true, selective: true } });
     await renderPanel('Último paso: responde al mensaje anterior con ID_MENSAJE | AAAA-MM-DD HH:mm.', [[{ text: '🔙 Volver a ajustar', callback_data: 'admin:schedulefrom:' + draft.sourceChatId }]]);
+    return;
+  }
+  if (section === 'scheduleview') {
+    const key = String(parts[2] || '');
+    const row = await db.select().from(scheduledPublications).where(eq(scheduledPublications.scheduleKey, key)).get();
+    if (!row || (Number(row.createdBy) !== userId && userId !== OWNER_ID)) { await answer(query, 'Programación no encontrada o sin permisos.', true); return; }
+    const targets = await db.select().from(scheduledPublicationTargets).where(eq(scheduledPublicationTargets.scheduleKey, key)).all();
+    let payload = {}; try { payload = JSON.parse(row.payloadJson || '{}'); } catch {}
+    const repeat = await db.select().from(repeatJobs).where(eq(repeatJobs.scheduleKey, key)).get();
+    await answer(query);
+    await renderPanel('🗓️ DETALLE DE PROGRAMACIÓN\\nClave: ' + key + '\\nEstado: ' + row.status + '\\nOrigen: ' + row.sourceChatId + ' · mensaje ' + row.sourceMessageId + '\\nDestinos: ' + targets.map(item => item.destinationChatId).join(', ') + '\\nModo: ' + String(payload.mode || 'copy').toUpperCase() + '\\nFecha: ' + new Date(Number(row.dueAt)).toLocaleString('es-MX', { timeZone: 'America/Mexico_City' }) + '\\nRecurrencia: ' + (repeat ? 'cada ' + repeat.intervalMinutes + ' min · ' + (Number(repeat.remainingRuns) === -1 ? 'indefinida' : repeat.remainingRuns + ' restantes') : 'No'), [
+      [{ text: row.status === 'paused' ? '▶️ Reanudar' : '⏸ Pausar', callback_data: 'admin:scheduleaction:' + key + ':' + (row.status === 'paused' ? 'resume' : 'pause') }, { text: '🗑️ Cancelar', callback_data: 'admin:scheduleaction:' + key + ':cancel' }],
+      [{ text: '🔙 Volver a programaciones', callback_data: 'admin:scheduled' }],
+    ]);
+    return;
+  }
+  if (section === 'scheduleaction') {
+    const key = String(parts[2] || ''); const action = String(parts[3] || '');
+    const row = await db.select().from(scheduledPublications).where(eq(scheduledPublications.scheduleKey, key)).get();
+    if (!row || (Number(row.createdBy) !== userId && userId !== OWNER_ID) || !['pause','resume','cancel'].includes(action)) { await answer(query, 'Programación no disponible o sin permisos.', true); return; }
+    const repeat = await db.select().from(repeatJobs).where(eq(repeatJobs.scheduleKey, key)).get();
+    if (action === 'pause') {
+      await db.update(scheduledPublications).set({ status: 'paused' }).where(eq(scheduledPublications.scheduleKey, key)).run();
+      if (repeat) await db.update(repeatJobs).set({ active: 0 }).where(eq(repeatJobs.repeatKey, repeat.repeatKey)).run();
+    } else if (action === 'resume') {
+      const nextAt = repeat ? Math.max(Number(repeat.nextRunAt) || 0, Date.now() + 60000) : Math.max(Number(row.dueAt), Date.now() + 60000);
+      await db.update(scheduledPublications).set({ status: 'pending', dueAt: nextAt, processedAt: null }).where(eq(scheduledPublications.scheduleKey, key)).run();
+      if (repeat) await db.update(repeatJobs).set({ active: 1, nextRunAt: nextAt }).where(eq(repeatJobs.repeatKey, repeat.repeatKey)).run();
+    } else {
+      await db.update(scheduledPublications).set({ status: 'cancelled', processedAt: Date.now() }).where(eq(scheduledPublications.scheduleKey, key)).run();
+      if (repeat) await db.update(repeatJobs).set({ active: 0 }).where(eq(repeatJobs.repeatKey, repeat.repeatKey)).run();
+    }
+    await answer(query, action === 'pause' ? 'Programación pausada.' : action === 'resume' ? 'Programación reanudada.' : 'Programación cancelada.');
+    await renderPanel('🗓️ Programación ' + (action === 'pause' ? 'pausada.' : action === 'resume' ? 'reanudada.' : 'cancelada.'), [[{ text: '🗓️ Volver a programaciones', callback_data: 'admin:scheduled' }]]);
     return;
   }
   if (section === 'repeatlist') {
