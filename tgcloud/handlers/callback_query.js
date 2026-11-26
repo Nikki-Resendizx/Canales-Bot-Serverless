@@ -1197,16 +1197,133 @@ export default async function (query) {
       keyboard);
     return;
   }
-  if (section === 'schedulehelp') {
+  if (section === 'schedulehelp' || section === 'schedulewizard') {
+    const rows = await managedChannels(userId);
+    const keyboard = [];
+    for (let i = 0; i < rows.length; i += 3) keyboard.push(rows.slice(i, i + 3).map(channel => ({
+      text: '📤 ' + String(channel.title || channel.chatId).slice(0, 24),
+      callback_data: 'admin:schedulefrom:' + Number(channel.chatId),
+    })));
+    keyboard.push([{ text: '📋 Usar lista guardada', callback_data: 'admin:schedulefromlist' }]);
+    keyboard.push([{ text: '🔙 Volver', callback_data: 'admin:scheduled' }]);
     await answer(query);
-    await renderPanel('➕ CREAR PROGRAMACIÓN\\n\\nElige el mensaje de cualquier canal registrado indicando su ID y el ID del mensaje. Puedes seleccionar varios destinos o una lista guardada.\\n\\nComando: /schedule_add ORIGEN_ID MENSAJE_ID FECHA_ISO DESTINOS_ID[,ID|@CLAVE_LISTA] copy|forward [INTERVALO_MIN] [REPETICIONES]\\n\\nLa cola se procesa cada cinco minutos (UTC).',
-      [
-        [
-          { text: '📋 Ver listas', callback_data: 'admin:recipientlists' },
-          { text: '🗓️ Ver agenda', callback_data: 'admin:scheduled' },
-          { text: '🔙 Volver', callback_data: 'admin:scheduled' },
-        ],
-      ]);
+    await renderPanel('➕ ASISTENTE DE PROGRAMACIÓN\\n\\n1. Selecciona el canal origen.\\n2. Marca uno o varios destinos.\\n3. Elige copiar o reenviar y la recurrencia.\\n4. Indica el ID del mensaje y la fecha/hora.\\n\\nNo necesitas comandos. La cola se procesa en ventanas de cinco minutos (UTC).', keyboard);
+    return;
+  }
+  if (section === 'schedulefrom') {
+    const sourceId = Number(parts[2]);
+    if (!Number.isSafeInteger(sourceId) || !(await canManageChannel(userId, sourceId))) { await answer(query, 'No puedes administrar ese origen.', true); return; }
+    const draft = { sourceChatId: sourceId, destinationIds: [], mode: 'copy', intervalMinutes: 0, remainingRuns: 0 };
+    await db.insert(botTexts).values({ textKey: 'ui_schedule_' + userId, body: JSON.stringify(draft), updatedBy: userId, updatedAt: Date.now() })
+      .onConflictDoUpdate({ target: botTexts.textKey, set: { body: JSON.stringify(draft), updatedBy: userId, updatedAt: Date.now() } }).run();
+    const rows = (await managedChannels(userId)).filter(row => Number(row.chatId) !== sourceId);
+    const keyboard = [];
+    for (let i = 0; i < rows.length; i += 3) keyboard.push(rows.slice(i, i + 3).map(channel => ({
+      text: '⬜ ' + String(channel.title || channel.chatId).slice(0, 24),
+      callback_data: 'admin:scheduledesttoggle:' + Number(channel.chatId),
+    })));
+    keyboard.push([{ text: '📄 Copiar', callback_data: 'admin:schedulemode:copy' }, { text: '↪️ Reenviar', callback_data: 'admin:schedulemode:forward' }]);
+    keyboard.push([{ text: '⏱ Sin repetir', callback_data: 'admin:scheduleinterval:0' }, { text: '15 min', callback_data: 'admin:scheduleinterval:15' }, { text: '1 h', callback_data: 'admin:scheduleinterval:60' }]);
+    keyboard.push([{ text: '🔁 Indefinida', callback_data: 'admin:scheduleruns:0' }, { text: '1 vez', callback_data: 'admin:scheduleruns:1' }, { text: '5 veces', callback_data: 'admin:scheduleruns:5' }]);
+    keyboard.push([{ text: '➡️ Continuar', callback_data: 'admin:scheduleconfirm' }]);
+    keyboard.push([{ text: '🔙 Cancelar', callback_data: 'admin:scheduled' }]);
+    await answer(query);
+    await renderPanel('🗓️ CONFIGURAR DESTINOS\\nOrigen: ' + sourceId + '\\n\\nMarca todos los destinos. Después elige el modo y la recurrencia.\\n\\nModo: COPIAR\\nRepetición: DESACTIVADA', keyboard);
+    return;
+  }
+  if (section === 'schedulefromlist') {
+    const lists = (await db.select().from(recipientLists).all()).filter(row => Number(row.createdBy) === userId || userId === OWNER_ID);
+    const keyboard = [];
+    for (let i = 0; i < lists.length; i += 3) keyboard.push(lists.slice(i, i + 3).map(list => ({ text: '📋 ' + String(list.name).slice(0, 24), callback_data: 'admin:schedulelist:' + list.listKey })));
+    keyboard.push([{ text: '🔙 Volver', callback_data: 'admin:schedulewizard' }]);
+    await answer(query);
+    await renderPanel('Selecciona una lista de destinos para utilizarla en una programación.', keyboard);
+    return;
+  }
+  if (section === 'schedulelist') {
+    const listKey = String(parts[2] || '');
+    const list = await db.select().from(recipientLists).where(eq(recipientLists.listKey, listKey)).get();
+    if (!list || (Number(list.createdBy) !== userId && userId !== OWNER_ID)) { await answer(query, 'Lista no disponible.', true); return; }
+    const items = await db.select().from(recipientListItems).where(eq(recipientListItems.listKey, listKey)).all();
+    if (!items.length) { await answer(query, 'La lista está vacía.', true); return; }
+    const rows = await managedChannels(userId);
+    const sourceChoices = rows.filter(row => !items.some(item => Number(item.chatId) === Number(row.chatId)));
+    const keyboard = [];
+    for (let i = 0; i < sourceChoices.length; i += 3) keyboard.push(sourceChoices.slice(i, i + 3).map(channel => ({ text: '📤 ' + String(channel.title || channel.chatId).slice(0, 24), callback_data: 'admin:schedulefromlist_source:' + channel.chatId + ':' + listKey })));
+    keyboard.push([{ text: '🔙 Volver', callback_data: 'admin:schedulefromlist' }]);
+    await answer(query);
+    await renderPanel('Selecciona el canal origen para la lista «' + list.name + '».', keyboard);
+    return;
+  }
+  if (section === 'schedulefromlist_source') {
+    const sourceId = Number(parts[2]); const listKey = String(parts[3] || '');
+    const list = await db.select().from(recipientLists).where(eq(recipientLists.listKey, listKey)).get();
+    if (!Number.isSafeInteger(sourceId) || !(await canManageChannel(userId, sourceId)) || !list || (Number(list.createdBy) !== userId && userId !== OWNER_ID)) { await answer(query, 'Origen o lista no válidos.', true); return; }
+    const items = await db.select().from(recipientListItems).where(eq(recipientListItems.listKey, listKey)).all();
+    const destinations = [...new Set(items.map(item => Number(item.chatId)))].filter(id => id !== sourceId);
+    if (!destinations.length) { await answer(query, 'La lista no tiene destinos válidos distintos del origen.', true); return; }
+    const draft = { sourceChatId: sourceId, destinationIds: destinations, mode: 'copy', intervalMinutes: 0, remainingRuns: 0 };
+    await db.insert(botTexts).values({ textKey: 'ui_schedule_' + userId, body: JSON.stringify(draft), updatedBy: userId, updatedAt: Date.now() })
+      .onConflictDoUpdate({ target: botTexts.textKey, set: { body: JSON.stringify(draft), updatedBy: userId, updatedAt: Date.now() } }).run();
+    await answer(query);
+    await renderPanel('Lista cargada con ' + destinations.length + ' destinos. Selecciona modo y recurrencia.', [
+      [{ text: '📄 Copiar', callback_data: 'admin:schedulemode:copy' }, { text: '↪️ Reenviar', callback_data: 'admin:schedulemode:forward' }],
+      [{ text: '⏱ Sin repetir', callback_data: 'admin:scheduleinterval:0' }, { text: '15 min', callback_data: 'admin:scheduleinterval:15' }, { text: '1 h', callback_data: 'admin:scheduleinterval:60' }],
+      [{ text: '🔁 Indefinida', callback_data: 'admin:scheduleruns:0' }, { text: '1 vez', callback_data: 'admin:scheduleruns:1' }, { text: '5 veces', callback_data: 'admin:scheduleruns:5' }],
+      [{ text: '➡️ Continuar', callback_data: 'admin:scheduleconfirm' }],
+      [{ text: '🔙 Cancelar', callback_data: 'admin:scheduled' }],
+    ]);
+    return;
+  }
+  if (section === 'scheduledesttoggle' || section === 'schedulemode' || section === 'scheduleinterval' || section === 'scheduleruns') {
+    const row = await db.select().from(botTexts).where(eq(botTexts.textKey, 'ui_schedule_' + userId)).get();
+    let draft = {};
+    try { draft = JSON.parse(row?.body || '{}'); } catch {}
+    if (!Number.isSafeInteger(Number(draft.sourceChatId)) || !(await canManageChannel(userId, Number(draft.sourceChatId)))) { await answer(query, 'La sesión del asistente expiró. Inicia otra vez.', true); return; }
+    if (section === 'scheduledesttoggle') {
+      const id = Number(parts[2]);
+      if (!Number.isSafeInteger(id) || id === Number(draft.sourceChatId) || !(await canManageChannel(userId, id))) { await answer(query, 'Destino no válido.', true); return; }
+      const selected = new Set((draft.destinationIds || []).map(Number));
+      selected.has(id) ? selected.delete(id) : selected.add(id);
+      draft.destinationIds = [...selected];
+    } else if (section === 'schedulemode') {
+      const mode = String(parts[2] || '');
+      if (!['copy','forward'].includes(mode)) { await answer(query, 'Modo no válido.', true); return; }
+      draft.mode = mode;
+    } else if (section === 'scheduleinterval') {
+      const interval = Number(parts[2]);
+      if (![0,5,10,15,30,60,120,360,1440].includes(interval)) { await answer(query, 'Intervalo no válido.', true); return; }
+      draft.intervalMinutes = interval;
+    } else {
+      const runs = Number(parts[2]);
+      if (![0,1,2,3,5,10,20].includes(runs)) { await answer(query, 'Número de repeticiones no válido.', true); return; }
+      draft.remainingRuns = runs;
+    }
+    await db.update(botTexts).set({ body: JSON.stringify(draft), updatedBy: userId, updatedAt: Date.now() }).where(eq(botTexts.textKey, 'ui_schedule_' + userId)).run();
+    const rows = (await managedChannels(userId)).filter(channel => Number(channel.chatId) !== Number(draft.sourceChatId));
+    const keyboard = [];
+    for (let i = 0; i < rows.length; i += 3) keyboard.push(rows.slice(i, i + 3).map(channel => ({
+      text: (draft.destinationIds.includes(Number(channel.chatId)) ? '✅ ' : '⬜ ') + String(channel.title || channel.chatId).slice(0, 22),
+      callback_data: 'admin:scheduledesttoggle:' + Number(channel.chatId),
+    })));
+    keyboard.push([{ text: (draft.mode === 'copy' ? '✅ ' : '') + '📄 Copiar', callback_data: 'admin:schedulemode:copy' }, { text: (draft.mode === 'forward' ? '✅ ' : '') + '↪️ Reenviar', callback_data: 'admin:schedulemode:forward' }]);
+    keyboard.push([{ text: (draft.intervalMinutes === 0 ? '✅ ' : '') + 'Sin repetir', callback_data: 'admin:scheduleinterval:0' }, { text: (draft.intervalMinutes === 15 ? '✅ ' : '') + '15 min', callback_data: 'admin:scheduleinterval:15' }, { text: (draft.intervalMinutes === 60 ? '✅ ' : '') + '1 h', callback_data: 'admin:scheduleinterval:60' }]);
+    keyboard.push([{ text: (draft.remainingRuns === 0 ? '✅ ' : '') + 'Indefinida', callback_data: 'admin:scheduleruns:0' }, { text: (draft.remainingRuns === 1 ? '✅ ' : '') + '1 vez', callback_data: 'admin:scheduleruns:1' }, { text: (draft.remainingRuns === 5 ? '✅ ' : '') + '5 veces', callback_data: 'admin:scheduleruns:5' }]);
+    keyboard.push([{ text: '➡️ Continuar', callback_data: 'admin:scheduleconfirm' }]);
+    keyboard.push([{ text: '🔙 Cancelar', callback_data: 'admin:scheduled' }]);
+    await answer(query, 'Configuración guardada.');
+    await renderPanel('🗓️ CONFIGURAR PROGRAMACIÓN\\nOrigen: ' + draft.sourceChatId + '\\nDestinos seleccionados: ' + draft.destinationIds.length + '\\nModo: ' + draft.mode.toUpperCase() + '\\nIntervalo: ' + (draft.intervalMinutes ? draft.intervalMinutes + ' min' : 'Sin repetir') + '\\nRepeticiones: ' + (draft.intervalMinutes ? (draft.remainingRuns ? draft.remainingRuns : 'Indefinidas') : 'No aplica'), keyboard);
+    return;
+  }
+  if (section === 'scheduleconfirm') {
+    const row = await db.select().from(botTexts).where(eq(botTexts.textKey, 'ui_schedule_' + userId)).get();
+    let draft = {};
+    try { draft = JSON.parse(row?.body || '{}'); } catch {}
+    if (!Number.isSafeInteger(Number(draft.sourceChatId)) || !(await canManageChannel(userId, Number(draft.sourceChatId))) || !Array.isArray(draft.destinationIds) || !draft.destinationIds.length) { await answer(query, 'Selecciona al menos un destino válido.', true); return; }
+    for (const id of draft.destinationIds) if (!(await canManageChannel(userId, Number(id)))) { await answer(query, 'Uno de los destinos ya no está disponible.', true); return; }
+    await answer(query);
+    await api.sendMessage({ chat_id: chatId, text: '[CBSCHEDULE:' + userId + ']\\nEnvía el ID del mensaje y la fecha/hora local de México en una línea, separados por |.\\nEjemplo: 1234 | 2026-12-01 18:30\\nLa fecha debe ser futura. La programación se procesa en ventanas de cinco minutos.', reply_markup: { force_reply: true, selective: true } });
+    await renderPanel('Último paso: responde al mensaje anterior con ID_MENSAJE | AAAA-MM-DD HH:mm.', [[{ text: '🔙 Volver a ajustar', callback_data: 'admin:schedulefrom:' + draft.sourceChatId }]]);
     return;
   }
   if (section === 'repeatlist') {
@@ -1253,33 +1370,63 @@ export default async function (query) {
   if (section === 'recipientlist') {
     const key = String(parts[2] || '');
     const list = await db.select().from(recipientLists).where(eq(recipientLists.listKey, key)).get();
-    if (!list || (Number(list.createdBy) !== userId && userId !== OWNER_ID)) {
-      await answer(query, 'Lista no encontrada o sin permisos.', true);
-      return;
-    }
+    if (!list || (Number(list.createdBy) !== userId && userId !== OWNER_ID)) { await answer(query, 'Lista no encontrada o sin permisos.', true); return; }
     const items = await db.select().from(recipientListItems).where(eq(recipientListItems.listKey, key)).all();
     const channelRows = await managedChannels(userId);
     const names = new Map(channelRows.map(row => [Number(row.chatId), String(row.title || row.chatId)]));
     const destinations = items.map(item => '• ' + (names.get(Number(item.chatId)) || item.chatId)).join('\\n');
+    const keyboard = [];
+    for (let i = 0; i < channelRows.length; i += 3) keyboard.push(channelRows.slice(i, i + 3).map(channel => ({
+      text: (items.some(item => Number(item.chatId) === Number(channel.chatId)) ? '🗑️ ' : '➕ ') + String(channel.title || channel.chatId).slice(0, 22),
+      callback_data: 'admin:listdesttoggle:' + key + ':' + Number(channel.chatId),
+    })));
+    keyboard.push([{ text: '✏️ Renombrar lista', callback_data: 'admin:listrename:' + key }, { text: '🗑️ Eliminar lista', callback_data: 'admin:listdelete:' + key }]);
+    keyboard.push([{ text: '📋 Otras listas', callback_data: 'admin:recipientlists' }, { text: '🔙 Panel', callback_data: 'admin:back' }]);
     await answer(query);
-    await renderPanel('📋 ' + list.name + '\\nClave: ' + key + '\\nDestinos: ' + items.length +
-      '\\n\\n' + (destinations || 'La lista está vacía.') +
-      '\\n\\nGestiona destinos con /list_add ' + key + ' ID o /list_remove ' + key + ' ID.',
-      [[
-        { text: '➕ Agregar destino', callback_data: 'admin:listhelp' },
-        { text: '📋 Otras listas', callback_data: 'admin:recipientlists' },
-        { text: '🔙 Panel', callback_data: 'admin:back' },
-      ]]);
+    await renderPanel('📋 ' + list.name + '\\nClave: ' + key + '\\nDestinos: ' + items.length + '\\n\\n' + (destinations || 'La lista está vacía.') + '\\n\\nPulsa un canal para agregarlo o quitarlo de esta lista.', keyboard);
     return;
   }
   if (section === 'listhelp') {
     await answer(query);
-    await renderPanel('➕ ADMINISTRAR LISTAS\\n\\n/list_create Nombre de lista\\n/list_add CLAVE_LISTA ID_CANAL\\n/list_remove CLAVE_LISTA ID_CANAL\\n/lists\\n\\nCada lista puede reutilizarse como destino de programaciones.',
-      [[
-        { text: '📋 Ver listas', callback_data: 'admin:recipientlists' },
-        { text: '🗓️ Programaciones', callback_data: 'admin:scheduled' },
-        { text: '🔙 Panel', callback_data: 'admin:back' },
-      ]]);
+    await api.sendMessage({ chat_id: chatId, text: '[CBLISTCREATE]\\nEscribe el nombre de la nueva lista (máximo 60 caracteres).', reply_markup: { force_reply: true, selective: true } });
+    await renderPanel('➕ CREAR LISTA DE DESTINOS\\n\\nDespués de escribir el nombre, podrás seleccionar los canales con botones para agregarlos o quitarlos. Cada lista se puede reutilizar en las programaciones.', [[{ text: '📋 Ver listas', callback_data: 'admin:recipientlists' }, { text: '🗓️ Programaciones', callback_data: 'admin:scheduled' }], [{ text: '🔙 Panel', callback_data: 'admin:back' }]]);
+    return;
+  }
+  if (section === 'listdesttoggle') {
+    const key = String(parts[2] || ''); const id = Number(parts[3]);
+    const list = await db.select().from(recipientLists).where(eq(recipientLists.listKey, key)).get();
+    if (!list || (Number(list.createdBy) !== userId && userId !== OWNER_ID) || !Number.isSafeInteger(id) || !(await canManageChannel(userId, id))) { await answer(query, 'Lista o destino no válido.', true); return; }
+    const itemKey = key + ':' + id;
+    const existing = await db.select().from(recipientListItems).where(eq(recipientListItems.itemKey, itemKey)).get();
+    if (existing) await db.delete(recipientListItems).where(eq(recipientListItems.itemKey, itemKey)).run();
+    else await db.insert(recipientListItems).values({ itemKey, listKey: key, chatId: id, addedAt: Date.now() }).onConflictDoNothing().run();
+    await answer(query, existing ? 'Destino retirado.' : 'Destino agregado.');
+    await renderPanel('📋 Lista actualizada.', [[{ text: '🔄 Abrir lista', callback_data: 'admin:recipientlist:' + key }, { text: '📋 Todas las listas', callback_data: 'admin:recipientlists' }]]);
+    return;
+  }
+  if (section === 'listrename') {
+    const key = String(parts[2] || ''); const list = await db.select().from(recipientLists).where(eq(recipientLists.listKey, key)).get();
+    if (!list || (Number(list.createdBy) !== userId && userId !== OWNER_ID)) { await answer(query, 'Lista no disponible.', true); return; }
+    await answer(query);
+    await api.sendMessage({ chat_id: chatId, text: '[CBLISTRENAME:' + key + ']\\nEscribe el nuevo nombre (máximo 60 caracteres).', reply_markup: { force_reply: true, selective: true } });
+    await renderPanel('Renombrando «' + list.name + '».', [[{ text: '🔙 Volver', callback_data: 'admin:recipientlist:' + key }]]);
+    return;
+  }
+  if (section === 'listdelete') {
+    const key = String(parts[2] || ''); const list = await db.select().from(recipientLists).where(eq(recipientLists.listKey, key)).get();
+    if (!list || (Number(list.createdBy) !== userId && userId !== OWNER_ID)) { await answer(query, 'Lista no disponible.', true); return; }
+    await answer(query);
+    await renderPanel('⚠️ ¿Eliminar la lista «' + list.name + '»? Se quitarán sus destinos guardados; no se borrarán los canales.', [[{ text: '🗑️ Confirmar eliminación', callback_data: 'admin:listdeleteconfirm:' + key }], [{ text: '🔙 Cancelar', callback_data: 'admin:recipientlist:' + key }]]);
+    return;
+  }
+  if (section === 'listdeleteconfirm') {
+    const key = String(parts[2] || ''); const list = await db.select().from(recipientLists).where(eq(recipientLists.listKey, key)).get();
+    if (!list || (Number(list.createdBy) !== userId && userId !== OWNER_ID)) { await answer(query, 'Lista no disponible.', true); return; }
+    await db.delete(recipientListItems).where(eq(recipientListItems.listKey, key)).run();
+    await db.delete(recipientLists).where(eq(recipientLists.listKey, key)).run();
+    await db.delete(recipientListSettings).where(eq(recipientListSettings.listKey, key)).run();
+    await answer(query, 'Lista eliminada.');
+    await renderPanel('🗑️ Lista eliminada.', [[{ text: '📋 Volver a listas', callback_data: 'admin:recipientlists' }]]);
     return;
   }
 
