@@ -1638,7 +1638,7 @@ export default async function (query) {
       const destinationRows = available.filter(channel => !draft.sources.includes(Number(channel.chatId)));
       for (let i = 0; i < destinationRows.length; i += 3) keyboard.push(destinationRows.slice(i, i + 3).map(channel => ({ text: (draft.destinations.includes(Number(channel.chatId)) ? '✅ ' : '⬜ ') + String(channel.title || channel.chatId).slice(0, 22), callback_data: 'admin:routegroupdesttoggle:' + Number(channel.chatId) })));
       keyboard.push([{ text: '✅ Crear matriz (' + draft.sources.length + ' × ' + draft.destinations.length + ')', callback_data: 'admin:routegroupcreate' }]);
-      keyboard.push([{ text: '🔙 Volver a orígenes', callback_data: 'admin:routegrouphelp' }]);
+      keyboard.push([{ text: '🔙 Volver a orígenes', callback_data: 'admin:routegroupsourceback' }]);
       await answer(query);
       await renderPanel('🔀 DESTINOS SELECCIONADOS: ' + draft.destinations.length + '\nOrígenes: ' + draft.sources.join(', ') + '\nDestinos: ' + draft.destinations.join(', '), keyboard);
     } else {
