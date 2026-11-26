@@ -1196,12 +1196,12 @@ export default async function (query) {
     }
     keyboard.push([{ text: '🔙 Volver al panel', callback_data: 'admin:back' }]);
     await answer(query);
-    await renderPanel('🗓️ PROGRAMACIONES\\n\\nPendientes: ' + active.length + ' · Total: ' + rows.length +
-      (rows.length ? '\\n\\n' + rows.slice(0, 15).map(row =>
-        '• ' + row.scheduleKey + '\\n  ' + row.status + ' · ' + new Date(Number(row.dueAt)).toISOString() +
-        '\\n  Origen ' + row.sourceChatId + ' / mensaje ' + row.sourceMessageId).join('\\n') :
-        '\\n\\nTodavía no hay publicaciones programadas.') +
-      '\\n\\nPara crear una programación, pulsa «Crear programación» y sigue el asistente de botones.',
+    await renderPanel('🗓️ PROGRAMACIONES\n\nPendientes: ' + active.length + ' · Total: ' + rows.length +
+      (rows.length ? '\n\n' + rows.slice(0, 15).map(row =>
+        '• ' + row.scheduleKey + '\n  ' + row.status + ' · ' + new Date(Number(row.dueAt)).toISOString() +
+        '\n  Origen ' + row.sourceChatId + ' / mensaje ' + row.sourceMessageId).join('\n') :
+        '\n\nTodavía no hay publicaciones programadas.') +
+      '\n\nPara crear una programación, pulsa «Crear programación» y sigue el asistente de botones.',
       keyboard);
     return;
   }
@@ -1393,11 +1393,11 @@ export default async function (query) {
       if (schedule && (Number(schedule.createdBy) === userId || userId === OWNER_ID)) visible.push({ repeat, schedule });
     }
     await answer(query);
-    await renderPanel('🔄 PROGRAMACIONES RECURRENTES\\n\\n' +
+    await renderPanel('🔄 PROGRAMACIONES RECURRENTES\n\n' +
       (visible.length ? visible.map(({ repeat, schedule }) =>
         '• ' + schedule.scheduleKey + ' · ' + (repeat.active ? 'activa' : 'pausada') +
-        '\\n  Cada ' + repeat.intervalMinutes + ' min · ' +
-        (Number(repeat.remainingRuns) === -1 ? 'indefinidas' : repeat.remainingRuns + ' restantes')).join('\\n') : 'No hay recurrencias configuradas.'),
+        '\n  Cada ' + repeat.intervalMinutes + ' min · ' +
+        (Number(repeat.remainingRuns) === -1 ? 'indefinidas' : repeat.remainingRuns + ' restantes')).join('\n') : 'No hay recurrencias configuradas.'),
       [[
         { text: '🗓️ Agenda', callback_data: 'admin:scheduled' },
         { text: '📋 Listas', callback_data: 'admin:recipientlists' },
@@ -1419,9 +1419,9 @@ export default async function (query) {
       { text: '🔙 Panel', callback_data: 'admin:back' },
     ]);
     await answer(query);
-    await renderPanel('📋 LISTAS DE DESTINOS\\n\\n' +
+    await renderPanel('📋 LISTAS DE DESTINOS\n\n' +
       (rows.length ? 'Selecciona una lista para consultar sus destinos.' : 'No has creado listas todavía.') +
-      '\\n\\nCrea listas y administra sus destinos directamente con los botones.',
+      '\n\nCrea listas y administra sus destinos directamente con los botones.',
       keyboard);
     return;
   }
