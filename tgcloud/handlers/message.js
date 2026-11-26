@@ -1437,7 +1437,7 @@ export default async function (message) {
       if (!name || name.length > 60) return void await say(chatId, 'Uso: /list_create Nombre de la lista (máximo 60 caracteres).');
       const listKey = 'list_' + now().toString(36) + '_' + userId.toString(36);
       await db.insert(recipientLists).values({ listKey, name, createdBy: userId, createdAt: now() }).run();
-      await say(chatId, '✅ Lista creada: ' + name + '\\nClave: ' + listKey + '\\nAgrega destinos con /list_add ' + listKey + ' ID_CANAL.');
+      await say(chatId, '✅ Lista creada: ' + name + '\nClave: ' + listKey + '\nAgrega destinos con /list_add ' + listKey + ' ID_CANAL.');
       return;
     }
     if (command === '/list_add' || command === '/list_remove') {
@@ -1465,7 +1465,7 @@ export default async function (message) {
         const items = await db.select().from(recipientListItems).where(eq(recipientListItems.listKey, list.listKey)).all();
         lines.push('• ' + list.name + ' [' + list.listKey + '] — ' + items.length + ' destinos');
       }
-      await say(chatId, lines.length ? '📋 LISTAS DE DESTINOS\\n' + lines.join('\\n') : 'No tienes listas. Crea una con /list_create Nombre.');
+      await say(chatId, lines.length ? '📋 LISTAS DE DESTINOS\n' + lines.join('\n') : 'No tienes listas. Crea una con /list_create Nombre.');
       return;
     }
     if (command === '/schedule_add') {
@@ -1515,20 +1515,20 @@ export default async function (message) {
           nextRunAt: dueAt + interval, remainingRuns: remainingRuns === 0 ? -1 : remainingRuns, active: 1, createdAt: now(),
         }).run();
       }
-      await say(chatId, '✅ Programación creada.\\nOrigen: ' + sourceId + ' / mensaje ' + sourceMessageId +
-        '\\nDestinos: ' + destinations.length + '\\nFecha: ' + new Date(dueAt).toISOString() +
-        (repeatMinutes ? '\\nRepetición: cada ' + repeatMinutes + ' min' + (remainingRuns ? ' · ' + remainingRuns + ' repeticiones' : ' · indefinida') : '') +
-        '\\nClave: ' + scheduleKey);
-      await sendTopicNotification('distribution', '🗓️ PROGRAMACIÓN CREADA\\nClave: ' + scheduleKey + '\\nOrigen: ' + sourceId + '\\nDestinos: ' + destinations.join(', '));
+      await say(chatId, '✅ Programación creada.\nOrigen: ' + sourceId + ' / mensaje ' + sourceMessageId +
+        '\nDestinos: ' + destinations.length + '\nFecha: ' + new Date(dueAt).toISOString() +
+        (repeatMinutes ? '\nRepetición: cada ' + repeatMinutes + ' min' + (remainingRuns ? ' · ' + remainingRuns + ' repeticiones' : ' · indefinida') : '') +
+        '\nClave: ' + scheduleKey);
+      await sendTopicNotification('distribution', '🗓️ PROGRAMACIÓN CREADA\nClave: ' + scheduleKey + '\nOrigen: ' + sourceId + '\nDestinos: ' + destinations.join(', '));
       return;
     }
     if (command === '/schedule_list') {
       const rows = (await db.select().from(scheduledPublications).all())
         .filter(row => Number(row.createdBy) === userId || userId === OWNER_ID)
         .sort((a, b) => Number(a.dueAt) - Number(b.dueAt));
-      await say(chatId, rows.length ? '🗓️ PROGRAMACIONES\\n' + rows.map(row =>
+      await say(chatId, rows.length ? '🗓️ PROGRAMACIONES\n' + rows.map(row =>
         '• ' + row.scheduleKey + ' · ' + row.status + ' · ' + new Date(Number(row.dueAt)).toISOString() +
-        ' · ' + row.sourceChatId + '/' + row.sourceMessageId).join('\\n') :
+        ' · ' + row.sourceChatId + '/' + row.sourceMessageId).join('\n') :
         'No hay programaciones. Usa /schedule_add para crear una.');
       return;
     }
@@ -1547,7 +1547,7 @@ export default async function (message) {
           .where(eq(scheduledPublications.scheduleKey, scheduleKey)).run();
         if (repeat) await db.update(repeatJobs).set({ active: 1, nextRunAt: nextAt })
           .where(eq(repeatJobs.repeatKey, repeat.repeatKey)).run();
-        await say(chatId, '▶️ Programación reanudada: ' + scheduleKey + '\\nPróxima ejecución: ' + new Date(nextAt).toISOString());
+        await say(chatId, '▶️ Programación reanudada: ' + scheduleKey + '\nPróxima ejecución: ' + new Date(nextAt).toISOString());
       }
       return;
     }
@@ -1589,12 +1589,12 @@ export default async function (message) {
           if (exists) skipped++; else created++;
         }
       }
-      await say(chatId, '✅ DISTRIBUCIÓN MÚLTIPLE CONFIGURADA\\nOrígenes: ' + uniqueSources.length +
-        '\\nDestinos: ' + uniqueDestinations.length + '\\nRutas nuevas: ' + created +
-        '\\nOmitidas (duplicadas o mismo origen/destino): ' + skipped);
-      await sendTopicNotification('distribution', '🔀 DISTRIBUCIÓN MÚLTIPLE CREADA\\nAdministrador: ' + userId +
-        '\\nOrígenes: ' + uniqueSources.join(', ') + '\\nDestinos: ' + uniqueDestinations.join(', ') +
-        '\\nRutas nuevas: ' + created);
+      await say(chatId, '✅ DISTRIBUCIÓN MÚLTIPLE CONFIGURADA\nOrígenes: ' + uniqueSources.length +
+        '\nDestinos: ' + uniqueDestinations.length + '\nRutas nuevas: ' + created +
+        '\nOmitidas (duplicadas o mismo origen/destino): ' + skipped);
+      await sendTopicNotification('distribution', '🔀 DISTRIBUCIÓN MÚLTIPLE CREADA\nAdministrador: ' + userId +
+        '\nOrígenes: ' + uniqueSources.join(', ') + '\nDestinos: ' + uniqueDestinations.join(', ') +
+        '\nRutas nuevas: ' + created);
       return;
     }
     if (command === '/route_add') {
