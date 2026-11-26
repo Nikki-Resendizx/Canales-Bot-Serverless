@@ -1336,10 +1336,7 @@ export default async function (query) {
     keyboard.push([{ text: '🔁 Indefinida', callback_data: 'admin:scheduleruns:0' }, { text: '1 vez', callback_data: 'admin:scheduleruns:1' }, { text: '5 veces', callback_data: 'admin:scheduleruns:5' }]);
     keyboard.push([{ text: '➡️ Continuar', callback_data: 'admin:scheduleconfirm' }]);
     keyboard.push([{ text: '🔙 Cancelar', callback_data: 'admin:scheduled' }]);
-    await renderPanel('🗓️ CONFIGURAR PROGRAMACIÓN\
-Origen: ' + draft.sourceChatId + '\
-Destinos: ' + (draft.destinationIds || []).length + '\
-Modo: ' + String(draft.mode || 'copy').toUpperCase(), keyboard);
+    await renderPanel(['🗓️ CONFIGURAR PROGRAMACIÓN', 'Origen: ' + draft.sourceChatId, 'Destinos: ' + (draft.destinationIds || []).length, 'Modo: ' + String(draft.mode || 'copy').toUpperCase()].join('\n'), keyboard);
     return;
   }
   if (section === 'scheduleconfirm') {
