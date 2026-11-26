@@ -1215,7 +1215,7 @@ export default async function (query) {
     keyboard.push([{ text: '📋 Usar lista guardada', callback_data: 'admin:schedulefromlist' }]);
     keyboard.push([{ text: '🔙 Volver', callback_data: 'admin:scheduled' }]);
     await answer(query);
-    await renderPanel('➕ ASISTENTE DE PROGRAMACIÓN\\n\\n1. Selecciona el canal origen.\\n2. Marca uno o varios destinos.\\n3. Elige copiar o reenviar y la recurrencia.\\n4. Indica el ID del mensaje y la fecha/hora.\\n\\nNo necesitas comandos. La cola se procesa en ventanas de cinco minutos (UTC).', keyboard);
+    await renderPanel('➕ ASISTENTE DE PROGRAMACIÓN\n\n1. Selecciona el canal origen.\n2. Marca uno o varios destinos.\n3. Elige copiar o reenviar y la recurrencia.\n4. Indica el ID del mensaje y la fecha/hora.\n\nNo necesitas comandos. La cola se procesa en ventanas de cinco minutos (UTC).', keyboard);
     return;
   }
   if (section === 'schedulefrom') {
@@ -1236,7 +1236,7 @@ export default async function (query) {
     keyboard.push([{ text: '➡️ Continuar', callback_data: 'admin:scheduleconfirm' }]);
     keyboard.push([{ text: '🔙 Cancelar', callback_data: 'admin:scheduled' }]);
     await answer(query);
-    await renderPanel('🗓️ CONFIGURAR DESTINOS\\nOrigen: ' + sourceId + '\\n\\nMarca todos los destinos. Después elige el modo y la recurrencia.\\n\\nModo: COPIAR\\nRepetición: DESACTIVADA', keyboard);
+    await renderPanel('🗓️ CONFIGURAR DESTINOS\nOrigen: ' + sourceId + '\n\nMarca todos los destinos. Después elige el modo y la recurrencia.\n\nModo: COPIAR\nRepetición: DESACTIVADA', keyboard);
     return;
   }
   if (section === 'schedulefromlist') {
@@ -1320,7 +1320,7 @@ export default async function (query) {
     keyboard.push([{ text: '➡️ Continuar', callback_data: 'admin:scheduleconfirm' }]);
     keyboard.push([{ text: '🔙 Cancelar', callback_data: 'admin:scheduled' }]);
     await answer(query, 'Configuración guardada.');
-    await renderPanel('🗓️ CONFIGURAR PROGRAMACIÓN\\nOrigen: ' + draft.sourceChatId + '\\nDestinos seleccionados: ' + draft.destinationIds.length + '\\nModo: ' + draft.mode.toUpperCase() + '\\nIntervalo: ' + (draft.intervalMinutes ? draft.intervalMinutes + ' min' : 'Sin repetir') + '\\nRepeticiones: ' + (draft.intervalMinutes ? (draft.remainingRuns ? draft.remainingRuns : 'Indefinidas') : 'No aplica'), keyboard);
+    await renderPanel('🗓️ CONFIGURAR PROGRAMACIÓN\nOrigen: ' + draft.sourceChatId + '\nDestinos seleccionados: ' + draft.destinationIds.length + '\nModo: ' + draft.mode.toUpperCase() + '\nIntervalo: ' + (draft.intervalMinutes ? draft.intervalMinutes + ' min' : 'Sin repetir') + '\nRepeticiones: ' + (draft.intervalMinutes ? (draft.remainingRuns ? draft.remainingRuns : 'Indefinidas') : 'No aplica'), keyboard);
     return;
   }
   if (section === 'scheduleconfirm') {
@@ -1330,7 +1330,7 @@ export default async function (query) {
     if (!Number.isSafeInteger(Number(draft.sourceChatId)) || !(await canManageChannel(userId, Number(draft.sourceChatId))) || !Array.isArray(draft.destinationIds) || !draft.destinationIds.length) { await answer(query, 'Selecciona al menos un destino válido.', true); return; }
     for (const id of draft.destinationIds) if (!(await canManageChannel(userId, Number(id)))) { await answer(query, 'Uno de los destinos ya no está disponible.', true); return; }
     await answer(query);
-    await api.sendMessage({ chat_id: chatId, text: '[CBSCHEDULE:' + userId + ']\\nEnvía el ID del mensaje y la fecha/hora local de México en una línea, separados por |.\\nEjemplo: 1234 | 2026-12-01 18:30\\nLa fecha debe ser futura. La programación se procesa en ventanas de cinco minutos.', reply_markup: { force_reply: true, selective: true } });
+    await api.sendMessage({ chat_id: chatId, text: '[CBSCHEDULE:' + userId + ']\nEnvía el ID del mensaje y la fecha/hora local de México en una línea, separados por |.\nEjemplo: 1234 | 2026-12-01 18:30\nLa fecha debe ser futura. La programación se procesa en ventanas de cinco minutos.', reply_markup: { force_reply: true, selective: true } });
     await renderPanel('Último paso: responde al mensaje anterior con ID_MENSAJE | AAAA-MM-DD HH:mm.', [[{ text: '🔙 Volver a ajustar', callback_data: 'admin:schedulefrom:' + draft.sourceChatId }]]);
     return;
   }
@@ -1342,7 +1342,7 @@ export default async function (query) {
     let payload = {}; try { payload = JSON.parse(row.payloadJson || '{}'); } catch {}
     const repeat = await db.select().from(repeatJobs).where(eq(repeatJobs.scheduleKey, key)).get();
     await answer(query);
-    await renderPanel('🗓️ DETALLE DE PROGRAMACIÓN\\nClave: ' + key + '\\nEstado: ' + row.status + '\\nOrigen: ' + row.sourceChatId + ' · mensaje ' + row.sourceMessageId + '\\nDestinos: ' + targets.map(item => item.destinationChatId).join(', ') + '\\nModo: ' + String(payload.mode || 'copy').toUpperCase() + '\\nFecha: ' + new Date(Number(row.dueAt)).toLocaleString('es-MX', { timeZone: 'America/Mexico_City' }) + '\\nRecurrencia: ' + (repeat ? 'cada ' + repeat.intervalMinutes + ' min · ' + (Number(repeat.remainingRuns) === -1 ? 'indefinida' : repeat.remainingRuns + ' restantes') : 'No'), [
+    await renderPanel('🗓️ DETALLE DE PROGRAMACIÓN\nClave: ' + key + '\nEstado: ' + row.status + '\nOrigen: ' + row.sourceChatId + ' · mensaje ' + row.sourceMessageId + '\nDestinos: ' + targets.map(item => item.destinationChatId).join(', ') + '\nModo: ' + String(payload.mode || 'copy').toUpperCase() + '\nFecha: ' + new Date(Number(row.dueAt)).toLocaleString('es-MX', { timeZone: 'America/Mexico_City' }) + '\nRecurrencia: ' + (repeat ? 'cada ' + repeat.intervalMinutes + ' min · ' + (Number(repeat.remainingRuns) === -1 ? 'indefinida' : repeat.remainingRuns + ' restantes') : 'No'), [
       [{ text: row.status === 'paused' ? '▶️ Reanudar' : '⏸ Pausar', callback_data: 'admin:scheduleaction:' + key + ':' + (row.status === 'paused' ? 'resume' : 'pause') }, { text: '🗑️ Cancelar', callback_data: 'admin:scheduleaction:' + key + ':cancel' }],
       [{ text: '🔙 Volver a programaciones', callback_data: 'admin:scheduled' }],
     ]);
@@ -1416,7 +1416,7 @@ export default async function (query) {
     const items = await db.select().from(recipientListItems).where(eq(recipientListItems.listKey, key)).all();
     const channelRows = await managedChannels(userId);
     const names = new Map(channelRows.map(row => [Number(row.chatId), String(row.title || row.chatId)]));
-    const destinations = items.map(item => '• ' + (names.get(Number(item.chatId)) || item.chatId)).join('\\n');
+    const destinations = items.map(item => '• ' + (names.get(Number(item.chatId)) || item.chatId)).join('\n');
     const keyboard = [];
     for (let i = 0; i < channelRows.length; i += 3) keyboard.push(channelRows.slice(i, i + 3).map(channel => ({
       text: (items.some(item => Number(item.chatId) === Number(channel.chatId)) ? '🗑️ ' : '➕ ') + String(channel.title || channel.chatId).slice(0, 22),
@@ -1425,13 +1425,13 @@ export default async function (query) {
     keyboard.push([{ text: '✏️ Renombrar lista', callback_data: 'admin:listrename:' + key }, { text: '🗑️ Eliminar lista', callback_data: 'admin:listdelete:' + key }]);
     keyboard.push([{ text: '📋 Otras listas', callback_data: 'admin:recipientlists' }, { text: '🔙 Panel', callback_data: 'admin:back' }]);
     await answer(query);
-    await renderPanel('📋 ' + list.name + '\\nClave: ' + key + '\\nDestinos: ' + items.length + '\\n\\n' + (destinations || 'La lista está vacía.') + '\\n\\nPulsa un canal para agregarlo o quitarlo de esta lista.', keyboard);
+    await renderPanel('📋 ' + list.name + '\nClave: ' + key + '\nDestinos: ' + items.length + '\n\n' + (destinations || 'La lista está vacía.') + '\n\nPulsa un canal para agregarlo o quitarlo de esta lista.', keyboard);
     return;
   }
   if (section === 'listhelp') {
     await answer(query);
-    await api.sendMessage({ chat_id: chatId, text: '[CBLISTCREATE]\\nEscribe el nombre de la nueva lista (máximo 60 caracteres).', reply_markup: { force_reply: true, selective: true } });
-    await renderPanel('➕ CREAR LISTA DE DESTINOS\\n\\nDespués de escribir el nombre, podrás seleccionar los canales con botones para agregarlos o quitarlos. Cada lista se puede reutilizar en las programaciones.', [[{ text: '📋 Ver listas', callback_data: 'admin:recipientlists' }, { text: '🗓️ Programaciones', callback_data: 'admin:scheduled' }], [{ text: '🔙 Panel', callback_data: 'admin:back' }]]);
+    await api.sendMessage({ chat_id: chatId, text: '[CBLISTCREATE]\nEscribe el nombre de la nueva lista (máximo 60 caracteres).', reply_markup: { force_reply: true, selective: true } });
+    await renderPanel('➕ CREAR LISTA DE DESTINOS\n\nDespués de escribir el nombre, podrás seleccionar los canales con botones para agregarlos o quitarlos. Cada lista se puede reutilizar en las programaciones.', [[{ text: '📋 Ver listas', callback_data: 'admin:recipientlists' }, { text: '🗓️ Programaciones', callback_data: 'admin:scheduled' }], [{ text: '🔙 Panel', callback_data: 'admin:back' }]]);
     return;
   }
   if (section === 'listdesttoggle') {
@@ -1450,7 +1450,7 @@ export default async function (query) {
     const key = String(parts[2] || ''); const list = await db.select().from(recipientLists).where(eq(recipientLists.listKey, key)).get();
     if (!list || (Number(list.createdBy) !== userId && userId !== OWNER_ID)) { await answer(query, 'Lista no disponible.', true); return; }
     await answer(query);
-    await api.sendMessage({ chat_id: chatId, text: '[CBLISTRENAME:' + key + ']\\nEscribe el nuevo nombre (máximo 60 caracteres).', reply_markup: { force_reply: true, selective: true } });
+    await api.sendMessage({ chat_id: chatId, text: '[CBLISTRENAME:' + key + ']\nEscribe el nuevo nombre (máximo 60 caracteres).', reply_markup: { force_reply: true, selective: true } });
     await renderPanel('Renombrando «' + list.name + '».', [[{ text: '🔙 Volver', callback_data: 'admin:recipientlist:' + key }]]);
     return;
   }
