@@ -1323,7 +1323,7 @@ export default async function (query) {
     await renderPanel('🗓️ CONFIGURAR PROGRAMACIÓN\nOrigen: ' + draft.sourceChatId + '\nDestinos seleccionados: ' + draft.destinationIds.length + '\nModo: ' + draft.mode.toUpperCase() + '\nIntervalo: ' + (draft.intervalMinutes ? draft.intervalMinutes + ' min' : 'Sin repetir') + '\nRepeticiones: ' + (draft.intervalMinutes ? (draft.remainingRuns ? draft.remainingRuns : 'Indefinidas') : 'No aplica'), keyboard);
     return;
   }
-  if (section === 'scheduleconfirm') {
+  if (section === 'scheduleedit') {\n    const row = await db.select().from(botTexts).where(eq(botTexts.textKey, 'ui_schedule_' + userId)).get();\n    let draft = {}; try { draft = JSON.parse(row?.body || '{}'); } catch {}\n    if (!Number.isSafeInteger(Number(draft.sourceChatId))) { await answer(query, 'La sesión del asistente expiró.', true); return; }\n    await answer(query);\n    const channels = (await managedChannels(userId)).filter(channel => Number(channel.chatId) !== Number(draft.sourceChatId));\n    const keyboard = [];\n    for (let i = 0; i < channels.length; i += 3) keyboard.push(channels.slice(i, i + 3).map(channel => ({ text: (draft.destinationIds?.includes(Number(channel.chatId)) ? '✅ ' : '⬜ ') + String(channel.title || channel.chatId).slice(0, 22), callback_data: 'admin:scheduledesttoggle:' + Number(channel.chatId) })));\n    keyboard.push([{ text: (draft.mode === 'copy' ? '✅ ' : '') + '📄 Copiar', callback_data: 'admin:schedulemode:copy' }, { text: (draft.mode === 'forward' ? '✅ ' : '') + '↪️ Reenviar', callback_data: 'admin:schedulemode:forward' }]);\n    keyboard.push([{ text: '⏱ Sin repetir', callback_data: 'admin:scheduleinterval:0' }, { text: '15 min', callback_data: 'admin:scheduleinterval:15' }, { text: '1 h', callback_data: 'admin:scheduleinterval:60' }]);\n    keyboard.push([{ text: '🔁 Indefinida', callback_data: 'admin:scheduleruns:0' }, { text: '1 vez', callback_data: 'admin:scheduleruns:1' }, { text: '5 veces', callback_data: 'admin:scheduleruns:5' }]);\n    keyboard.push([{ text: '➡️ Continuar', callback_data: 'admin:scheduleconfirm' }]);\n    keyboard.push([{ text: '🔙 Cancelar', callback_data: 'admin:scheduled' }]);\n    await renderPanel('🗓️ CONFIGURAR PROGRAMACIÓN\\nOrigen: ' + draft.sourceChatId + '\\nDestinos: ' + (draft.destinationIds || []).length + '\\nModo: ' + String(draft.mode || 'copy').toUpperCase(), keyboard);\n    return;\n  }\n  if (section === 'scheduleconfirm') {
     const row = await db.select().from(botTexts).where(eq(botTexts.textKey, 'ui_schedule_' + userId)).get();
     let draft = {};
     try { draft = JSON.parse(row?.body || '{}'); } catch {}
@@ -1331,7 +1331,7 @@ export default async function (query) {
     for (const id of draft.destinationIds) if (!(await canManageChannel(userId, Number(id)))) { await answer(query, 'Uno de los destinos ya no está disponible.', true); return; }
     await answer(query);
     await api.sendMessage({ chat_id: chatId, text: '[CBSCHEDULE:' + userId + ']\nEnvía el ID del mensaje y la fecha/hora local de México en una línea, separados por |.\nEjemplo: 1234 | 2026-12-01 18:30\nLa fecha debe ser futura. La programación se procesa en ventanas de cinco minutos.', reply_markup: { force_reply: true, selective: true } });
-    await renderPanel('Último paso: responde al mensaje anterior con ID_MENSAJE | AAAA-MM-DD HH:mm.', [[{ text: '🔙 Volver a ajustar', callback_data: 'admin:schedulefrom:' + draft.sourceChatId }]]);
+    await renderPanel('Último paso: responde al mensaje anterior con ID_MENSAJE | AAAA-MM-DD HH:mm.', [[{ text: '🔙 Volver a ajustar', callback_data: 'admin:scheduleedit' }]]);
     return;
   }
   if (section === 'scheduleview') {
@@ -1573,7 +1573,7 @@ export default async function (query) {
     await renderPanel('🔀 DISTRIBUCIÓN MÚLTIPLE · ORÍGENES\n\nMarca uno o varios canales de origen. Después podrás seleccionar los destinos y crear todas las combinaciones automáticamente.', keyboard);
     return;
   }
-  if (section === 'routegroupsourcetoggle' || section === 'routegroupsourcenext' || section === 'routegroupdesttoggle' || section === 'routegroupcreate') {
+  if (section === 'routegroupsourcetoggle' || section === 'routegroupsourcenext' || section === 'routegroupsourceback' || section === 'routegroupdesttoggle' || section === 'routegroupcreate') {
     const draftRow = await db.select().from(botTexts).where(eq(botTexts.textKey, 'ui_routegroup_' + userId)).get();
     let draft = { sources: [], destinations: [] }; try { draft = JSON.parse(draftRow?.body || '{}'); } catch {}
     if (!Array.isArray(draft.sources)) draft.sources = [];
@@ -1592,7 +1592,7 @@ export default async function (query) {
       const keyboard = [];
       for (let i = 0; i < rows.length; i += 3) keyboard.push(rows.slice(i, i + 3).map(channel => ({ text: '⬜ ' + String(channel.title || channel.chatId).slice(0, 24), callback_data: 'admin:routegroupdesttoggle:' + Number(channel.chatId) })));
       keyboard.push([{ text: '✅ Crear matriz (' + draft.sources.length + ' orígenes · ' + draft.destinations.length + ' destinos)', callback_data: 'admin:routegroupcreate' }]);
-      keyboard.push([{ text: '🔙 Volver a orígenes', callback_data: 'admin:routegrouphelp' }]);
+      keyboard.push([{ text: '🔙 Volver a orígenes', callback_data: 'admin:routegroupsourceback' }]);
       await db.update(botTexts).set({ body: JSON.stringify(draft), updatedBy: userId, updatedAt: Date.now() }).where(eq(botTexts.textKey, 'ui_routegroup_' + userId)).run();
       await answer(query);
       await renderPanel('🔀 DISTRIBUCIÓN MÚLTIPLE · DESTINOS\n\nOrígenes seleccionados: ' + draft.sources.join(', ') + '\nMarca uno o varios destinos. Se crearán todas las combinaciones origen → destino.', keyboard);
