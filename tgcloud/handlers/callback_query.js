@@ -266,7 +266,7 @@ export default async function (query) {
   const renderPanel = async (text, keyboard = null) => sendPanel(chatId, text, keyboard || await buildMainMenu(), message?.message_id);
 
   if (data.startsWith('lookup:')) {
-    if (!userId || chatId !== userId || !(await isAdmin(userId))) {
+    if (!userId || !Number.isSafeInteger(chatId) || !(await isAdmin(userId))) {
       await answer(query, '⛔ Solo administradores pueden consultar estas listas.', true);
       return;
     }
