@@ -87,6 +87,21 @@ async function ensureSettings(channelId) {
   }
   return row;
 }
+const INFO_TEXT_DEFAULTS = {
+  info: '👤 <b>INFORMACIÓN DEL USUARIO</b>\n\n<b>Nombre:</b> {mencion}\n<b>Usuario:</b> {usuario}\n<b>ID:</b> <code>{id}</code>\n<b>Biografía:</b> {biografia}\n<b>Idioma:</b> {idioma}\n<b>Premium:</b> {premium}\n\n<b>Chats donde pertenece ({total_chats}):</b>\n{chats}\n\n<b>Solicitudes pendientes ({total_solicitudes}):</b>\n{solicitudes}\n\n<b>BLACKLIST:</b> {blacklist}\n<b>Motivo:</b> {motivo}',
+  chatinfo: '💬 <b>INFORMACIÓN DEL CHAT</b>\n\n<b>Nombre:</b> {nombre}\n<b>Tipo:</b> {tipo}\n<b>ID:</b> <code>{id}</code>\n<b>Biografía:</b> {biografia}\n<b>Miembros:</b> {miembros}\n<b>Enlace:</b> {enlace_html}',
+};
+async function getInfoTextTemplate(key) {
+  try {
+    const row = await db.select().from(botTexts).where(eq(botTexts.textKey, 'info_template_' + key)).get();
+    return row?.body || INFO_TEXT_DEFAULTS[key];
+  } catch { return INFO_TEXT_DEFAULTS[key]; }
+}
+function applyInfoTextTemplate(template, values) {
+  return String(template || '').replace(/\\{([a-z_]+)\\}/gi, (match, key) =>
+    Object.hasOwn(values, key.toLowerCase()) ? String(values[key.toLowerCase()] ?? '') : match);
+}
+
 const NAV_DEFAULTS = {
   panel_title: '⚙️ PANEL DE ADMINISTRACIÓN',
   panel_description: 'Selecciona una sección:',
@@ -656,6 +671,24 @@ export default async function (message) {
       await db.insert(botTexts).values({ textKey: key, body: text, updatedBy: userId, updatedAt: now() })
         .onConflictDoUpdate({ target: botTexts.textKey, set: { body: text, updatedBy: userId, updatedAt: now() } }).run();
       await say(chatId, '✅ Etiqueta de navegación actualizada: ' + key + '.');
+    }
+    return;
+  }
+
+  const infoTemplatePrompt = String(message.reply_to_message?.text ?? '');
+  const infoTemplateMatch = infoTemplatePrompt.match(/\\[CBINFOTEMPLATE:(info|chatinfo)\\]/i);
+  if (infoTemplateMatch && isPrivate && await isAdmin(userId) && text && !text.startsWith('/')) {
+    const key = infoTemplateMatch[1].toLowerCase();
+    const textKey = 'info_template_' + key;
+    if (text.trim().toLowerCase() === 'default') {
+      await db.delete(botTexts).where(eq(botTexts.textKey, textKey)).run();
+      await say(chatId, '✅ Plantilla de /' + key + ' restaurada a su formato original.');
+    } else {
+      if (text.length > 3500) { await say(chatId, '⚠️ La plantilla no puede superar 3500 caracteres.'); return; }
+      const body = normalizeTextLineBreaks(text);
+      await db.insert(botTexts).values({ textKey, body, updatedBy: userId, updatedAt: now() })
+        .onConflictDoUpdate({ target: botTexts.textKey, set: { body, updatedBy: userId, updatedAt: now() } }).run();
+      await say(chatId, '✅ Plantilla textual de /' + key + ' actualizada.');
     }
     return;
   }
@@ -1305,34 +1338,29 @@ export default async function (message) {
         const chat = channelRows.find(item => Number(item.chatId) === Number(row.chatId));
         return '• ' + escapeHtml(chat?.title || row.chatId) + ' (' + row.chatId + ') — solicitud pendiente';
       });
-      const lines = [
-        '👤 <b>INFORMACIÓN DEL USUARIO</b>',
-        '',
-        '<b>Nombre:</b> <a href="tg://user?id=' + targetId + '">' + escapeHtml(name) + '</a>',
-        '<b>Usuario:</b> ' + (username ? '@' + escapeHtml(username) : 'Sin username'),
-        '<b>ID:</b> <code>' + targetId + '</code>',
-        '<b>Biografía:</b> ' + escapeHtml(bio),
-        '<b>Idioma:</b> No disponible mediante consulta global de Telegram',
-        '<b>Premium:</b> No disponible mediante consulta global de Telegram',
-        '',
-        '<b>Chats registrados donde pertenece (' + memberships.length + '):</b>',
-        memberships.length ? memberships.join('\n') : 'Ninguno confirmado',
-        '',
-        '<b>Solicitudes pendientes (' + pending.length + '):</b>',
-        requestLines.length ? requestLines.join('\n') : 'Ninguna',
-        '',
-        '<b>BLACKLIST:</b> ' + (ban ? '🚫 SÍ\n<b>Motivo:</b> ' + escapeHtml(ban.reason || 'Sin motivo especificado') : '✅ NO'),
-      ];
+      const renderedInfo = applyInfoTextTemplate(await getInfoTextTemplate('info'), {
+        nombre: escapeHtml(name),
+        mencion: '<a href="tg://user?id=' + targetId + '">' + escapeHtml(name) + '</a>',
+        usuario: username ? '@' + escapeHtml(username) : 'Sin username',
+        id: targetId, biografia: escapeHtml(bio),
+        idioma: 'No disponible mediante consulta global de Telegram',
+        premium: 'No disponible mediante consulta global de Telegram',
+        chats: memberships.length ? memberships.join('\\n') : 'Ninguno confirmado',
+        total_chats: memberships.length, grupos: memberships.length, canales: memberships.length,
+        solicitudes: requestLines.length ? requestLines.join('\\n') : 'Ninguna',
+        total_solicitudes: pending.length, blacklist: ban ? '🚫 SÍ' : '✅ NO',
+        motivo: ban ? escapeHtml(ban.reason || 'Sin motivo especificado') : 'No aplica',
+      });
       let photoId = '';
       try {
         const photos = await api.getUserProfilePhotos({ user_id: targetId, limit: 1 });
         photoId = photos?.photos?.[0]?.at(-1)?.file_id || '';
       } catch (error) { console.log('No se pudo obtener foto de perfil', targetId, String(error)); }
       if (photoId) {
-        await api.sendPhoto({ chat_id: chatId, photo: photoId, caption: lines.join('\n').slice(0, 1024), parse_mode: 'HTML' });
-        if (lines.join('\n').length > 1024) await api.sendMessage({ chat_id: chatId, text: lines.join('\n').slice(1024), parse_mode: 'HTML' });
+        await api.sendPhoto({ chat_id: chatId, photo: photoId, caption: renderedInfo.slice(0, 1024), parse_mode: 'HTML' });
+        if (renderedInfo.length > 1024) await api.sendMessage({ chat_id: chatId, text: renderedInfo.slice(1024), parse_mode: 'HTML' });
       } else {
-        await api.sendMessage({ chat_id: chatId, text: lines.join('\n'), parse_mode: 'HTML' });
+        await api.sendMessage({ chat_id: chatId, text: renderedInfo, parse_mode: 'HTML' });
       }
       return;
     }
@@ -1354,16 +1382,17 @@ export default async function (message) {
         try { link = await api.exportChatInviteLink({ chat_id: targetId }); } catch (error) { console.log('No se pudo exportar enlace privado', targetId, String(error)); }
       }
       const description = target.description || target.bio || 'No disponible';
-      const textInfo = [
-        '💬 <b>INFORMACIÓN DEL CHAT</b>',
-        '',
-        '<b>Nombre:</b> ' + escapeHtml(target.title || target.username || 'Sin nombre'),
-        '<b>Tipo:</b> ' + (typeNames[target.type] || escapeHtml(target.type || 'No disponible')),
-        '<b>ID:</b> <code>' + targetId + '</code>',
-        '<b>Biografía:</b> ' + escapeHtml(description),
-        '<b>Miembros:</b> ' + (count == null ? 'No disponible' : Number(count).toLocaleString('es-MX')),
-        '<b>Enlace:</b> ' + (link ? '<a href="' + escapeHtml(link) + '">' + escapeHtml(link) + '</a>' : 'No disponible; el bot necesita permiso para invitar usuarios si el chat es privado'),
-      ].join('\n');
+      const chatName = target.title || target.username || 'Sin nombre';
+      const chatType = typeNames[target.type] || target.type || 'No disponible';
+      const memberCount = count == null ? 'No disponible' : Number(count).toLocaleString('es-MX');
+      const linkText = link || 'No disponible; el bot necesita permiso para invitar usuarios si el chat es privado';
+      const textInfo = applyInfoTextTemplate(await getInfoTextTemplate('chatinfo'), {
+        nombre: escapeHtml(chatName), tipo: escapeHtml(chatType), id: targetId,
+        biografia: escapeHtml(description), miembros: memberCount,
+        enlace: escapeHtml(linkText),
+        enlace_html: link ? '<a href="' + escapeHtml(link) + '">' + escapeHtml(link) + '</a>' : escapeHtml(linkText),
+        username: target.username ? '@' + escapeHtml(target.username) : '',
+      });
       const keyboard = [
         [{ text: '🛡️ VER ADMINISTRADORES', callback_data: 'lookup:admins:' + targetId }],
         [{ text: '👥 VER USUARIOS DETECTADOS', callback_data: 'lookup:members:' + targetId + ':0' }],
