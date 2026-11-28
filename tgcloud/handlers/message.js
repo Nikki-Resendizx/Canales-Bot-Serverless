@@ -98,7 +98,7 @@ async function getInfoTextTemplate(key) {
   } catch { return INFO_TEXT_DEFAULTS[key]; }
 }
 function applyInfoTextTemplate(template, values) {
-  return String(template || '').replace(/\\{([a-z_]+)\\}/gi, (match, key) =>
+  return String(template || '').replace(/\{([a-z_]+)\}/gi, (match, key) =>
     Object.hasOwn(values, key.toLowerCase()) ? String(values[key.toLowerCase()] ?? '') : match);
 }
 
