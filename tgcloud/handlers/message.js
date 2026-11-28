@@ -1368,9 +1368,22 @@ export default async function (message) {
         [{ text: '🛡️ VER ADMINISTRADORES', callback_data: 'lookup:admins:' + targetId }],
         [{ text: '👥 VER USUARIOS DETECTADOS', callback_data: 'lookup:members:' + targetId + ':0' }],
       ];
-      const photoId = target.photo?.big_file_id || target.photo?.small_file_id;
-      if (photoId) await api.sendPhoto({ chat_id: chatId, photo: photoId, caption: textInfo.slice(0, 1024), parse_mode: 'HTML', reply_markup: { inline_keyboard: keyboard } });
-      else await api.sendMessage({ chat_id: chatId, text: textInfo, parse_mode: 'HTML', reply_markup: { inline_keyboard: keyboard } });
+      // getChat devuelve ChatPhoto como objeto; sendPhoto solo acepta un file_id (string).
+      const rawPhotoId = target.photo?.big_file_id ?? target.photo?.small_file_id ?? null;
+      const photoId = typeof rawPhotoId === 'string' && rawPhotoId.trim() ? rawPhotoId.trim() : null;
+      let sentWithPhoto = false;
+      if (photoId) {
+        try {
+          await api.sendPhoto({ chat_id: chatId, photo: photoId, caption: textInfo.slice(0, 1024), parse_mode: 'HTML', reply_markup: { inline_keyboard: keyboard } });
+          sentWithPhoto = true;
+        } catch (photoError) {
+          // La foto es opcional: nunca debe impedir entregar la ficha y sus botones.
+          console.log('No se pudo enviar la foto de /chatinfo; se enviará texto', targetId, String(photoError));
+        }
+      }
+      if (!sentWithPhoto) {
+        await api.sendMessage({ chat_id: chatId, text: textInfo, parse_mode: 'HTML', reply_markup: { inline_keyboard: keyboard } });
+      }
       return;
     }
     if (command === '/channels') {
