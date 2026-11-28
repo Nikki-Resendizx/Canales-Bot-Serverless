@@ -494,6 +494,7 @@ export default async function (query) {
 
   if (section === 'settings') {
     const keyboard = [
+      [{ text: '🧩 PLANTILLAS /INFO Y /CHATINFO', callback_data: 'admin:infotemplates' }],
       [{ text: '🚷 AUTOBAN', callback_data: 'admin:autoban' }],
       [{ text: '🗑️ LIMPIEZA DE CACHÉ', callback_data: 'admin:cacheclear' }],
     ];
@@ -2186,6 +2187,42 @@ export default async function (query) {
   }
 
   await answer(query);
+  if (section === 'infotemplates') {
+    const rows = [
+      [{ text: '👤 Plantilla de /info', callback_data: 'admin:infotemplateedit:info' }],
+      [{ text: '💬 Plantilla de /chatinfo', callback_data: 'admin:infotemplateedit:chatinfo' }],
+      await backRow(),
+    ];
+    const infoTpl = await db.select().from(botTexts).where(eq(botTexts.textKey, 'info_template_info')).get();
+    const chatTpl = await db.select().from(botTexts).where(eq(botTexts.textKey, 'info_template_chatinfo')).get();
+    await renderPanel('🧩 PLANTILLAS DE FICHAS\n\n/info: ' + (infoTpl ? 'Personalizada' : 'Predeterminada') +
+      '\n/chatinfo: ' + (chatTpl ? 'Personalizada' : 'Predeterminada') +
+      '\n\nEdita el texto que acompaña la información. Las variables se sustituyen automáticamente con los datos consultados. Escribe DEFAULT para restaurar la plantilla original.', rows);
+    return;
+  }
+  if (section === 'infotemplateedit') {
+    const key = String(parts[2] || '').toLowerCase();
+    if (!['info', 'chatinfo'].includes(key)) {
+      await renderPanel('⚠️ Plantilla no válida.', [[{ text: '🔙 Volver', callback_data: 'admin:infotemplates' }]]);
+      return;
+    }
+    const textKey = 'info_template_' + key;
+    const saved = await db.select().from(botTexts).where(eq(botTexts.textKey, textKey)).get();
+    const defaults = {
+      info: '👤 <b>INFORMACIÓN DEL USUARIO</b>\n\n<b>Nombre:</b> {mencion}\n<b>Usuario:</b> {usuario}\n<b>ID:</b> <code>{id}</code>\n<b>Biografía:</b> {biografia}\n<b>Idioma:</b> {idioma}\n<b>Premium:</b> {premium}\n\n<b>Chats ({total_chats}):</b>\n{chats}\n\n<b>Solicitudes ({total_solicitudes}):</b>\n{solicitudes}\n\n<b>BLACKLIST:</b> {blacklist}\n<b>Motivo:</b> {motivo}',
+      chatinfo: '💬 <b>INFORMACIÓN DEL CHAT</b>\n\n<b>Nombre:</b> {nombre}\n<b>Tipo:</b> {tipo}\n<b>ID:</b> <code>{id}</code>\n<b>Biografía:</b> {biografia}\n<b>Miembros:</b> {miembros}\n<b>Enlace:</b> {enlace_html}',
+    };
+    await api.sendMessage({ chat_id: chatId, text: '[CBINFOTEMPLATE:' + key + ']\n✍️ Envía la plantilla completa. Usa las variables disponibles que aparecen en la ayuda de esta sección. Escribe DEFAULT para restaurar.', reply_markup: { force_reply: true, selective: true } });
+    await renderPanel('✏️ EDITAR PLANTILLA /' + key + '\n\nActual: ' + (saved ? 'Personalizada' : 'Predeterminada') +
+      '\n\nVariables: ' + (key === 'info'
+        ? '{nombre}, {mencion}, {usuario}, {id}, {biografia}, {idioma}, {premium}, {chats}, {total_chats}, {grupos}, {canales}, {solicitudes}, {total_solicitudes}, {blacklist}, {motivo}'
+        : '{nombre}, {tipo}, {id}, {biografia}, {miembros}, {enlace}, {enlace_html}, {username}') +
+      '\n\nFormato HTML permitido. Puedes usar saltos de línea. Máximo 3500 caracteres.', [
+      [{ text: '🔙 Volver a plantillas', callback_data: 'admin:infotemplates' }],
+    ]);
+    return;
+  }
+
   if (section === 'navigation') {
     const keys = Object.keys(NAV_DEFAULTS).filter(key => !['close'].includes(key));
     const keyboard = [];
