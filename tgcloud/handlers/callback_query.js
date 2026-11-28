@@ -265,6 +265,61 @@ export default async function (query) {
   const chatId = Number(message?.chat?.id);
   const renderPanel = async (text, keyboard = null) => sendPanel(chatId, text, keyboard || await buildMainMenu(), message?.message_id);
 
+  if (data.startsWith('lookup:')) {
+    if (!userId || chatId !== userId || !(await isAdmin(userId))) {
+      await answer(query, '⛔ Solo administradores pueden consultar estas listas.', true);
+      return;
+    }
+    const parts = data.split(':');
+    const kind = parts[1];
+    const targetChatId = Number(parts[2]);
+    if (!Number.isSafeInteger(targetChatId) || targetChatId === 0) {
+      await answer(query, 'ID de chat no válido.', true);
+      return;
+    }
+    await answer(query);
+    const target = await api.getChat({ chat_id: targetChatId });
+    if (kind === 'admins') {
+      const adminsList = await api.getChatAdministrators({ chat_id: targetChatId });
+      const lines = adminsList.map((item, index) => {
+        const person = item.user || {};
+        const label = [person.first_name, person.last_name].filter(Boolean).join(' ') || person.username || person.id;
+        const role = item.status === 'creator' ? 'Propietario' : 'Administrador';
+        return (index + 1) + '. ' + escapeHtml(label) + (person.username ? ' (@' + escapeHtml(person.username) + ')' : '') + ' — ' + role + ' · ID ' + person.id;
+      });
+      await api.sendMessage({ chat_id: chatId, text: '🛡️ <b>ADMINISTRADORES · ' + escapeHtml(target.title || targetChatId) + '</b>\n\n' + (lines.join('\n') || 'No se encontraron administradores.'), parse_mode: 'HTML' });
+      return;
+    }
+    if (kind === 'members') {
+      const page = Math.max(0, Math.min(500, Number(parts[3]) || 0));
+      const known = await db.select().from(knownUsers).all();
+      const start = page * 20;
+      const batch = known.slice(start, start + 20);
+      const active = [];
+      for (const person of batch) {
+        try {
+          const member = await api.getChatMember({ chat_id: targetChatId, user_id: Number(person.userId) });
+          if (['creator','administrator','member','restricted'].includes(String(member?.status))) {
+            active.push('• ' + escapeHtml(person.displayName || person.username || person.userId) +
+              (person.username ? ' (@' + escapeHtml(person.username) + ')' : '') + ' · ID <code>' + person.userId + '</code>');
+          }
+        } catch {}
+      }
+      const totalPages = Math.ceil(known.length / 20);
+      const keyboard = [];
+      const nav = [];
+      if (page > 0) nav.push({ text: '⬅️ Anterior', callback_data: 'lookup:members:' + targetChatId + ':' + (page - 1) });
+      if (page + 1 < totalPages) nav.push({ text: 'Siguiente ➡️', callback_data: 'lookup:members:' + targetChatId + ':' + (page + 1) });
+      if (nav.length) keyboard.push(nav);
+      const title = '👥 <b>USUARIOS REGISTRADOS Y CONFIRMADOS</b>\n<b>' + escapeHtml(target.title || targetChatId) + '</b>\nPágina ' + (page + 1) + '/' + Math.max(1,totalPages);
+      const note = '\n\n<i>Solo muestra usuarios conocidos por el bot cuya pertenencia se pudo confirmar. Telegram no permite a los bots descargar la lista completa de miembros.</i>';
+      await api.sendMessage({ chat_id: chatId, text: title + '\n\n' + (active.join('\n') || 'No hay usuarios confirmados en esta página.') + note, parse_mode: 'HTML', reply_markup: keyboard.length ? { inline_keyboard: keyboard } : undefined });
+      return;
+    }
+    await api.sendMessage({ chat_id: chatId, text: 'Consulta no reconocida.' });
+    return;
+  }
+
   if (data.startsWith('captcha:')) {
     const [, rawChatId, rawUserId, chosenAnswer] = data.split(':');
     const targetChatId = Number(rawChatId);
