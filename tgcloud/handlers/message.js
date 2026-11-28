@@ -287,7 +287,7 @@ const HELP = [
   '/start — iniciar el bot y mostrar el menú de bienvenida',
   '/help — mostrar esta guía completa de comandos',
   '/admin — abrir el panel privado de administración (solo administradores autorizados)',
-  '/channels — listar los canales registrados y disponibles para ti',
+  '/channels — listar los canales registrados y disponibles para ti',\n  '/info ID|@usuario — consultar información de un usuario conocido por el bot',\n  '/chatinfo ID_CHAT — consultar información de un grupo o canal',
   '/addchannel ID [título] — registrar un canal (el bot debe estar agregado como administrador)',
   '/delchannel ID — eliminar el registro de un canal',
   '/welcome ID on|off — activar o desactivar bienvenida por canal',
@@ -1265,6 +1265,112 @@ export default async function (message) {
   const command = commandRaw.split('@')[0].toLowerCase();
   const argText = text.slice(commandRaw.length).trim();
   try {
+    if (command === '/info') {
+      const rawTarget = String(args[0] || '').trim();
+      if (!rawTarget) return void await say(chatId, 'Uso: /info ID o /info @usuario');
+      let targetId = parseId(rawTarget);
+      let known = null;
+      if (!Number.isSafeInteger(targetId) || targetId <= 0) {
+        const username = rawTarget.replace(/^@/, '').toLowerCase();
+        if (!/^[a-z0-9_]{5,32}$/i.test(username)) return void await say(chatId, '⚠️ Identificador no válido. Usa un ID numérico o @username.');
+        known = await db.select().from(knownUsers).where(eq(knownUsers.username, username)).get();
+        if (!known) return void await say(chatId, '⚠️ No encuentro ese @usuario en los registros del bot. Telegram no permite buscar perfiles arbitrarios por username. Prueba con su ID o espera a que interactúe con el bot.');
+        targetId = Number(known.userId);
+      } else {
+        known = await db.select().from(knownUsers).where(eq(knownUsers.userId, targetId)).get();
+      }
+      let profile = null;
+      try { profile = await api.getChat({ chat_id: targetId }); } catch (error) {
+        if (!known) return void await say(chatId, '⚠️ Telegram no permite consultar ese perfil. El usuario debe haber interactuado con el bot o estar registrado previamente.');
+        console.log('No se pudo obtener el perfil de usuario', targetId, String(error));
+      }
+      const ban = await db.select().from(globalBans).where(eq(globalBans.userId, targetId)).get();
+      const [requests, channelRows] = await Promise.all([db.select().from(joinRequests).all(), db.select().from(channels).all()]);
+      const memberships = [];
+      for (const channel of channelRows) {
+        try {
+          const member = await api.getChatMember({ chat_id: Number(channel.chatId), user_id: targetId });
+          if (['creator','administrator','member','restricted'].includes(String(member?.status))) {
+            memberships.push('• ' + escapeHtml(channel.title || channel.chatId) + ' (' + channel.chatId + ') — miembro');
+          }
+        } catch {}
+      }
+      const pending = requests.filter(row => Number(row.userId) === targetId && row.status === 'pending');
+      const name = [profile?.first_name, profile?.last_name].filter(Boolean).join(' ') || known?.displayName || 'No disponible';
+      const username = profile?.username || known?.username || '';
+      const bio = profile?.bio || 'No disponible';
+      const requestLines = pending.map(row => {
+        const chat = channelRows.find(item => Number(item.chatId) === Number(row.chatId));
+        return '• ' + escapeHtml(chat?.title || row.chatId) + ' (' + row.chatId + ') — solicitud pendiente';
+      });
+      const lines = [
+        '👤 <b>INFORMACIÓN DEL USUARIO</b>',
+        '',
+        '<b>Nombre:</b> <a href="tg://user?id=' + targetId + '">' + escapeHtml(name) + '</a>',
+        '<b>Usuario:</b> ' + (username ? '@' + escapeHtml(username) : 'Sin username'),
+        '<b>ID:</b> <code>' + targetId + '</code>',
+        '<b>Biografía:</b> ' + escapeHtml(bio),
+        '<b>Idioma:</b> No disponible mediante consulta global de Telegram',
+        '<b>Premium:</b> No disponible mediante consulta global de Telegram',
+        '',
+        '<b>Chats registrados donde pertenece (' + memberships.length + '):</b>',
+        memberships.length ? memberships.join('\n') : 'Ninguno confirmado',
+        '',
+        '<b>Solicitudes pendientes (' + pending.length + '):</b>',
+        requestLines.length ? requestLines.join('\n') : 'Ninguna',
+        '',
+        '<b>BLACKLIST:</b> ' + (ban ? '🚫 SÍ\n<b>Motivo:</b> ' + escapeHtml(ban.reason || 'Sin motivo especificado') : '✅ NO'),
+      ];
+      let photoId = '';
+      try {
+        const photos = await api.getUserProfilePhotos({ user_id: targetId, limit: 1 });
+        photoId = photos?.photos?.[0]?.at(-1)?.file_id || '';
+      } catch (error) { console.log('No se pudo obtener foto de perfil', targetId, String(error)); }
+      if (photoId) {
+        await api.sendPhoto({ chat_id: chatId, photo: photoId, caption: lines.join('\n').slice(0, 1024), parse_mode: 'HTML' });
+        if (lines.join('\n').length > 1024) await api.sendMessage({ chat_id: chatId, text: lines.join('\n').slice(1024), parse_mode: 'HTML' });
+      } else {
+        await api.sendMessage({ chat_id: chatId, text: lines.join('\n'), parse_mode: 'HTML' });
+      }
+      return;
+    }
+    if (command === '/chatinfo') {
+      const targetId = parseId(args[0]);
+      if (!Number.isSafeInteger(targetId) || targetId === 0) return void await say(chatId, 'Uso: /chatinfo ID_GRUPO_O_CANAL');
+      const target = await api.getChat({ chat_id: targetId });
+      const typeNames = { channel: 'Canal', group: 'Grupo', supergroup: 'Supergrupo', private: 'Chat privado' };
+      let count = null;
+      try { count = await api.getChatMemberCount({ chat_id: targetId }); } catch {}
+      let link = target.username ? 'https://t.me/' + target.username : String(target.invite_link || '');
+      let botCanInvite = false;
+      try {
+        const me = await api.getMe();
+        const botMember = await api.getChatMember({ chat_id: targetId, user_id: me.id });
+        botCanInvite = botMember?.status === 'creator' || (botMember?.status === 'administrator' && botMember?.can_invite_users === true);
+      } catch {}
+      if (!link && botCanInvite) {
+        try { link = await api.exportChatInviteLink({ chat_id: targetId }); } catch (error) { console.log('No se pudo exportar enlace privado', targetId, String(error)); }
+      }
+      const description = target.description || target.bio || 'No disponible';
+      const textInfo = [
+        '💬 <b>INFORMACIÓN DEL CHAT</b>',
+        '',
+        '<b>Nombre:</b> ' + escapeHtml(target.title || target.username || 'Sin nombre'),
+        '<b>Tipo:</b> ' + (typeNames[target.type] || escapeHtml(target.type || 'No disponible')),
+        '<b>ID:</b> <code>' + targetId + '</code>',
+        '<b>Biografía:</b> ' + escapeHtml(description),
+        '<b>Miembros:</b> ' + (count == null ? 'No disponible' : Number(count).toLocaleString('es-MX')),
+        '<b>Enlace:</b> ' + (link ? '<a href="' + escapeHtml(link) + '">' + escapeHtml(link) + '</a>' : 'No disponible; el bot necesita permiso para invitar usuarios si el chat es privado'),
+      ].join('\n');
+      const keyboard = [
+        [{ text: '🛡️ VER ADMINISTRADORES', callback_data: 'lookup:admins:' + targetId }],
+        [{ text: '👥 VER USUARIOS DETECTADOS', callback_data: 'lookup:members:' + targetId + ':0' }],
+      ];
+      const photoId = target.photo?.big_file_id || target.photo?.small_file_id;
+      if (photoId) await api.sendPhoto({ chat_id: chatId, photo: photoId, caption: textInfo.slice(0, 1024), parse_mode: 'HTML', reply_markup: { inline_keyboard: keyboard } });
+      else await api.sendMessage({ chat_id: chatId, text: textInfo, parse_mode: 'HTML', reply_markup: { inline_keyboard: keyboard } });
+      return;
+    }
     if (command === '/channels') {
       const rows = await managedChannels(userId);
       await say(chatId, rows.length ? '📣 CANALES REGISTRADOS\n' + rows.map(c => `• ${c.title || 'Sin título'} — ${c.chatId} — ${c.active ? 'activo' : 'inactivo'}`).join('\n') : 'No hay canales registrados. Usa /addchannel ID título.');
