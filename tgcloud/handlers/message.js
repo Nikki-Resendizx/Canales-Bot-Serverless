@@ -98,7 +98,8 @@ async function getInfoTextTemplate(key) {
   } catch { return INFO_TEXT_DEFAULTS[key]; }
 }
 function applyInfoTextTemplate(template, values) {
-  return String(template || '').replace(/\{([a-z_]+)\}/gi, (match, key) =>
+  const normalizedTemplate = String(template || '').replace(/\\n/g, '\n');
+  return normalizedTemplate.replace(/\{([a-z_]+)\}/gi, (match, key) =>
     Object.hasOwn(values, key.toLowerCase()) ? String(values[key.toLowerCase()] ?? '') : match);
 }
 
@@ -1345,9 +1346,9 @@ export default async function (message) {
         id: targetId, biografia: escapeHtml(bio),
         idioma: 'No disponible mediante consulta global de Telegram',
         premium: 'No disponible mediante consulta global de Telegram',
-        chats: memberships.length ? memberships.join('\\n') : 'Ninguno confirmado',
+        chats: memberships.length ? memberships.join('\n') : 'Ninguno confirmado',
         total_chats: memberships.length, grupos: memberships.length, canales: memberships.length,
-        solicitudes: requestLines.length ? requestLines.join('\\n') : 'Ninguna',
+        solicitudes: requestLines.length ? requestLines.join('\n') : 'Ninguna',
         total_solicitudes: pending.length, blacklist: ban ? '🚫 SÍ' : '✅ NO',
         motivo: ban ? escapeHtml(ban.reason || 'Sin motivo especificado') : 'No aplica',
       });
